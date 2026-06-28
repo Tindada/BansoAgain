@@ -1,0 +1,1 @@
+"""Banso news agent package."""
