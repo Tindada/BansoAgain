@@ -33,10 +33,14 @@ class AgentRuntime:
     async def run(self, state: AgentState) -> RuntimeRunResult:
         """Run the agent loop until it stops or reaches its step budget."""
         trace = AgentTrace(query=state.query)
+        final_answer: str | None = None
 
         while not state.done and state.current_step < state.budget.max_steps:
             action = await self.policy.select_action(state)
             observation = await self.executor.execute(action, state)
+            observation_final_answer = observation.data.get("final_answer")
+            if isinstance(observation_final_answer, str):
+                final_answer = observation_final_answer
 
             trace.steps.append(
                 TraceStep(
@@ -49,7 +53,7 @@ class AgentRuntime:
 
             state = self.reducer.apply(state, action, observation)
 
-        result = AgentResult(state=state)
+        result = AgentResult(final_answer=final_answer, state=state)
         trace.final_result = result
 
         return RuntimeRunResult(result=result, trace=trace)

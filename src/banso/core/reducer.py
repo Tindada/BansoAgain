@@ -32,6 +32,12 @@ class DefaultStateReducer:
         next_state = state.model_copy(deep=True)
         next_state.current_step += 1
 
+        search_queries = observation.data.get("search_queries")
+        if isinstance(search_queries, list):
+            next_state.search_queries.extend(
+                query for query in search_queries if isinstance(query, str)
+            )
+
         if action.type == AgentActionType.STOP or observation.error is not None:
             next_state.done = True
 
