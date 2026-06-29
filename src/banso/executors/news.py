@@ -13,6 +13,7 @@ from banso.documents import (
     EvidenceItem,
 )
 from banso.retrieval import RetrievalProvider, SearchRequest, SearchResult
+from banso.retrieval.filter import RetrievalFilter
 from banso.synthesis import Synthesizer, SynthesisRequest
 
 
@@ -26,12 +27,14 @@ class NewsActionExecutor:
         document_reader: DocumentReader,
         evidence_extractor: EvidenceExtractor,
         synthesizer: Synthesizer,
+        retrieval_filter: RetrievalFilter | None = None,
     ) -> None:
         self.store = store
         self.retrieval_provider = retrieval_provider
         self.document_reader = document_reader
         self.evidence_extractor = evidence_extractor
         self.synthesizer = synthesizer
+        self.retrieval_filter = retrieval_filter or RetrievalFilter()
 
     async def execute(self, action: AgentAction, state: AgentState) -> Observation:
         """Execute a news-domain action."""
@@ -54,7 +57,7 @@ class NewsActionExecutor:
         if not isinstance(query, str):
             query = state.query.text
 
-        results = await self.retrieval_provider.search(
+        raw_results = await self.retrieval_provider.search(
             SearchRequest(
                 query=query,
                 language=state.query.language,
@@ -62,6 +65,8 @@ class NewsActionExecutor:
                 time_range=state.query.time_range,
             )
         )
+        filtered = self.retrieval_filter.apply(raw_results)
+        results = filtered.results
         result_ids = [self.store.put(result) for result in results]
 
         return Observation(
@@ -69,6 +74,7 @@ class NewsActionExecutor:
             data={
                 "search_queries": [query],
                 "search_result_ids": result_ids,
+                "retrieval_filter_report": filtered.report.model_dump(),
             },
         )
 
