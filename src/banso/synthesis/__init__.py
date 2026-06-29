@@ -1,6 +1,7 @@
 """Multi-source synthesis components."""
 
 from banso.synthesis.fake import FakeSynthesizer
+from banso.synthesis.llm import LLMSynthesizer
 from banso.synthesis.synthesizer import (
     SynthesisRequest,
     SynthesisResult,
@@ -9,6 +10,7 @@ from banso.synthesis.synthesizer import (
 
 __all__ = [
     "FakeSynthesizer",
+    "LLMSynthesizer",
     "SynthesisRequest",
     "SynthesisResult",
     "Synthesizer",
