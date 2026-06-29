@@ -1,0 +1,72 @@
+"""OpenAI SDK-backed LLM client implementation."""
+
+from typing import Any
+
+from openai import AsyncOpenAI
+
+from banso.llm.models import LLMRequest, LLMResponse, LLMUsage
+
+
+class OpenAISDKLLMClient:
+    """Calls chat completions through the official OpenAI SDK."""
+
+    def __init__(
+        self,
+        *,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        model: str | None = None,
+        timeout: float = 60.0,
+        client: Any | None = None,
+    ) -> None:
+        self.model = model
+        self._client = client or AsyncOpenAI(
+            base_url=base_url,
+            api_key=api_key,
+            timeout=timeout,
+        )
+
+    async def generate(self, request: LLMRequest) -> LLMResponse:
+        """Generate a response using the SDK chat completions API."""
+
+        model = request.model or self.model
+        if not model:
+            raise ValueError("LLM model is required.")
+
+        response = await self._client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": message.role.value, "content": message.content}
+                for message in request.messages
+            ],
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
+        )
+
+        content = response.choices[0].message.content or ""
+
+        return LLMResponse(
+            content=content,
+            model=response.model or model,
+            usage=_parse_usage(response.usage),
+            raw=_to_raw_dict(response),
+        )
+
+
+def _parse_usage(usage: Any | None) -> LLMUsage | None:
+    if usage is None:
+        return None
+
+    return LLMUsage(
+        input_tokens=getattr(usage, "prompt_tokens", None),
+        output_tokens=getattr(usage, "completion_tokens", None),
+        total_tokens=getattr(usage, "total_tokens", None),
+    )
+
+
+def _to_raw_dict(response: Any) -> dict[str, Any]:
+    if hasattr(response, "model_dump"):
+        return response.model_dump()
+    if isinstance(response, dict):
+        return response
+    return {}

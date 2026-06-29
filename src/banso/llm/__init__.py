@@ -9,6 +9,7 @@ from banso.llm.models import (
     LLMResponse,
     LLMUsage,
 )
+from banso.llm.openai_sdk import OpenAISDKLLMClient
 
 __all__ = [
     "FakeLLMClient",
@@ -18,4 +19,5 @@ __all__ = [
     "LLMRequest",
     "LLMResponse",
     "LLMUsage",
+    "OpenAISDKLLMClient",
 ]
