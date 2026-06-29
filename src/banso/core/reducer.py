@@ -7,6 +7,11 @@ from banso.core.result import Observation
 from banso.core.state import AgentState
 
 
+def _extend_string_list(target: list[str], values: object) -> None:
+    if isinstance(values, list):
+        target.extend(value for value in values if isinstance(value, str))
+
+
 class StateReducer(Protocol):
     """Applies action observations to produce the next state."""
 
@@ -32,11 +37,22 @@ class DefaultStateReducer:
         next_state = state.model_copy(deep=True)
         next_state.current_step += 1
 
-        search_queries = observation.data.get("search_queries")
-        if isinstance(search_queries, list):
-            next_state.search_queries.extend(
-                query for query in search_queries if isinstance(query, str)
-            )
+        _extend_string_list(
+            next_state.search_queries,
+            observation.data.get("search_queries"),
+        )
+        _extend_string_list(
+            next_state.search_result_ids,
+            observation.data.get("search_result_ids"),
+        )
+        _extend_string_list(
+            next_state.document_ids,
+            observation.data.get("document_ids"),
+        )
+        _extend_string_list(
+            next_state.evidence_ids,
+            observation.data.get("evidence_ids"),
+        )
 
         if action.type == AgentActionType.STOP or observation.error is not None:
             next_state.done = True
