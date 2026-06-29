@@ -10,6 +10,7 @@ from banso.retrieval.filter import (
 )
 from banso.retrieval.models import SearchResult, Source, SourceType
 from banso.retrieval.provider import RetrievalProvider, SearchRequest
+from banso.retrieval.tavily import TavilyRetrievalProvider
 
 __all__ = [
     "FakeRetrievalProvider",
@@ -22,5 +23,6 @@ __all__ = [
     "SearchResult",
     "Source",
     "SourceType",
+    "TavilyRetrievalProvider",
     "normalize_url",
 ]
