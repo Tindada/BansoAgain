@@ -2,6 +2,7 @@
 
 from banso.documents.extractor import EvidenceExtractionRequest, EvidenceExtractor
 from banso.documents.fake import FakeDocumentReader, FakeEvidenceExtractor
+from banso.documents.http_reader import HTTPDocumentReader
 from banso.documents.llm import LLMEvidenceExtractor
 from banso.documents.models import Document, EvidenceItem
 from banso.documents.reader import DocumentReader, DocumentReadRequest
@@ -15,5 +16,6 @@ __all__ = [
     "EvidenceItem",
     "FakeDocumentReader",
     "FakeEvidenceExtractor",
+    "HTTPDocumentReader",
     "LLMEvidenceExtractor",
 ]
