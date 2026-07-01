@@ -1,5 +1,7 @@
 """Minimal agent runtime loop."""
 
+from time import perf_counter
+
 from pydantic import BaseModel
 
 from banso.core.executor import ActionExecutor
@@ -37,7 +39,9 @@ class AgentRuntime:
 
         while not state.done and state.current_step < state.budget.max_steps:
             action = await self.policy.select_action(state)
+            started_at = perf_counter()
             observation = await self.executor.execute(action, state)
+            duration_seconds = perf_counter() - started_at
             observation_final_answer = observation.data.get("final_answer")
             if isinstance(observation_final_answer, str):
                 final_answer = observation_final_answer
@@ -48,6 +52,7 @@ class AgentRuntime:
                     state=state.model_copy(deep=True),
                     action=action,
                     observation=observation,
+                    duration_seconds=duration_seconds,
                 )
             )
 

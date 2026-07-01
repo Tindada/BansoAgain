@@ -64,6 +64,10 @@ async def _run_news_runtime() -> None:
     assert output.result.final_answer is not None
     assert "Fake summary for 'latest AI news'" in output.result.final_answer
     assert output.trace.final_result == output.result
+    assert all(
+        step.duration_seconds is not None and step.duration_seconds >= 0
+        for step in output.trace.steps
+    )
 
 
 async def _run_news_runtime_filters_search_results() -> None:

@@ -18,6 +18,7 @@ class TraceStep(BaseModel):
     state: AgentState
     action: AgentAction
     observation: Observation
+    duration_seconds: float | None = None
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

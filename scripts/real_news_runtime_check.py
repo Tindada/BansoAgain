@@ -6,6 +6,7 @@ Run with:
 UV_CACHE_DIR=.uv-cache uv run python scripts/real_news_runtime_check.py
 """
 
+import argparse
 import asyncio
 import os
 
@@ -56,7 +57,17 @@ def build_tavily_provider() -> TavilyRetrievalProvider:
     )
 
 
-async def main() -> None:
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="print artifact IDs, document previews, evidence, and observations",
+    )
+    return parser.parse_args()
+
+
+async def main(*, verbose: bool = False) -> None:
     load_dotenv()
 
     query = os.getenv("BANSO_NEWS_QUERY", "latest AI news")
@@ -79,7 +90,31 @@ async def main() -> None:
     print("done:", state.done)
     print("trace steps:", len(output.trace.steps))
     print("actions:", [step.action.type.value for step in output.trace.steps])
+    print("timings:")
+    for step in output.trace.steps:
+        duration = step.duration_seconds or 0.0
+        print(f"- {step.action.type.value}: {duration:.2f}s")
+    total_duration = sum(step.duration_seconds or 0.0 for step in output.trace.steps)
+    print(f"total action time: {total_duration:.2f}s")
     print("search queries:", state.search_queries)
+    print("search results:", len(state.search_result_ids))
+    print("documents:", len(state.document_ids))
+    print("evidence items:", len(state.evidence_ids))
+    print("final answer:", output.result.final_answer)
+
+    synthesis_step = next(
+        (step for step in output.trace.steps if step.action.type.value == "synthesize"),
+        None,
+    )
+    citations = synthesis_step.observation.data.get("citations", []) if synthesis_step else []
+    if citations:
+        print("citations:")
+        for citation in citations:
+            print("-", citation)
+
+    if not verbose:
+        return
+
     print("search result ids:", state.search_result_ids)
     print("document ids:", state.document_ids)
     print("evidence ids:", state.evidence_ids)
@@ -118,7 +153,6 @@ async def main() -> None:
         print(f"   confidence: {evidence.confidence}")
         print(f"   source_url: {evidence.source_url}")
 
-    print("final answer:", output.result.final_answer)
     print("observations:")
     for step in output.trace.steps:
         print(f"- {step.action.type.value}: {step.observation.data}")
@@ -127,4 +161,5 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    args = parse_args()
+    asyncio.run(main(verbose=args.verbose))
