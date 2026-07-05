@@ -1,6 +1,12 @@
 """Search and retrieval provider interfaces."""
 
 from banso.retrieval.fake import FakeRetrievalProvider
+from banso.retrieval.evaluator import (
+    SearchResultEvaluation,
+    SearchResultEvaluationResult,
+    SearchResultEvaluator,
+    SearchResultEvaluatorConfig,
+)
 from banso.retrieval.filter import (
     RetrievalFilter,
     RetrievalFilterConfig,
@@ -21,6 +27,10 @@ __all__ = [
     "RetrievalProvider",
     "SearchRequest",
     "SearchResult",
+    "SearchResultEvaluation",
+    "SearchResultEvaluationResult",
+    "SearchResultEvaluator",
+    "SearchResultEvaluatorConfig",
     "Source",
     "SourceType",
     "TavilyRetrievalProvider",

@@ -15,7 +15,12 @@ from banso.documents import (
     EvidenceExtractor,
     EvidenceItem,
 )
-from banso.retrieval import RetrievalProvider, SearchRequest, SearchResult
+from banso.retrieval import (
+    RetrievalProvider,
+    SearchRequest,
+    SearchResult,
+    SearchResultEvaluator,
+)
 from banso.retrieval.filter import RetrievalFilter
 from banso.synthesis import Synthesizer, SynthesisRequest
 
@@ -31,6 +36,7 @@ class NewsActionExecutor:
         evidence_extractor: EvidenceExtractor,
         synthesizer: Synthesizer,
         retrieval_filter: RetrievalFilter | None = None,
+        search_result_evaluator: SearchResultEvaluator | None = None,
         max_extraction_concurrency: int = 3,
     ) -> None:
         if max_extraction_concurrency < 1:
@@ -42,6 +48,7 @@ class NewsActionExecutor:
         self.evidence_extractor = evidence_extractor
         self.synthesizer = synthesizer
         self.retrieval_filter = retrieval_filter or RetrievalFilter()
+        self.search_result_evaluator = search_result_evaluator or SearchResultEvaluator()
         self.max_extraction_concurrency = max_extraction_concurrency
 
     async def execute(self, action: AgentAction, state: AgentState) -> Observation:
@@ -74,7 +81,8 @@ class NewsActionExecutor:
             )
         )
         filtered = self.retrieval_filter.apply(raw_results)
-        results = filtered.results
+        evaluated = self.search_result_evaluator.apply(filtered.results)
+        results = evaluated.results
         result_ids = [self.store.put(result) for result in results]
 
         return Observation(
@@ -83,6 +91,7 @@ class NewsActionExecutor:
                 "search_queries": [query],
                 "search_result_ids": result_ids,
                 "retrieval_filter_report": filtered.report.model_dump(),
+                "search_result_evaluation_report": evaluated.report(),
             },
         )
 

@@ -5,6 +5,7 @@ from typing import Any
 import httpx
 
 from banso.retrieval.models import SearchResult, Source, SourceType
+from banso.retrieval.publisher import publisher_domain, publisher_home_url
 from banso.retrieval.provider import RetrievalProvider, SearchRequest
 
 
@@ -77,8 +78,6 @@ class TavilyRetrievalProvider(RetrievalProvider):
 
     def _parse_results(self, data: dict[str, Any]) -> list[SearchResult]:
         results: list[SearchResult] = []
-        source = Source(name="Tavily", url=self.base_url, type=SourceType.NEWS)
-
         for index, item in enumerate(data.get("results", []), start=1):
             if not isinstance(item, dict):
                 continue
@@ -103,7 +102,11 @@ class TavilyRetrievalProvider(RetrievalProvider):
                     title=title,
                     url=url,
                     snippet=content if isinstance(content, str) else None,
-                    source=source,
+                    source=Source(
+                        name=publisher_domain(url) or "Unknown publisher",
+                        url=publisher_home_url(url),
+                        type=SourceType.UNKNOWN,
+                    ),
                     rank=index,
                     metadata=metadata,
                 )

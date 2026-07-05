@@ -82,7 +82,9 @@ async def _run_tavily_provider_maps_request_and_response() -> None:
     assert results[0].url == "https://example.com/ai-news-one"
     assert results[0].snippet == "First AI news snippet."
     assert results[0].source is not None
-    assert results[0].source.name == "Tavily"
+    assert results[0].source.name == "example.com"
+    assert results[0].source.url == "https://example.com"
+    assert results[0].source.type.value == "unknown"
     assert results[0].rank == 1
     assert results[0].metadata["provider"] == "tavily"
     assert results[0].metadata["score"] == 0.91

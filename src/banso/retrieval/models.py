@@ -13,8 +13,11 @@ class SourceType(StrEnum):
 
     NEWS = "news"
     OFFICIAL = "official"
+    RESEARCH = "research"
+    LEADERBOARD = "leaderboard"
     BLOG = "blog"
     SOCIAL = "social"
+    AGGREGATOR = "aggregator"
     UNKNOWN = "unknown"
 
 

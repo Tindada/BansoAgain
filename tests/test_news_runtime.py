@@ -14,27 +14,37 @@ from banso.documents import (
 )
 from banso.executors import NewsActionExecutor
 from banso.policies import NewsRuleBasedPolicy
-from banso.retrieval import FakeRetrievalProvider, SearchRequest, SearchResult
+from banso.retrieval import (
+    FakeRetrievalProvider,
+    SearchRequest,
+    SearchResult,
+    Source,
+    SourceType,
+)
 from banso.synthesis import FakeSynthesizer
 
 
 class DuplicateRetrievalProvider:
     async def search(self, request: SearchRequest) -> list[SearchResult]:
+        source = Source(name="Example News", type=SourceType.NEWS)
         return [
             SearchResult(
                 title=f"First result for {request.query}",
                 url="https://example.com/news?a=1&utm_source=test",
                 rank=1,
+                source=source,
             ),
             SearchResult(
                 title=f"Duplicate result for {request.query}",
                 url="https://example.com/news?utm_medium=test&a=1",
                 rank=2,
+                source=source,
             ),
             SearchResult(
                 title=f"Second result for {request.query}",
                 url="https://example.com/second",
                 rank=3,
+                source=source,
             ),
         ]
 
@@ -54,9 +64,20 @@ class PartiallyBlockedDocumentReader(FakeDocumentReader):
 
 class PartiallyBlockedRetrievalProvider:
     async def search(self, request: SearchRequest) -> list[SearchResult]:
+        source = Source(name="Example News", type=SourceType.NEWS)
         return [
-            SearchResult(title="Blocked", url="https://example.com/blocked", rank=1),
-            SearchResult(title="Readable", url="https://example.com/readable", rank=2),
+            SearchResult(
+                title="Blocked",
+                url="https://example.com/blocked",
+                rank=1,
+                source=source,
+            ),
+            SearchResult(
+                title="Readable",
+                url="https://example.com/readable",
+                rank=2,
+                source=source,
+            ),
         ]
 
 
@@ -124,6 +145,11 @@ async def _run_news_runtime_filters_search_results() -> None:
         "dropped_duplicate_url": 1,
         "truncated_count": 0,
     }
+    evaluation_report = search_observation.data[
+        "search_result_evaluation_report"
+    ]
+    assert evaluation_report["accepted_count"] == 2
+    assert evaluation_report["rejected_count"] == 0
 
 
 async def _run_news_runtime_skips_unreadable_document(status_code: int) -> None:
