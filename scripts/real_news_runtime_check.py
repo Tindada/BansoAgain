@@ -71,6 +71,9 @@ async def main(*, verbose: bool = False) -> None:
     load_dotenv()
 
     query = os.getenv("BANSO_NEWS_QUERY", "latest AI news")
+    max_extraction_concurrency = int(
+        os.getenv("BANSO_MAX_EXTRACTION_CONCURRENCY", "3")
+    )
     llm_client = build_llm_client()
     store = InMemoryArtifactStore()
     runtime = AgentRuntime(
@@ -81,6 +84,7 @@ async def main(*, verbose: bool = False) -> None:
             document_reader=HTTPDocumentReader(),
             evidence_extractor=LLMEvidenceExtractor(client=llm_client),
             synthesizer=LLMSynthesizer(client=llm_client),
+            max_extraction_concurrency=max_extraction_concurrency,
         ),
     )
 

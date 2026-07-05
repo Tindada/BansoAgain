@@ -1,5 +1,7 @@
 """News action executor."""
 
+import asyncio
+
 from banso.artifacts import ArtifactStore
 from banso.core.action import AgentAction, AgentActionType
 from banso.core.result import Observation
@@ -28,13 +30,18 @@ class NewsActionExecutor:
         evidence_extractor: EvidenceExtractor,
         synthesizer: Synthesizer,
         retrieval_filter: RetrievalFilter | None = None,
+        max_extraction_concurrency: int = 3,
     ) -> None:
+        if max_extraction_concurrency < 1:
+            raise ValueError("max_extraction_concurrency must be at least 1")
+
         self.store = store
         self.retrieval_provider = retrieval_provider
         self.document_reader = document_reader
         self.evidence_extractor = evidence_extractor
         self.synthesizer = synthesizer
         self.retrieval_filter = retrieval_filter or RetrievalFilter()
+        self.max_extraction_concurrency = max_extraction_concurrency
 
     async def execute(self, action: AgentAction, state: AgentState) -> Observation:
         """Execute a news-domain action."""
@@ -102,20 +109,30 @@ class NewsActionExecutor:
         )
 
     async def _extract_evidence(self, state: AgentState) -> Observation:
-        evidence_ids: list[str] = []
+        documents = [
+            document
+            for document_id in state.document_ids
+            if (document := self.store.get(document_id, Document)) is not None
+        ]
+        semaphore = asyncio.Semaphore(self.max_extraction_concurrency)
 
-        for document_id in state.document_ids:
-            document = self.store.get(document_id, Document)
-            if document is None:
-                continue
-
-            evidence_items = await self.evidence_extractor.extract(
-                EvidenceExtractionRequest(
-                    query=state.query,
-                    document=document,
+        async def extract(document: Document) -> list[EvidenceItem]:
+            async with semaphore:
+                return await self.evidence_extractor.extract(
+                    EvidenceExtractionRequest(
+                        query=state.query,
+                        document=document,
+                    )
                 )
-            )
-            evidence_ids.extend(self.store.put(item) for item in evidence_items)
+
+        evidence_batches = await asyncio.gather(
+            *(extract(document) for document in documents)
+        )
+        evidence_ids = [
+            self.store.put(item)
+            for evidence_items in evidence_batches
+            for item in evidence_items
+        ]
 
         return Observation(
             action_type=AgentActionType.EXTRACT_EVIDENCE,
