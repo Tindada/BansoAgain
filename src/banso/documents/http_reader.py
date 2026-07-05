@@ -7,7 +7,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from banso.documents.models import Document
-from banso.documents.reader import DocumentReadRequest
+from banso.documents.reader import DocumentHTTPStatusError, DocumentReadRequest
 
 
 class HTTPDocumentReader:
@@ -40,7 +40,13 @@ class HTTPDocumentReader:
             ) as client:
                 response = await client.get(request.url)
 
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as error:
+            raise DocumentHTTPStatusError(
+                url=str(response.url),
+                status_code=response.status_code,
+            ) from error
 
         title, text = _extract_html_content(response.text)
         resolved_title = request.title or title or request.url

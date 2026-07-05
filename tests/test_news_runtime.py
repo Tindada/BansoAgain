@@ -2,10 +2,16 @@
 
 import asyncio
 
+import pytest
+
 from banso.artifacts import InMemoryArtifactStore
 from banso.core import AgentRuntime, AgentState, UserQuery
 from banso.core.action import AgentActionType
-from banso.documents import FakeDocumentReader, FakeEvidenceExtractor
+from banso.documents import (
+    DocumentHTTPStatusError,
+    FakeDocumentReader,
+    FakeEvidenceExtractor,
+)
 from banso.executors import NewsActionExecutor
 from banso.policies import NewsRuleBasedPolicy
 from banso.retrieval import FakeRetrievalProvider, SearchRequest, SearchResult
@@ -30,6 +36,27 @@ class DuplicateRetrievalProvider:
                 url="https://example.com/second",
                 rank=3,
             ),
+        ]
+
+
+class PartiallyBlockedDocumentReader(FakeDocumentReader):
+    def __init__(self, status_code: int = 403) -> None:
+        self.status_code = status_code
+
+    async def read(self, request):
+        if request.url.endswith("blocked"):
+            raise DocumentHTTPStatusError(
+                url=request.url,
+                status_code=self.status_code,
+            )
+        return await super().read(request)
+
+
+class PartiallyBlockedRetrievalProvider:
+    async def search(self, request: SearchRequest) -> list[SearchResult]:
+        return [
+            SearchResult(title="Blocked", url="https://example.com/blocked", rank=1),
+            SearchResult(title="Readable", url="https://example.com/readable", rank=2),
         ]
 
 
@@ -99,9 +126,47 @@ async def _run_news_runtime_filters_search_results() -> None:
     }
 
 
+async def _run_news_runtime_skips_unreadable_document(status_code: int) -> None:
+    store = InMemoryArtifactStore()
+    runtime = AgentRuntime(
+        policy=NewsRuleBasedPolicy(),
+        executor=NewsActionExecutor(
+            store=store,
+            retrieval_provider=PartiallyBlockedRetrievalProvider(),
+            document_reader=PartiallyBlockedDocumentReader(status_code),
+            evidence_extractor=FakeEvidenceExtractor(),
+            synthesizer=FakeSynthesizer(),
+        ),
+    )
+
+    output = await runtime.run(AgentState(query=UserQuery(text="latest AI news")))
+    read_observation = output.trace.steps[1].observation
+
+    assert output.result.state.done is True
+    assert len(output.result.state.document_ids) == 1
+    assert read_observation.data["document_read_failures"] == [
+        {
+            "search_result_id": output.result.state.search_result_ids[0],
+            "url": "https://example.com/blocked",
+            "status_code": status_code,
+            "reason": "http_status",
+        }
+    ]
+
+
 def test_news_runtime() -> None:
     asyncio.run(_run_news_runtime())
 
 
 def test_news_runtime_filters_search_results() -> None:
     asyncio.run(_run_news_runtime_filters_search_results())
+
+
+@pytest.mark.parametrize("status_code", [401, 403, 404])
+def test_news_runtime_skips_unreadable_document(status_code: int) -> None:
+    asyncio.run(_run_news_runtime_skips_unreadable_document(status_code))
+
+
+def test_news_runtime_does_not_hide_other_http_errors() -> None:
+    with pytest.raises(DocumentHTTPStatusError, match="HTTP 500"):
+        asyncio.run(_run_news_runtime_skips_unreadable_document(500))

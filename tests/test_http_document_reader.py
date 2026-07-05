@@ -4,7 +4,11 @@ import asyncio
 
 import httpx
 
-from banso.documents import DocumentReadRequest, HTTPDocumentReader
+from banso.documents import (
+    DocumentHTTPStatusError,
+    DocumentReadRequest,
+    HTTPDocumentReader,
+)
 from banso.retrieval import Source, SourceType
 
 
@@ -95,3 +99,27 @@ def test_http_document_reader_extracts_html_document() -> None:
 
 def test_http_document_reader_prefers_request_title() -> None:
     asyncio.run(_run_http_document_reader_prefers_request_title())
+
+
+async def _run_http_document_reader_exposes_http_status() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, request=request)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    reader = HTTPDocumentReader(client=client)
+
+    try:
+        try:
+            await reader.read(DocumentReadRequest(url="https://example.com/blocked"))
+        except DocumentHTTPStatusError as error:
+            assert error.url == "https://example.com/blocked"
+            assert error.status_code == 403
+            assert isinstance(error.__cause__, httpx.HTTPStatusError)
+        else:
+            raise AssertionError("expected DocumentHTTPStatusError")
+    finally:
+        await client.aclose()
+
+
+def test_http_document_reader_exposes_http_status() -> None:
+    asyncio.run(_run_http_document_reader_exposes_http_status())

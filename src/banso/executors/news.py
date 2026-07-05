@@ -8,6 +8,7 @@ from banso.core.result import Observation
 from banso.core.state import AgentState
 from banso.documents import (
     Document,
+    DocumentHTTPStatusError,
     DocumentReadRequest,
     DocumentReader,
     EvidenceExtractionRequest,
@@ -87,25 +88,42 @@ class NewsActionExecutor:
 
     async def _read_document(self, state: AgentState) -> Observation:
         document_ids: list[str] = []
+        failures: list[dict[str, str | int]] = []
 
         for result_id in state.search_result_ids:
             result = self.store.get(result_id, SearchResult)
             if result is None:
                 continue
 
-            document = await self.document_reader.read(
-                DocumentReadRequest(
-                    url=result.url,
-                    title=result.title,
-                    source=result.source,
-                    metadata={"search_result_id": result.id},
+            try:
+                document = await self.document_reader.read(
+                    DocumentReadRequest(
+                        url=result.url,
+                        title=result.title,
+                        source=result.source,
+                        metadata={"search_result_id": result.id},
+                    )
                 )
-            )
+            except DocumentHTTPStatusError as error:
+                if error.status_code not in {401, 403, 404}:
+                    raise
+                failures.append(
+                    {
+                        "search_result_id": result.id,
+                        "url": error.url,
+                        "status_code": error.status_code,
+                        "reason": "http_status",
+                    }
+                )
+                continue
             document_ids.append(self.store.put(document))
 
         return Observation(
             action_type=AgentActionType.READ_DOCUMENT,
-            data={"document_ids": document_ids},
+            data={
+                "document_ids": document_ids,
+                "document_read_failures": failures,
+            },
         )
 
     async def _extract_evidence(self, state: AgentState) -> Observation:
