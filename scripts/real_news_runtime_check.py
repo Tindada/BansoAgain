@@ -143,6 +143,8 @@ async def main(*, verbose: bool = False) -> None:
             continue
         print(f"{index}. title: {document.title}")
         print(f"   url: {document.url}")
+        print(f"   extraction strategy: {document.metadata.get('extraction_strategy')}")
+        print(f"   raw HTML chars: {document.metadata.get('raw_html_chars')}")
         print(f"   text chars: {len(document.text)}")
         print(f"   preview: {document.text[:300]}")
 

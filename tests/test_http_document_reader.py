@@ -9,6 +9,7 @@ from banso.documents import (
     DocumentReadRequest,
     HTTPDocumentReader,
 )
+from banso.documents.http_reader import _extract_html_content
 from banso.retrieval import Source, SourceType
 
 
@@ -64,6 +65,9 @@ async def _run_http_document_reader_extracts_html_document() -> None:
     assert document.metadata["status_code"] == 200
     assert document.metadata["content_type"] == "text/html; charset=utf-8"
     assert document.metadata["final_url"] == "https://example.com/news"
+    assert document.metadata["extraction_strategy"] == "article"
+    assert document.metadata["raw_html_chars"] > len(document.text)
+    assert document.metadata["extracted_text_chars"] == len(document.text)
 
 
 async def _run_http_document_reader_prefers_request_title() -> None:
@@ -123,3 +127,63 @@ async def _run_http_document_reader_exposes_http_status() -> None:
 
 def test_http_document_reader_exposes_http_status() -> None:
     asyncio.run(_run_http_document_reader_exposes_http_status())
+
+
+def test_html_extraction_prefers_longest_article_and_removes_noise() -> None:
+    title, text, strategy = _extract_html_content(
+        """
+        <html>
+          <head><title>Page title</title></head>
+          <body>
+            <nav>Site navigation</nav>
+            <article><p>Short recommendation.</p></article>
+            <article>
+              <header><h1>Article headline</h1></header>
+              <p>OpenAI released <a href="/model">a new model</a> today.</p>
+              <p>Second article paragraph with more detail.</p>
+              <aside>Related stories</aside>
+            </article>
+          </body>
+        </html>
+        """
+    )
+
+    assert title == "Page title"
+    assert strategy == "article"
+    assert text == (
+        "Article headline\n"
+        "OpenAI released a new model today.\n"
+        "Second article paragraph with more detail."
+    )
+    assert "Site navigation" not in text
+    assert "Related stories" not in text
+    assert "Short recommendation" not in text
+
+
+def test_html_extraction_uses_main_then_role_main() -> None:
+    _, main_text, main_strategy = _extract_html_content(
+        "<body><main><h1>Main heading</h1><p>Main text.</p></main></body>"
+    )
+    _, role_text, role_strategy = _extract_html_content(
+        '<body><section role="main"><p>Role main text.</p></section></body>'
+    )
+
+    assert main_strategy == "main"
+    assert main_text == "Main heading\nMain text."
+    assert role_strategy == "role_main"
+    assert role_text == "Role main text."
+
+
+def test_html_extraction_falls_back_to_body_and_removes_page_chrome() -> None:
+    _, text, strategy = _extract_html_content(
+        """
+        <body>
+          <header>Site header</header>
+          <div><h1>Body heading</h1><p>Body text.</p></div>
+          <footer>Site footer</footer>
+        </body>
+        """
+    )
+
+    assert strategy == "body"
+    assert text == "Body heading\nBody text."
