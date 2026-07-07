@@ -10,6 +10,7 @@ from banso.llm import (
     LLMMessageRole,
     LLMRequest,
     OpenAISDKLLMClient,
+    ThinkingTagStrippingLLMClient,
 )
 
 
@@ -149,6 +150,29 @@ async def _run_empty_content_and_missing_usage_are_supported() -> None:
     assert response.usage is None
 
 
+async def _run_thinking_tag_stripping_client_removes_thinking_content() -> None:
+    completions = FakeChatCompletions(
+        content="<think>reasoning details</think>\n[{\"claim\":\"x\"}]"
+    )
+    client = ThinkingTagStrippingLLMClient(
+        OpenAISDKLLMClient(
+            model="test-model",
+            client=FakeOpenAIClient(completions),
+        )
+    )
+
+    response = await client.generate(
+        LLMRequest(
+            messages=[
+                LLMMessage(role=LLMMessageRole.USER, content="Extract evidence.")
+            ],
+        )
+    )
+
+    assert response.content == '[{"claim":"x"}]'
+    assert response.model == "test-model"
+
+
 def test_openai_sdk_llm_client_maps_request_and_response() -> None:
     asyncio.run(_run_openai_sdk_client_maps_request_and_response())
 
@@ -163,3 +187,7 @@ def test_openai_sdk_llm_client_missing_model_raises_error() -> None:
 
 def test_openai_sdk_llm_client_empty_content_and_missing_usage_are_supported() -> None:
     asyncio.run(_run_empty_content_and_missing_usage_are_supported())
+
+
+def test_thinking_tag_stripping_client_removes_thinking_content() -> None:
+    asyncio.run(_run_thinking_tag_stripping_client_removes_thinking_content())

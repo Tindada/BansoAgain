@@ -21,27 +21,14 @@ from banso.documents import (
     LLMEvidenceExtractor,
 )
 from banso.executors import NewsActionExecutor
-from banso.llm import OpenAISDKLLMClient
+from banso.llm import (
+    ThinkingTagStrippingLLMClient,
+    build_external_llm_client_from_env,
+    build_vllm_llm_client_from_env,
+)
 from banso.policies import NewsRuleBasedPolicy
 from banso.retrieval import SearchResult, TavilyRetrievalProvider
 from banso.synthesis import LLMSynthesizer
-
-
-def build_llm_client() -> OpenAISDKLLMClient:
-    base_url = os.getenv("BANSO_LLM_BASE_URL")
-    api_key = os.getenv("BANSO_LLM_API_KEY") or "dummy"
-    model = os.getenv("BANSO_LLM_MODEL")
-    timeout = float(os.getenv("BANSO_LLM_TIMEOUT_SECONDS", "60"))
-
-    if not model:
-        raise RuntimeError("BANSO_LLM_MODEL is required in .env")
-
-    return OpenAISDKLLMClient(
-        base_url=base_url,
-        api_key=api_key,
-        model=model,
-        timeout=timeout,
-    )
 
 
 def build_tavily_provider() -> TavilyRetrievalProvider:
@@ -74,7 +61,10 @@ async def main(*, verbose: bool = False) -> None:
     max_extraction_concurrency = int(
         os.getenv("BANSO_MAX_EXTRACTION_CONCURRENCY", "3")
     )
-    llm_client = build_llm_client()
+    evidence_llm_client = ThinkingTagStrippingLLMClient(
+        build_vllm_llm_client_from_env()
+    )
+    external_llm_client = build_external_llm_client_from_env()
     store = InMemoryArtifactStore()
     runtime = AgentRuntime(
         policy=NewsRuleBasedPolicy(),
@@ -82,8 +72,8 @@ async def main(*, verbose: bool = False) -> None:
             store=store,
             retrieval_provider=build_tavily_provider(),
             document_reader=HTTPDocumentReader(),
-            evidence_extractor=LLMEvidenceExtractor(client=llm_client),
-            synthesizer=LLMSynthesizer(client=llm_client),
+            evidence_extractor=LLMEvidenceExtractor(client=evidence_llm_client),
+            synthesizer=LLMSynthesizer(client=external_llm_client),
             max_extraction_concurrency=max_extraction_concurrency,
         ),
     )

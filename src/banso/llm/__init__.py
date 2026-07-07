@@ -1,6 +1,10 @@
 """LLM provider interfaces and implementations."""
 
 from banso.llm.client import LLMClient
+from banso.llm.config import (
+    build_external_llm_client_from_env,
+    build_vllm_llm_client_from_env,
+)
 from banso.llm.fake import FakeLLMClient
 from banso.llm.models import (
     LLMMessage,
@@ -9,7 +13,7 @@ from banso.llm.models import (
     LLMResponse,
     LLMUsage,
 )
-from banso.llm.openai_sdk import OpenAISDKLLMClient
+from banso.llm.openai_sdk import OpenAISDKLLMClient, ThinkingTagStrippingLLMClient
 
 __all__ = [
     "FakeLLMClient",
@@ -20,4 +24,7 @@ __all__ = [
     "LLMResponse",
     "LLMUsage",
     "OpenAISDKLLMClient",
+    "ThinkingTagStrippingLLMClient",
+    "build_external_llm_client_from_env",
+    "build_vllm_llm_client_from_env",
 ]

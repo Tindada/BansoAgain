@@ -1,9 +1,11 @@
 """OpenAI SDK-backed LLM client implementation."""
 
+import re
 from typing import Any
 
 from openai import AsyncOpenAI
 
+from banso.llm.client import LLMClient
 from banso.llm.models import LLMRequest, LLMResponse, LLMUsage
 
 
@@ -51,6 +53,24 @@ class OpenAISDKLLMClient:
             usage=_parse_usage(response.usage),
             raw=_to_raw_dict(response),
         )
+
+
+class ThinkingTagStrippingLLMClient:
+    """Removes model thinking tags from an LLM client's response content."""
+
+    _thinking_tag_pattern = re.compile(r"<think>.*?</think>", re.DOTALL)
+
+    def __init__(self, client: LLMClient) -> None:
+        self.client = client
+
+    async def generate(self, request: LLMRequest) -> LLMResponse:
+        response = await self.client.generate(request)
+        return response.model_copy(
+            update={"content": self._strip_thinking_tags(response.content)}
+        )
+
+    def _strip_thinking_tags(self, content: str) -> str:
+        return self._thinking_tag_pattern.sub("", content).strip()
 
 
 def _parse_usage(usage: Any | None) -> LLMUsage | None:

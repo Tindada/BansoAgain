@@ -21,7 +21,11 @@ from banso.documents import (
     LLMEvidenceExtractor,
 )
 from banso.executors import NewsActionExecutor
-from banso.llm import OpenAISDKLLMClient
+from banso.llm import (
+    ThinkingTagStrippingLLMClient,
+    build_external_llm_client_from_env,
+    build_vllm_llm_client_from_env,
+)
 from banso.policies import NewsRuleBasedPolicy
 from banso.retrieval import FakeRetrievalProvider
 from banso.synthesis import LLMSynthesizer
@@ -44,28 +48,14 @@ class SampleNewsDocumentReader:
         )
 
 
-def build_llm_client() -> OpenAISDKLLMClient:
-    base_url = os.getenv("BANSO_LLM_BASE_URL")
-    api_key = os.getenv("BANSO_LLM_API_KEY") or "dummy"
-    model = os.getenv("BANSO_LLM_MODEL")
-    timeout = float(os.getenv("BANSO_LLM_TIMEOUT_SECONDS", "60"))
-
-    if not model:
-        raise RuntimeError("BANSO_LLM_MODEL is required in .env")
-
-    return OpenAISDKLLMClient(
-        base_url=base_url,
-        api_key=api_key,
-        model=model,
-        timeout=timeout,
-    )
-
-
 async def main() -> None:
     load_dotenv()
 
     query = os.getenv("BANSO_NEWS_QUERY", "latest AI news")
-    llm_client = build_llm_client()
+    evidence_llm_client = ThinkingTagStrippingLLMClient(
+        build_vllm_llm_client_from_env()
+    )
+    external_llm_client = build_external_llm_client_from_env()
     store = InMemoryArtifactStore()
     runtime = AgentRuntime(
         policy=NewsRuleBasedPolicy(),
@@ -73,8 +63,8 @@ async def main() -> None:
             store=store,
             retrieval_provider=FakeRetrievalProvider(),
             document_reader=SampleNewsDocumentReader(),
-            evidence_extractor=LLMEvidenceExtractor(client=llm_client),
-            synthesizer=LLMSynthesizer(client=llm_client),
+            evidence_extractor=LLMEvidenceExtractor(client=evidence_llm_client),
+            synthesizer=LLMSynthesizer(client=external_llm_client),
         ),
     )
 
