@@ -16,6 +16,20 @@
 
 > 核心 runtime 自研，外部能力插件化接入。
 
+## 当前状态
+
+已完成：
+
+- 已初始化 Python 项目结构，并使用 `uv` 管理依赖。
+- 已定义核心 runtime、state、action、policy、executor、reducer、result 等基础模块。
+- 已实现最小 `AgentRuntime` 主循环，支持 policy 决策、executor 执行、reducer 更新状态和 trace 收集。
+- 已实现新闻场景的固定流程 policy：搜索、读取文档、抽取 evidence、生成总结。
+- 已实现可替换的 retrieval、document reader、evidence extractor、synthesizer 和 LLM client 接口及部分实现。
+- 已接入 Tavily retrieval、HTTP document reader、OpenAI SDK LLM client、LLM evidence extractor 和 LLM synthesizer。
+- 已实现 retrieval filter、search result evaluator 和基础 artifact store。
+- 已定义 `AgentTrace` 和 `TraceStep` 数据结构，用于记录运行轨迹。
+- 已补充覆盖核心 runtime、新闻执行器、retrieval、document reader、LLM 配置和 LLM 组件的测试。
+
 ## 阶段 1：系统架构设计
 
 目标：明确整个 agent 系统的边界、模块和数据流。
