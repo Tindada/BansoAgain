@@ -17,6 +17,14 @@ class EvidenceExtractionRequest(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class EvidenceExtractionError(Exception):
+    """Raised when an extractor cannot interpret its response as evidence."""
+
+    def __init__(self, message: str, *, reason: str) -> None:
+        super().__init__(message)
+        self.reason = reason
+
+
 class EvidenceExtractor(Protocol):
     """Extracts evidence items from documents."""
 

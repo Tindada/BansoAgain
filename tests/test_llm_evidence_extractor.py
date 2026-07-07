@@ -2,9 +2,12 @@
 
 import asyncio
 
+import pytest
+
 from banso.core import UserQuery
 from banso.documents import (
     Document,
+    EvidenceExtractionError,
     EvidenceExtractionRequest,
     LLMEvidenceExtractor,
 )
@@ -66,6 +69,20 @@ async def _run_llm_evidence_extractor() -> None:
 async def _run_invalid_json_case() -> None:
     client = FakeLLMClient(content="not json")
     extractor = LLMEvidenceExtractor(client=client)
+    with pytest.raises(EvidenceExtractionError) as caught:
+        await extractor.extract(
+            EvidenceExtractionRequest(
+                query=UserQuery(text="latest AI product news"),
+                document=_document(),
+            )
+        )
+
+    assert caught.value.reason == "invalid_json"
+
+
+async def _run_empty_array_case() -> None:
+    extractor = LLMEvidenceExtractor(client=FakeLLMClient(content="[]"))
+
     evidence = await extractor.extract(
         EvidenceExtractionRequest(
             query=UserQuery(text="latest AI product news"),
@@ -76,9 +93,31 @@ async def _run_invalid_json_case() -> None:
     assert evidence == []
 
 
+async def _run_invalid_schema_case() -> None:
+    extractor = LLMEvidenceExtractor(client=FakeLLMClient(content='{"claim":"x"}'))
+
+    with pytest.raises(EvidenceExtractionError) as caught:
+        await extractor.extract(
+            EvidenceExtractionRequest(
+                query=UserQuery(text="latest AI product news"),
+                document=_document(),
+            )
+        )
+
+    assert caught.value.reason == "invalid_schema"
+
+
 def test_llm_evidence_extractor() -> None:
     asyncio.run(_run_llm_evidence_extractor())
 
 
-def test_llm_evidence_extractor_returns_empty_list_for_invalid_json() -> None:
+def test_llm_evidence_extractor_raises_for_invalid_json() -> None:
     asyncio.run(_run_invalid_json_case())
+
+
+def test_llm_evidence_extractor_accepts_empty_array() -> None:
+    asyncio.run(_run_empty_array_case())
+
+
+def test_llm_evidence_extractor_raises_for_invalid_schema() -> None:
+    asyncio.run(_run_invalid_schema_case())

@@ -2,7 +2,7 @@
 
 import json
 
-from banso.documents.extractor import EvidenceExtractionRequest
+from banso.documents.extractor import EvidenceExtractionError, EvidenceExtractionRequest
 from banso.documents.models import EvidenceItem
 from banso.llm import LLMClient, LLMMessage, LLMMessageRole, LLMRequest
 
@@ -80,17 +80,27 @@ class LLMEvidenceExtractor:
     ) -> list[EvidenceItem]:
         try:
             raw_items = json.loads(content)
-        except json.JSONDecodeError:
-            return []
+        except json.JSONDecodeError as error:
+            raise EvidenceExtractionError(
+                "LLM evidence response is not valid JSON",
+                reason="invalid_json",
+            ) from error
 
         if not isinstance(raw_items, list):
-            return []
+            raise EvidenceExtractionError(
+                "LLM evidence response must be a JSON array",
+                reason="invalid_schema",
+            )
 
         evidence: list[EvidenceItem] = []
         for raw_item in raw_items[: request.max_items]:
             item = self._parse_item(raw_item, request)
-            if item is not None:
-                evidence.append(item)
+            if item is None:
+                raise EvidenceExtractionError(
+                    "LLM evidence response contains an invalid item",
+                    reason="invalid_schema",
+                )
+            evidence.append(item)
         return evidence
 
     def _parse_item(

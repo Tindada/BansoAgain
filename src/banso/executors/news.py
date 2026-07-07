@@ -11,6 +11,7 @@ from banso.documents import (
     DocumentHTTPStatusError,
     DocumentReadRequest,
     DocumentReader,
+    EvidenceExtractionError,
     EvidenceExtractionRequest,
     EvidenceExtractor,
     EvidenceItem,
@@ -143,27 +144,52 @@ class NewsActionExecutor:
         ]
         semaphore = asyncio.Semaphore(self.max_extraction_concurrency)
 
-        async def extract(document: Document) -> list[EvidenceItem]:
+        async def extract(
+            document: Document,
+        ) -> tuple[Document, list[EvidenceItem], EvidenceExtractionError | None]:
             async with semaphore:
-                return await self.evidence_extractor.extract(
-                    EvidenceExtractionRequest(
-                        query=state.query,
-                        document=document,
+                try:
+                    evidence = await self.evidence_extractor.extract(
+                        EvidenceExtractionRequest(
+                            query=state.query,
+                            document=document,
+                        )
                     )
-                )
+                except EvidenceExtractionError as error:
+                    return document, [], error
+                return document, evidence, None
 
-        evidence_batches = await asyncio.gather(
+        extraction_results = await asyncio.gather(
             *(extract(document) for document in documents)
         )
         evidence_ids = [
             self.store.put(item)
-            for evidence_items in evidence_batches
+            for _, evidence_items, _ in extraction_results
             for item in evidence_items
+        ]
+        failures = [
+            {
+                "document_id": document.id,
+                "url": document.url,
+                "reason": error.reason,
+                "message": str(error),
+            }
+            for document, _, error in extraction_results
+            if error is not None
+        ]
+        documents_without_evidence = [
+            document.id
+            for document, evidence_items, error in extraction_results
+            if error is None and not evidence_items
         ]
 
         return Observation(
             action_type=AgentActionType.EXTRACT_EVIDENCE,
-            data={"evidence_ids": evidence_ids},
+            data={
+                "evidence_ids": evidence_ids,
+                "evidence_extraction_failures": failures,
+                "documents_without_evidence": documents_without_evidence,
+            },
         )
 
     async def _synthesize(self, state: AgentState) -> Observation:

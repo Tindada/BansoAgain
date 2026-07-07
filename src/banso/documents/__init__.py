@@ -1,6 +1,10 @@
 """Document reading, ranking, and evidence extraction."""
 
-from banso.documents.extractor import EvidenceExtractionRequest, EvidenceExtractor
+from banso.documents.extractor import (
+    EvidenceExtractionError,
+    EvidenceExtractionRequest,
+    EvidenceExtractor,
+)
 from banso.documents.fake import FakeDocumentReader, FakeEvidenceExtractor
 from banso.documents.http_reader import HTTPDocumentReader
 from banso.documents.llm import LLMEvidenceExtractor
@@ -16,6 +20,7 @@ __all__ = [
     "DocumentHTTPStatusError",
     "DocumentReader",
     "DocumentReadRequest",
+    "EvidenceExtractionError",
     "EvidenceExtractionRequest",
     "EvidenceExtractor",
     "EvidenceItem",
