@@ -13,7 +13,10 @@ from banso.llm.models import (
     LLMResponse,
     LLMUsage,
 )
-from banso.llm.openai_sdk import OpenAISDKLLMClient, ThinkingTagStrippingLLMClient
+from banso.llm.openai_sdk_client import (
+    OpenAISDKLLMClient,
+    ThinkingTagStrippingLLMClient,
+)
 
 __all__ = [
     "FakeLLMClient",

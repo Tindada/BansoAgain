@@ -2,7 +2,7 @@
 
 import os
 
-from banso.llm.openai_sdk import OpenAISDKLLMClient
+from banso.llm.openai_sdk_client import OpenAISDKLLMClient
 
 DEFAULT_VLLM_BASE_URL = "http://127.0.0.1:8000/v1"
 DEFAULT_VLLM_API_KEY = "unused"

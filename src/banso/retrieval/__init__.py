@@ -16,7 +16,7 @@ from banso.retrieval.filter import (
 )
 from banso.retrieval.models import SearchResult, Source, SourceType
 from banso.retrieval.provider import RetrievalProvider, SearchRequest
-from banso.retrieval.tavily import TavilyRetrievalProvider
+from banso.retrieval.tavily_provider import TavilyRetrievalProvider
 
 __all__ = [
     "FakeRetrievalProvider",
