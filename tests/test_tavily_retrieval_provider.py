@@ -69,7 +69,7 @@ async def _run_tavily_provider_maps_request_and_response() -> None:
     assert calls[0]["json"] == {
         "query": "latest AI news",
         "max_results": 2,
-        "topic": "news",
+        "topic": "general",
         "search_depth": "basic",
         "include_answer": False,
         "include_raw_content": False,

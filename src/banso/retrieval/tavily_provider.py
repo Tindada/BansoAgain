@@ -19,7 +19,7 @@ class TavilyRetrievalProvider(RetrievalProvider):
         base_url: str = "https://api.tavily.com",
         client: httpx.AsyncClient | None = None,
         timeout: float = 30.0,
-        topic: str = "news",
+        topic: str = "general",
         search_depth: str = "basic",
     ) -> None:
         self.api_key = api_key
