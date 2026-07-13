@@ -12,36 +12,10 @@ import os
 
 from dotenv import load_dotenv
 
-from banso.artifacts import InMemoryArtifactStore
-from banso.core import AgentRuntime, AgentState, UserQuery
-from banso.documents import (
-    Document,
-    EvidenceItem,
-    HTTPDocumentReader,
-    LLMEvidenceExtractor,
-)
-from banso.executors import NewsActionExecutor
-from banso.llm import (
-    ThinkingTagStrippingLLMClient,
-    build_external_llm_client_from_env,
-    build_vllm_llm_client_from_env,
-)
-from banso.policies import NewsRuleBasedPolicy
-from banso.retrieval import SearchResult, TavilyRetrievalProvider
-from banso.synthesis import LLMSynthesizer
-
-
-def build_tavily_provider() -> TavilyRetrievalProvider:
-    api_key = os.getenv("BANSO_TAVILY_API_KEY")
-    base_url = os.getenv("BANSO_TAVILY_BASE_URL", "https://api.tavily.com")
-
-    if not api_key:
-        raise RuntimeError("BANSO_TAVILY_API_KEY is required in .env")
-
-    return TavilyRetrievalProvider(
-        api_key=api_key,
-        base_url=base_url,
-    )
+from banso.apps.real_news import build_real_news_runtime
+from banso.core import AgentState, UserQuery
+from banso.documents import Document, EvidenceItem
+from banso.retrieval import SearchResult
 
 
 def parse_args() -> argparse.Namespace:
@@ -58,25 +32,9 @@ async def main(*, verbose: bool = False) -> None:
     load_dotenv()
 
     query = os.getenv("BANSO_NEWS_QUERY", "latest AI news")
-    max_extraction_concurrency = int(
-        os.getenv("BANSO_MAX_EXTRACTION_CONCURRENCY", "3")
-    )
-    evidence_llm_client = ThinkingTagStrippingLLMClient(
-        build_vllm_llm_client_from_env()
-    )
-    external_llm_client = build_external_llm_client_from_env()
-    store = InMemoryArtifactStore()
-    runtime = AgentRuntime(
-        policy=NewsRuleBasedPolicy(),
-        executor=NewsActionExecutor(
-            store=store,
-            retrieval_provider=build_tavily_provider(),
-            document_reader=HTTPDocumentReader(),
-            evidence_extractor=LLMEvidenceExtractor(client=evidence_llm_client),
-            synthesizer=LLMSynthesizer(client=external_llm_client),
-            max_extraction_concurrency=max_extraction_concurrency,
-        ),
-    )
+    bundle = build_real_news_runtime()
+    runtime = bundle.runtime
+    store = bundle.store
 
     output = await runtime.run(AgentState(query=UserQuery(text=query)))
     state = output.result.state
