@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 from banso.artifacts import InMemoryArtifactStore
-from banso.core import AgentRuntime, AgentState, UserQuery
+from banso.core import AgentRuntime, AgentState, ExecutionBudget, UserQuery
 from banso.core.action import AgentActionType
 from banso.documents import (
     DocumentHTTPStatusError,
@@ -152,6 +152,30 @@ async def _run_news_runtime_filters_search_results() -> None:
     assert evaluation_report["rejected_count"] == 0
 
 
+async def _run_news_runtime_respects_document_read_budget() -> None:
+    store = InMemoryArtifactStore()
+    runtime = AgentRuntime(
+        policy=NewsRuleBasedPolicy(),
+        executor=NewsActionExecutor(
+            store=store,
+            retrieval_provider=DuplicateRetrievalProvider(),
+            document_reader=FakeDocumentReader(),
+            evidence_extractor=FakeEvidenceExtractor(),
+            synthesizer=FakeSynthesizer(),
+        ),
+    )
+
+    output = await runtime.run(
+        AgentState(
+            query=UserQuery(text="latest AI news"),
+            budget=ExecutionBudget(max_documents_to_read=1),
+        )
+    )
+
+    assert len(output.result.state.search_result_ids) == 2
+    assert len(output.result.state.document_ids) == 1
+
+
 async def _run_news_runtime_skips_unreadable_document(status_code: int) -> None:
     store = InMemoryArtifactStore()
     runtime = AgentRuntime(
@@ -186,6 +210,10 @@ def test_news_runtime() -> None:
 
 def test_news_runtime_filters_search_results() -> None:
     asyncio.run(_run_news_runtime_filters_search_results())
+
+
+def test_news_runtime_respects_document_read_budget() -> None:
+    asyncio.run(_run_news_runtime_respects_document_read_budget())
 
 
 @pytest.mark.parametrize("status_code", [401, 403, 404])

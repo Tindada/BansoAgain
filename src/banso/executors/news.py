@@ -100,7 +100,8 @@ class NewsActionExecutor:
         document_ids: list[str] = []
         failures: list[dict[str, str | int]] = []
 
-        for result_id in state.search_result_ids:
+        result_ids = state.search_result_ids[: state.budget.max_documents_to_read]
+        for result_id in result_ids:
             result = self.store.get(result_id, SearchResult)
             if result is None:
                 continue
