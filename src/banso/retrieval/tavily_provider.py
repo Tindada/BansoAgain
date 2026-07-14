@@ -5,7 +5,7 @@ from typing import Any
 import httpx
 
 from banso.retrieval.models import SearchResult, Source, SourceType
-from banso.retrieval.publisher import publisher_domain, publisher_home_url
+from banso.retrieval.url_utils import publisher_domain, publisher_home_url
 from banso.retrieval.provider import RetrievalProvider, SearchRequest
 
 

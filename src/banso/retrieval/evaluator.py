@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, Field
 
 from banso.retrieval.models import SearchResult, Source, SourceType
-from banso.retrieval.publisher import publisher_domain, publisher_home_url
+from banso.retrieval.url_utils import publisher_domain, publisher_home_url
 
 
 def _default_source_domains() -> dict[str, SourceType]:
