@@ -99,12 +99,20 @@ async def _run_news_runtime() -> None:
 
     assert state.done is True
     assert [step.action.type for step in output.trace.steps] == [
+        AgentActionType.PLAN_SEARCH,
         AgentActionType.SEARCH,
         AgentActionType.READ_DOCUMENT,
         AgentActionType.EXTRACT_EVIDENCE,
         AgentActionType.SYNTHESIZE,
         AgentActionType.STOP,
     ]
+    assert state.search_plan is not None
+    assert state.search_plan.model_dump() == {
+        "searches": [{"query": "latest AI news", "intent": "general"}]
+    }
+    assert output.trace.steps[0].observation.data["search_plan"] == (
+        state.search_plan.model_dump(mode="json")
+    )
     assert state.search_queries == ["latest AI news"]
     assert len(state.search_result_ids) == 1
     assert len(state.document_ids) == 1
@@ -133,7 +141,7 @@ async def _run_news_runtime_filters_search_results() -> None:
 
     output = await runtime.run(AgentState(query=UserQuery(text="latest AI news")))
     state = output.result.state
-    search_observation = output.trace.steps[0].observation
+    search_observation = output.trace.steps[1].observation
 
     assert len(state.search_result_ids) == 2
     assert len(state.document_ids) == 2
@@ -190,7 +198,7 @@ async def _run_news_runtime_skips_unreadable_document(status_code: int) -> None:
     )
 
     output = await runtime.run(AgentState(query=UserQuery(text="latest AI news")))
-    read_observation = output.trace.steps[1].observation
+    read_observation = output.trace.steps[2].observation
 
     assert output.result.state.done is True
     assert len(output.result.state.document_ids) == 1

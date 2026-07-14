@@ -15,11 +15,14 @@ from banso.retrieval.filter import (
     normalize_url,
 )
 from banso.retrieval.models import SearchResult, Source, SourceType
+from banso.retrieval.planner import SearchPlanningRequest, SearchQueryPlanner
 from banso.retrieval.provider import RetrievalProvider, SearchRequest
+from banso.retrieval.simple_planner import OriginalQueryPlanner
 from banso.retrieval.tavily_provider import TavilyRetrievalProvider
 
 __all__ = [
     "FakeRetrievalProvider",
+    "OriginalQueryPlanner",
     "RetrievalFilter",
     "RetrievalFilterConfig",
     "RetrievalFilterReport",
@@ -31,6 +34,8 @@ __all__ = [
     "SearchResultEvaluationResult",
     "SearchResultEvaluator",
     "SearchResultEvaluatorConfig",
+    "SearchPlanningRequest",
+    "SearchQueryPlanner",
     "Source",
     "SourceType",
     "TavilyRetrievalProvider",

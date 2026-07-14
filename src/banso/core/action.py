@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 class AgentActionType(StrEnum):
     """Supported action types for the agent loop."""
 
+    PLAN_SEARCH = "plan_search"
     SEARCH = "search"
     READ_DOCUMENT = "read_document"
     RANK_DOCUMENTS = "rank_documents"

@@ -47,6 +47,7 @@ async def _run_news_runtime_with_llm() -> None:
 
     assert state.done is True
     assert [step.action.type for step in output.trace.steps] == [
+        AgentActionType.PLAN_SEARCH,
         AgentActionType.SEARCH,
         AgentActionType.READ_DOCUMENT,
         AgentActionType.EXTRACT_EVIDENCE,

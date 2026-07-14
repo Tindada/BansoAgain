@@ -69,6 +69,7 @@ def test_extract_evaluation_result() -> None:
     assert result.source_types == ["news"]
     assert result.preferred_source_type_match is True
     assert set(result.step_durations) == {
+        "plan_search",
         "search",
         "read_document",
         "extract_evidence",

@@ -6,7 +6,13 @@ from banso.core.policy import Policy
 from banso.core.reducer import DefaultStateReducer, StateReducer
 from banso.core.result import AgentResult, Observation
 from banso.core.runtime import AgentRuntime, RuntimeRunResult
-from banso.core.state import AgentState, ExecutionBudget, UserQuery
+from banso.core.state import (
+    AgentState,
+    ExecutionBudget,
+    PlannedSearch,
+    SearchPlan,
+    UserQuery,
+)
 
 __all__ = [
     "ActionExecutor",
@@ -18,8 +24,10 @@ __all__ = [
     "DefaultStateReducer",
     "ExecutionBudget",
     "Observation",
+    "PlannedSearch",
     "Policy",
     "RuntimeRunResult",
+    "SearchPlan",
     "StateReducer",
     "UserQuery",
 ]

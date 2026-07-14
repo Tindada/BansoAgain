@@ -17,10 +17,13 @@ from banso.documents import (
     EvidenceItem,
 )
 from banso.retrieval import (
+    OriginalQueryPlanner,
     RetrievalProvider,
     SearchRequest,
     SearchResult,
     SearchResultEvaluator,
+    SearchPlanningRequest,
+    SearchQueryPlanner,
 )
 from banso.retrieval.filter import RetrievalFilter
 from banso.synthesis import Synthesizer, SynthesisRequest
@@ -38,6 +41,7 @@ class NewsActionExecutor:
         synthesizer: Synthesizer,
         retrieval_filter: RetrievalFilter | None = None,
         search_result_evaluator: SearchResultEvaluator | None = None,
+        search_query_planner: SearchQueryPlanner | None = None,
         max_extraction_concurrency: int = 3,
     ) -> None:
         if max_extraction_concurrency < 1:
@@ -50,10 +54,23 @@ class NewsActionExecutor:
         self.synthesizer = synthesizer
         self.retrieval_filter = retrieval_filter or RetrievalFilter()
         self.search_result_evaluator = search_result_evaluator or SearchResultEvaluator()
+        self.search_query_planner = search_query_planner or OriginalQueryPlanner()
         self.max_extraction_concurrency = max_extraction_concurrency
 
     async def execute(self, action: AgentAction, state: AgentState) -> Observation:
         """Execute a news-domain action."""
+        if action.type == AgentActionType.PLAN_SEARCH:
+            plan = await self.search_query_planner.plan(
+                SearchPlanningRequest(
+                    query=state.query,
+                    max_searches=state.budget.max_searches,
+                )
+            )
+            return Observation(
+                action_type=action.type,
+                data={"search_plan": plan.model_dump(mode="json")},
+            )
+
         if action.type == AgentActionType.SEARCH:
             return await self._search(action, state)
 
