@@ -13,7 +13,7 @@ from banso.llm import (
     build_vllm_llm_client_from_env,
 )
 from banso.policies import NewsRuleBasedPolicy
-from banso.retrieval import TavilyRetrievalProvider
+from banso.retrieval import LLMSearchQueryPlanner, TavilyRetrievalProvider
 from banso.synthesis import LLMSynthesizer
 
 
@@ -54,6 +54,7 @@ def build_real_news_runtime() -> RealNewsRuntimeBundle:
             document_reader=HTTPDocumentReader(),
             evidence_extractor=LLMEvidenceExtractor(client=evidence_llm_client),
             synthesizer=LLMSynthesizer(client=external_llm_client),
+            search_query_planner=LLMSearchQueryPlanner(client=evidence_llm_client),
             max_extraction_concurrency=int(
                 os.getenv("BANSO_MAX_EXTRACTION_CONCURRENCY", "3")
             ),
