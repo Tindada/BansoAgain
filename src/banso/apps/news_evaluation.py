@@ -7,7 +7,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from banso.artifacts import ArtifactStore
-from banso.core import RuntimeRunResult
+from banso.core import AgentActionType, RuntimeRunResult
 from banso.retrieval import SearchResult
 
 
@@ -36,6 +36,7 @@ class NewsEvaluationResult(BaseModel):
     completed: bool = False
     passed_minimums: bool = False
     final_answer: str | None = None
+    trace_id: str | None = None
     retrieved_result_count: int = 0
     filtered_result_count: int = 0
     admitted_result_count: int = 0
@@ -79,12 +80,13 @@ def extract_evaluation_result(
 
     state = output.result.state
     observations = {
-        step.action.type.value: step.observation for step in output.trace.steps
+        step.action.type: step.observation
+        for step in output.trace.steps
+        if step.action.type != AgentActionType.SEARCH
     }
-    synthesis = observations.get("synthesize")
-    search = observations.get("search")
-    read_document = observations.get("read_document")
-    extract_evidence = observations.get("extract_evidence")
+    synthesis = observations.get(AgentActionType.SYNTHESIZE)
+    read_document = observations.get(AgentActionType.READ_DOCUMENT)
+    extract_evidence = observations.get(AgentActionType.EXTRACT_EVIDENCE)
     citations = synthesis.data.get("citations", []) if synthesis else []
     citations = [value for value in citations if isinstance(value, str)]
 
@@ -101,20 +103,44 @@ def extract_evaluation_result(
     preferred_source_type_match = bool(
         set(case.preferred_source_types) & set(source_types)
     )
-    filter_report = search.data.get("retrieval_filter_report", {}) if search else {}
-    evaluation_report = (
-        search.data.get("search_result_evaluation_report", {}) if search else {}
-    )
-    evaluations = evaluation_report.get("evaluations", [])
-    source_rejections = [
-        evaluation
-        for evaluation in evaluations
-        if isinstance(evaluation, dict) and evaluation.get("accepted") is False
-    ]
-    step_durations = {
-        step.action.type.value: step.duration_seconds or 0.0
-        for step in output.trace.steps
-    }
+    retrieved_result_count = 0
+    filtered_result_count = 0
+    admitted_result_count = 0
+    rejected_result_count = 0
+    source_rejections: list[dict[str, Any]] = []
+    for step in output.trace.steps:
+        if step.action.type != AgentActionType.SEARCH:
+            continue
+        filter_report = _dict_value(
+            step.observation.data.get("retrieval_filter_report")
+        )
+        evaluation_report = _dict_value(
+            step.observation.data.get("search_result_evaluation_report")
+        )
+        retrieved_result_count += filter_report.get("input_count", 0)
+        filtered_result_count += filter_report.get("output_count", 0)
+        result_ids = step.observation.data.get("search_result_ids")
+        fallback_admitted_count = (
+            len(result_ids) if isinstance(result_ids, list) else 0
+        )
+        admitted_result_count += evaluation_report.get(
+            "accepted_count", fallback_admitted_count
+        )
+        rejected_result_count += evaluation_report.get("rejected_count", 0)
+        evaluations = evaluation_report.get("evaluations", [])
+        source_rejections.extend(
+            evaluation
+            for evaluation in evaluations
+            if isinstance(evaluation, dict)
+            and evaluation.get("accepted") is False
+        )
+    step_durations: dict[str, float] = {}
+    total_action_seconds = 0.0
+    for step in output.trace.steps:
+        duration = step.duration_seconds or 0.0
+        action_type = step.action.type.value
+        step_durations[action_type] = step_durations.get(action_type, 0.0) + duration
+        total_action_seconds += duration
     passed_minimums = (
         state.done
         and len(state.document_ids) >= case.min_documents
@@ -130,12 +156,11 @@ def extract_evaluation_result(
         completed=state.done,
         passed_minimums=passed_minimums,
         final_answer=output.result.final_answer,
-        retrieved_result_count=filter_report.get("input_count", 0),
-        filtered_result_count=filter_report.get("output_count", 0),
-        admitted_result_count=evaluation_report.get(
-            "accepted_count", len(state.search_result_ids)
-        ),
-        rejected_result_count=evaluation_report.get("rejected_count", 0),
+        trace_id=output.trace.trace_id,
+        retrieved_result_count=retrieved_result_count,
+        filtered_result_count=filtered_result_count,
+        admitted_result_count=admitted_result_count,
+        rejected_result_count=rejected_result_count,
         source_rejections=source_rejections,
         document_count=len(state.document_ids),
         evidence_count=len(state.evidence_ids),
@@ -155,8 +180,14 @@ def extract_evaluation_result(
             else []
         ),
         step_durations=step_durations,
-        total_action_seconds=sum(step_durations.values()),
+        total_action_seconds=total_action_seconds,
     )
+
+
+def _dict_value(value: object) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    return value
 
 
 def summarize_evaluation_results(

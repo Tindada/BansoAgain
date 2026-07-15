@@ -2,6 +2,8 @@
 
 import asyncio
 
+import pytest
+
 from banso.apps.news_evaluation import (
     NewsEvaluationCase,
     extract_evaluation_result,
@@ -9,11 +11,23 @@ from banso.apps.news_evaluation import (
     summarize_evaluation_results,
 )
 from banso.artifacts import InMemoryArtifactStore
-from banso.core import AgentRuntime, AgentState, UserQuery
+from banso.core import (
+    AgentRuntime,
+    AgentState,
+    ExecutionBudget,
+    PlannedSearch,
+    SearchPlan,
+    UserQuery,
+)
 from banso.documents import FakeDocumentReader, FakeEvidenceExtractor
 from banso.executors import NewsActionExecutor
 from banso.policies import NewsRuleBasedPolicy
-from banso.retrieval import FakeRetrievalProvider, SearchRequest, SearchResult
+from banso.retrieval import (
+    FakeRetrievalProvider,
+    SearchPlanningRequest,
+    SearchRequest,
+    SearchResult,
+)
 from banso.synthesis import FakeSynthesizer
 
 
@@ -58,6 +72,7 @@ def test_extract_evaluation_result() -> None:
 
     assert result.completed is True
     assert result.passed_minimums is True
+    assert result.trace_id is not None
     assert result.retrieved_result_count == 1
     assert result.filtered_result_count == 1
     assert result.admitted_result_count == 1
@@ -76,6 +91,80 @@ def test_extract_evaluation_result() -> None:
         "synthesize",
         "stop",
     }
+
+
+class ThreeQueryPlanner:
+    async def plan(self, request: SearchPlanningRequest) -> SearchPlan:
+        return SearchPlan(
+            searches=[
+                PlannedSearch(query="AI releases", intent="official"),
+                PlannedSearch(query="AI research", intent="research"),
+                PlannedSearch(query="AI policy", intent="policy"),
+            ][: request.max_searches]
+        )
+
+
+async def _extract_multi_search_evaluation_result():
+    case = NewsEvaluationCase(
+        id="case-multi-search",
+        category="general",
+        query="latest AI news",
+    )
+    store = InMemoryArtifactStore()
+    runtime = AgentRuntime(
+        policy=NewsRuleBasedPolicy(),
+        executor=NewsActionExecutor(
+            store=store,
+            retrieval_provider=FakeRetrievalProvider(),
+            document_reader=FakeDocumentReader(),
+            evidence_extractor=FakeEvidenceExtractor(),
+            synthesizer=FakeSynthesizer(),
+            search_query_planner=ThreeQueryPlanner(),
+        ),
+    )
+    output = await runtime.run(
+        AgentState(
+            query=UserQuery(text=case.query),
+            budget=ExecutionBudget(max_searches=3),
+        )
+    )
+    return extract_evaluation_result(case, output, store), output
+
+
+def test_extract_evaluation_result_preserves_multiple_searches() -> None:
+    result, output = asyncio.run(_extract_multi_search_evaluation_result())
+
+    assert result.trace_id == output.trace.trace_id
+    plan = output.trace.final_result.state.search_plan
+    assert plan is not None
+    assert [search.query for search in plan.searches] == [
+        "AI releases",
+        "AI research",
+        "AI policy",
+    ]
+    search_steps = [
+        step for step in output.trace.steps if step.action.type.value == "search"
+    ]
+    assert [step.action.params["query"] for step in search_steps] == [
+        "AI releases",
+        "AI research",
+        "AI policy",
+    ]
+    assert result.retrieved_result_count == 3
+    assert result.filtered_result_count == 3
+    assert result.admitted_result_count == 3
+    assert result.rejected_result_count == 0
+
+    search_duration = sum(
+        step.duration_seconds or 0.0
+        for step in output.trace.steps
+        if step.action.type.value == "search"
+    )
+    total_duration = sum(
+        step.duration_seconds or 0.0 for step in output.trace.steps
+    )
+    assert result.step_durations["search"] == pytest.approx(search_duration)
+    assert result.total_action_seconds == pytest.approx(total_duration)
 
 
 class UnknownSourceRetrievalProvider:

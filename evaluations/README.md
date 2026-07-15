@@ -9,6 +9,7 @@ queries are time-relative. The first evaluation stage measures objective
 pipeline health only:
 
 - whether search results survive source evaluation;
+- which searches were planned and executed;
 - whether documents can be read;
 - whether evidence and citations are produced;
 - action latency and per-case failures.
@@ -32,6 +33,9 @@ UV_CACHE_DIR=.uv-cache uv run python scripts/evaluate_news_runtime.py
 
 Results are written incrementally to `runs/news_evaluation_<timestamp>.jsonl`,
 so completed cases remain available if a later case fails or the process is
-interrupted. A sibling `.summary.json` records aggregate metrics, timestamps,
-the document budget, and the configured model names. API keys are never
-written to either output.
+interrupted. A sibling `.traces.jsonl` stores the complete `AgentTrace` for each
+successful case; `trace_id` links an evaluation result to its trace, and the
+trace metadata contains the evaluation case ID. The `.summary.json` records
+aggregate metrics, timestamps, output paths, the document budget, and configured
+model names. Aggregate search counts and action durations include every repeated
+action. API keys are never written to these outputs.
