@@ -104,10 +104,6 @@ def _extract_html_content(html: str) -> tuple[str | None, str, str]:
 
 
 def _select_content_root(soup: BeautifulSoup) -> tuple[Tag, str]:
-    articles = soup.find_all("article")
-    if articles:
-        return max(articles, key=_text_length), "article"
-
     main = soup.find("main")
     if isinstance(main, Tag):
         return main, "main"
@@ -115,6 +111,10 @@ def _select_content_root(soup: BeautifulSoup) -> tuple[Tag, str]:
     role_main = soup.find(attrs={"role": "main"})
     if isinstance(role_main, Tag):
         return role_main, "role_main"
+
+    articles = soup.find_all("article")
+    if articles:
+        return max(articles, key=_text_length), "article"
 
     return soup.body or soup, "body"
 

@@ -174,6 +174,26 @@ def test_html_extraction_uses_main_then_role_main() -> None:
     assert role_text == "Role main text."
 
 
+def test_html_extraction_prefers_main_over_article_cards() -> None:
+    _, text, strategy = _extract_html_content(
+        """
+        <body>
+          <main>
+            <h1>Year in review</h1>
+            <p>The main article contains the complete retrospective.</p>
+            <article><p>A comparatively long recommended story card.</p></article>
+            <article><p>Another recommendation.</p></article>
+          </main>
+        </body>
+        """
+    )
+
+    assert strategy == "main"
+    assert text.startswith(
+        "Year in review\nThe main article contains the complete retrospective."
+    )
+
+
 def test_html_extraction_falls_back_to_body_and_removes_page_chrome() -> None:
     _, text, strategy = _extract_html_content(
         """
