@@ -191,6 +191,18 @@ state -> action -> observation -> next_state -> reward
 - 请求超时和连接错误：有限次数重试，最终失败后记录并跳过。
 - 统一失败分类、指标和日志，便于区分来源限制与基础设施故障。
 
+### 证据提取
+
+- 完整文档可能使 evidence extraction 的输入超过模型上下文上限。真实评估中
+  曾出现输入至少为 32769 tokens、超过模型 32768 tokens 上限的情况，同时
+  输出 token 预算变为 0，导致该次运行失败。
+
+### Trace
+
+- Trace 当前主要记录 artifact ID，没有持久化文档正文及其提取元数据。进程结束
+  后，无法仅依赖 Trace 检查文档的正文长度和提取策略，也无法完整审计 artifact
+  内容；运行在异常中断时不会保留 partial trace。
+
 ### 检索规划
 
 - LLM Search Planner 在处理包含 `latest`、`recent`、`last N days` 等相对时间
