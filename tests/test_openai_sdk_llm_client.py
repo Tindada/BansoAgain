@@ -3,9 +3,12 @@
 import asyncio
 from types import SimpleNamespace
 
+import httpx
+import openai
 import pytest
 
 from banso.llm import (
+    LLMError,
     LLMMessage,
     LLMMessageRole,
     LLMRequest,
@@ -22,15 +25,19 @@ class FakeChatCompletions:
         model: str | None = "test-model",
         usage=None,
         raw: dict | None = None,
+        error: Exception | None = None,
     ) -> None:
         self.calls: list[dict] = []
         self.content = content
         self.model = model
         self.usage = usage
         self.raw = raw or {"id": "chatcmpl-test"}
+        self.error = error
 
     async def create(self, **kwargs):
         self.calls.append(kwargs)
+        if self.error is not None:
+            raise self.error
         return SimpleNamespace(
             model=self.model,
             choices=[
@@ -173,6 +180,28 @@ async def _run_thinking_tag_stripping_client_removes_thinking_content() -> None:
     assert response.model == "test-model"
 
 
+async def _run_provider_error_is_wrapped_and_preserved() -> None:
+    request = httpx.Request("POST", "https://example.com/v1/chat/completions")
+    response = httpx.Response(400, request=request)
+    provider_error = openai.BadRequestError(
+        "This model's maximum context length is 32768 tokens; requested 32769",
+        response=response,
+        body={"type": "BadRequestError", "code": 400},
+    )
+    client = OpenAISDKLLMClient(
+        model="test-model",
+        client=FakeOpenAIClient(FakeChatCompletions(error=provider_error)),
+    )
+
+    with pytest.raises(LLMError) as caught:
+        await client.generate(LLMRequest(messages=[]))
+
+    assert caught.value.original_error is provider_error
+    assert type(caught.value.__cause__) is openai.BadRequestError
+    assert "BadRequestError" in str(caught.value)
+    assert "maximum context length" in str(caught.value)
+
+
 def test_openai_sdk_llm_client_maps_request_and_response() -> None:
     asyncio.run(_run_openai_sdk_client_maps_request_and_response())
 
@@ -191,3 +220,7 @@ def test_openai_sdk_llm_client_empty_content_and_missing_usage_are_supported() -
 
 def test_thinking_tag_stripping_client_removes_thinking_content() -> None:
     asyncio.run(_run_thinking_tag_stripping_client_removes_thinking_content())
+
+
+def test_openai_sdk_llm_client_wraps_and_preserves_provider_error() -> None:
+    asyncio.run(_run_provider_error_is_wrapped_and_preserved())

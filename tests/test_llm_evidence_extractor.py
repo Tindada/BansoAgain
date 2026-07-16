@@ -11,7 +11,18 @@ from banso.documents import (
     EvidenceExtractionRequest,
     LLMEvidenceExtractor,
 )
-from banso.llm import FakeLLMClient, LLMMessageRole
+from banso.llm import (
+    FakeLLMClient,
+    LLMError,
+    LLMMessageRole,
+    LLMRequest,
+    LLMResponse,
+)
+
+
+class FailingLLMClient:
+    async def generate(self, request: LLMRequest) -> LLMResponse:
+        raise LLMError(RuntimeError("prompt contains at least 32769 input tokens"))
 
 
 def _document() -> Document:
@@ -55,6 +66,7 @@ async def _run_llm_evidence_extractor() -> None:
     llm_request = client.requests[0]
     assert llm_request.model == "fake-model"
     assert llm_request.temperature == 0.0
+    assert llm_request.max_tokens is None
     assert [message.role for message in llm_request.messages] == [
         LLMMessageRole.SYSTEM,
         LLMMessageRole.USER,
@@ -107,6 +119,27 @@ async def _run_invalid_schema_case() -> None:
     assert caught.value.reason == "invalid_schema"
 
 
+async def _run_llm_error_case() -> None:
+    document = _document()
+    extractor = LLMEvidenceExtractor(client=FailingLLMClient())
+
+    with pytest.raises(EvidenceExtractionError) as caught:
+        await extractor.extract(
+            EvidenceExtractionRequest(
+                query=UserQuery(text="latest AI product news"),
+                document=document,
+            )
+        )
+
+    assert caught.value.reason == "llm_error"
+    message = str(caught.value)
+    assert "at least 32769 input tokens" in message
+    assert f"document_chars={len(document.text)}" in message
+    assert f"document_bytes={len(document.text.encode('utf-8'))}" in message
+    assert "prompt_chars=" in message
+    assert "prompt_bytes=" in message
+
+
 def test_llm_evidence_extractor() -> None:
     asyncio.run(_run_llm_evidence_extractor())
 
@@ -121,3 +154,7 @@ def test_llm_evidence_extractor_accepts_empty_array() -> None:
 
 def test_llm_evidence_extractor_raises_for_invalid_schema() -> None:
     asyncio.run(_run_invalid_schema_case())
+
+
+def test_llm_evidence_extractor_records_llm_failure_input_sizes() -> None:
+    asyncio.run(_run_llm_error_case())

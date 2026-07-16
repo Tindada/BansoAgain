@@ -6,6 +6,7 @@ from banso.llm.config import (
     build_vllm_llm_client_from_env,
 )
 from banso.llm.fake import FakeLLMClient
+from banso.llm.errors import LLMError
 from banso.llm.models import (
     LLMMessage,
     LLMMessageRole,
@@ -21,6 +22,7 @@ from banso.llm.openai_sdk_client import (
 __all__ = [
     "FakeLLMClient",
     "LLMClient",
+    "LLMError",
     "LLMMessage",
     "LLMMessageRole",
     "LLMRequest",

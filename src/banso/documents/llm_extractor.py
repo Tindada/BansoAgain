@@ -4,7 +4,7 @@ import json
 
 from banso.documents.extractor import EvidenceExtractionError, EvidenceExtractionRequest
 from banso.documents.models import EvidenceItem
-from banso.llm import LLMClient, LLMMessage, LLMMessageRole, LLMRequest
+from banso.llm import LLMClient, LLMError, LLMMessage, LLMMessageRole, LLMRequest
 
 
 SYSTEM_PROMPT = (
@@ -42,23 +42,30 @@ class LLMEvidenceExtractor:
         self.max_tokens = max_tokens
 
     async def extract(self, request: EvidenceExtractionRequest) -> list[EvidenceItem]:
-        response = await self.client.generate(
-            LLMRequest(
-                messages=[
-                    LLMMessage(
-                        role=LLMMessageRole.SYSTEM,
-                        content=SYSTEM_PROMPT,
-                    ),
-                    LLMMessage(
-                        role=LLMMessageRole.USER,
-                        content=self._build_user_prompt(request),
-                    ),
-                ],
-                model=self.model,
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
+        user_prompt = self._build_user_prompt(request)
+        try:
+            response = await self.client.generate(
+                LLMRequest(
+                    messages=[
+                        LLMMessage(
+                            role=LLMMessageRole.SYSTEM,
+                            content=SYSTEM_PROMPT,
+                        ),
+                        LLMMessage(
+                            role=LLMMessageRole.USER,
+                            content=user_prompt,
+                        ),
+                    ],
+                    model=self.model,
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens,
+                )
             )
-        )
+        except LLMError as error:
+            raise EvidenceExtractionError(
+                self._llm_failure_message(error, request, user_prompt),
+                reason="llm_error",
+            ) from error
 
         return self._parse_items(response.content, request)
 
@@ -71,6 +78,22 @@ class LLMEvidenceExtractor:
             f"Document URL:\n{document.url}\n\n"
             f"Document text:\n{document.text}\n\n"
             f"{EVIDENCE_OUTPUT_FORMAT}"
+        )
+
+    def _llm_failure_message(
+        self,
+        error: LLMError,
+        request: EvidenceExtractionRequest,
+        user_prompt: str,
+    ) -> str:
+        document_text = request.document.text
+        prompt_text = SYSTEM_PROMPT + user_prompt
+        return (
+            f"LLM evidence request failed: {error}; "
+            f"document_chars={len(document_text)}; "
+            f"document_bytes={len(document_text.encode('utf-8'))}; "
+            f"prompt_chars={len(prompt_text)}; "
+            f"prompt_bytes={len(prompt_text.encode('utf-8'))}"
         )
 
     def _parse_items(

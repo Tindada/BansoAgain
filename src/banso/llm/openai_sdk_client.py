@@ -3,9 +3,10 @@
 import re
 from typing import Any
 
-from openai import AsyncOpenAI
+from openai import APIError, AsyncOpenAI
 
 from banso.llm.client import LLMClient
+from banso.llm.errors import LLMError
 from banso.llm.models import LLMRequest, LLMResponse, LLMUsage
 
 
@@ -35,15 +36,18 @@ class OpenAISDKLLMClient:
         if not model:
             raise ValueError("LLM model is required.")
 
-        response = await self._client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": message.role.value, "content": message.content}
-                for message in request.messages
-            ],
-            temperature=request.temperature,
-            max_tokens=request.max_tokens,
-        )
+        try:
+            response = await self._client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": message.role.value, "content": message.content}
+                    for message in request.messages
+                ],
+                temperature=request.temperature,
+                max_tokens=request.max_tokens,
+            )
+        except APIError as error:
+            raise LLMError(error) from error
 
         content = response.choices[0].message.content or ""
 
