@@ -20,8 +20,7 @@ EVIDENCE_OUTPUT_FORMAT = (
     "  {\n"
     '    "claim": "...",\n'
     '    "supporting_text": "...",\n'
-    '    "confidence": 0.8,\n'
-    '    "source_url": "optional source URL"\n'
+    '    "confidence": 0.8\n'
     "  }\n"
     "]"
 )
@@ -286,13 +285,12 @@ class LLMEvidenceExtractor:
 
         supporting_text = _optional_string(raw_item.get("supporting_text"))
         confidence = _optional_float(raw_item.get("confidence"))
-        source_url = _optional_string(raw_item.get("source_url"))
 
         return EvidenceItem(
             document_id=request.document.id,
             claim=claim,
             supporting_text=supporting_text,
-            source_url=source_url or request.document.url,
+            source_url=request.document.url,
             published_at=request.document.published_at,
             confidence=confidence,
             metadata={"extractor": "llm"},
