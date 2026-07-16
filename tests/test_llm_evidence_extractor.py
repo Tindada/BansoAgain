@@ -25,6 +25,19 @@ class FailingLLMClient:
         raise LLMError(RuntimeError("prompt contains at least 32769 input tokens"))
 
 
+class ChunkingLLMClient:
+    def __init__(self, fail_on_call: int | None = None) -> None:
+        self.fail_on_call = fail_on_call
+        self.requests: list[LLMRequest] = []
+
+    async def generate(self, request: LLMRequest) -> LLMResponse:
+        self.requests.append(request)
+        call_number = len(self.requests)
+        if call_number == self.fail_on_call:
+            raise LLMError(RuntimeError("chunk request failed"))
+        return LLMResponse(content=f'[{{"claim":"chunk-{call_number}"}}]')
+
+
 def _document() -> Document:
     return Document(
         id="doc-1",
@@ -32,6 +45,12 @@ def _document() -> Document:
         title="Company A announces AI product",
         text="Company A announced a new AI product on Monday.",
     )
+
+
+def _document_text_from_request(request: LLMRequest) -> str:
+    user_prompt = request.messages[1].content
+    document_text = user_prompt.split("Document text:\n", maxsplit=1)[1]
+    return document_text.split("\n\nReturn a JSON array", maxsplit=1)[0]
 
 
 async def _run_llm_evidence_extractor() -> None:
@@ -66,7 +85,7 @@ async def _run_llm_evidence_extractor() -> None:
     llm_request = client.requests[0]
     assert llm_request.model == "fake-model"
     assert llm_request.temperature == 0.0
-    assert llm_request.max_tokens is None
+    assert llm_request.max_tokens == 2_048
     assert [message.role for message in llm_request.messages] == [
         LLMMessageRole.SYSTEM,
         LLMMessageRole.USER,
@@ -134,10 +153,62 @@ async def _run_llm_error_case() -> None:
     assert caught.value.reason == "llm_error"
     message = str(caught.value)
     assert "at least 32769 input tokens" in message
+    assert "chunk_index=1" in message
+    assert "chunk_count=1" in message
     assert f"document_chars={len(document.text)}" in message
     assert f"document_bytes={len(document.text.encode('utf-8'))}" in message
     assert "prompt_chars=" in message
     assert "prompt_bytes=" in message
+
+
+async def _run_chunked_document_case() -> None:
+    document = _document().model_copy(
+        update={
+            "text": ("第一段证据。" * 8) + "\n\n" + ("Second paragraph. " * 8),
+        }
+    )
+    client = ChunkingLLMClient()
+    extractor = LLMEvidenceExtractor(client=client, max_input_bytes=600)
+
+    evidence = await extractor.extract(
+        EvidenceExtractionRequest(
+            query=UserQuery(text="latest AI product news"),
+            document=document,
+        )
+    )
+
+    assert len(client.requests) > 1
+    assert "".join(_document_text_from_request(item) for item in client.requests) == (
+        document.text
+    )
+    assert all(
+        sum(len(message.content.encode("utf-8")) for message in item.messages) <= 600
+        for item in client.requests
+    )
+    assert [item.claim for item in evidence] == [
+        f"chunk-{index}" for index in range(1, len(client.requests) + 1)
+    ]
+
+
+async def _run_later_chunk_failure_case() -> None:
+    document = _document().model_copy(update={"text": "x" * 80})
+    client = ChunkingLLMClient(fail_on_call=2)
+    extractor = LLMEvidenceExtractor(client=client, max_input_bytes=600)
+    request = EvidenceExtractionRequest(
+        query=UserQuery(text="latest AI product news"),
+        document=document,
+    )
+    chunk_count = len(extractor._split_document(request))
+    assert chunk_count > 1
+
+    with pytest.raises(EvidenceExtractionError) as caught:
+        await extractor.extract(request)
+
+    assert caught.value.reason == "llm_error"
+    assert len(client.requests) == 2
+    assert "chunk request failed" in str(caught.value)
+    assert "chunk_index=2" in str(caught.value)
+    assert f"chunk_count={chunk_count}" in str(caught.value)
 
 
 def test_llm_evidence_extractor() -> None:
@@ -158,3 +229,11 @@ def test_llm_evidence_extractor_raises_for_invalid_schema() -> None:
 
 def test_llm_evidence_extractor_records_llm_failure_input_sizes() -> None:
     asyncio.run(_run_llm_error_case())
+
+
+def test_llm_evidence_extractor_chunks_document_within_input_budget() -> None:
+    asyncio.run(_run_chunked_document_case())
+
+
+def test_llm_evidence_extractor_fails_document_when_later_chunk_fails() -> None:
+    asyncio.run(_run_later_chunk_failure_case())

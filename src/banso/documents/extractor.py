@@ -13,7 +13,7 @@ class EvidenceExtractionRequest(BaseModel):
 
     query: UserQuery
     document: Document
-    max_items: int = 5
+    max_items_per_chunk: int = 5
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

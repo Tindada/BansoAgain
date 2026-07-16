@@ -36,7 +36,7 @@ class FakeEvidenceExtractor:
                 published_at=request.document.published_at,
                 confidence=1.0,
             )
-        ][: request.max_items]
+        ][: request.max_items_per_chunk]
 
 
 def _build_fake_claim(query: UserQuery, document: Document) -> str:

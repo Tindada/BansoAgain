@@ -26,6 +26,7 @@
 - 已实现新闻场景的固定流程 policy：搜索、读取文档、抽取 evidence、生成总结。
 - 已实现可替换的 retrieval、document reader、evidence extractor、synthesizer 和 LLM client 接口及部分实现。
 - 已接入 Tavily retrieval、HTTP document reader、OpenAI SDK LLM client、LLM evidence extractor 和 LLM synthesizer。
+- 已实现超长文档的分块 evidence extraction，并隔离单篇文档的 LLM 提取失败。
 - 已实现 retrieval filter、search result evaluator 和基础 artifact store。
 - 已定义 `AgentTrace` 和 `TraceStep` 数据结构，用于记录运行轨迹。
 - 已补充覆盖核心 runtime、新闻执行器、retrieval、document reader、LLM 配置和 LLM 组件的测试。
@@ -193,9 +194,9 @@ state -> action -> observation -> next_state -> reward
 
 ### 证据提取
 
-- 完整文档可能使 evidence extraction 的输入超过模型上下文上限。真实评估中
-  曾出现输入至少为 32769 tokens、超过模型 32768 tokens 上限的情况，同时
-  输出 token 预算变为 0，导致该次运行失败。
+- 当前 evidence extraction 的输入预算估算较为粗糙，在不同模型和 provider 配置下
+  可能不够准确。
+- 分块提取结果尚未去重，重复 evidence 可能增加后续 synthesis 的上下文开销。
 
 ### Trace
 
