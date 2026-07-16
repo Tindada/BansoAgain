@@ -24,6 +24,8 @@
 - 已定义核心 runtime、state、action、policy、executor、reducer、result 等基础模块。
 - 已实现最小 `AgentRuntime` 主循环，支持 policy 决策、executor 执行、reducer 更新状态和 trace 收集。
 - 已实现新闻场景的固定流程 policy：搜索、读取文档、抽取 evidence、生成总结。
+- 尚未实现由 LLM 根据当前 state 动态选择 action 的 agent policy；这是固定流程
+  policy 之后、RL policy 之前的下一项核心能力。
 - 已实现可替换的 retrieval、document reader、evidence extractor、synthesizer 和 LLM client 接口及部分实现。
 - 已接入 Tavily retrieval、HTTP document reader、OpenAI SDK LLM client、LLM evidence extractor 和 LLM synthesizer。
 - 已实现超长文档的分块 evidence extraction，并隔离单篇文档的 LLM 提取失败。
@@ -115,7 +117,47 @@ trace logger 记录步骤
 - 多源总结
 - 输出最终新闻摘要
 
-## 阶段 5：Trace 与评估系统
+## 阶段 5：LLM Agent Policy
+
+目标：在保持 runtime、action space 和 executor 边界不变的前提下，让 LLM 根据
+当前 state、已有 observation 和剩余预算动态选择下一步 action。
+
+第一版使用受约束的已有动作空间：
+
+```text
+PLAN_SEARCH
+SEARCH
+READ_DOCUMENT
+EXTRACT_EVIDENCE
+SYNTHESIZE
+STOP
+```
+
+核心要求：
+
+- 输出可校验的结构化 `AgentAction`，不允许生成任意工具调用。
+- 明确向 policy 提供当前 state、已完成步骤、可用 action 和剩余预算。
+- 对非法 action、无效参数、重复动作和 LLM 调用失败提供校验、重试或安全回退。
+- 记录 action 选择所需的简短 decision metadata，保证行为可审计。
+- 继续使用固定流程 policy 作为 baseline，而不是直接替换或删除。
+- 通过最大步骤数、搜索数、文档数和 token/cost 预算约束 agent 行为。
+
+评估重点：
+
+```text
+任务完成率
+无效动作率
+搜索、文档、evidence 和 citation 数量
+答案质量
+执行延迟
+token 与调用成本
+相对固定流程 policy 的收益
+```
+
+实施顺序：先解决会导致整次运行失败的硬阻塞，并具备保存异常和 partial trace
+的最低可审计能力；随后立即实现 LLM Agent Policy，不要求先清空全部已知问题。
+
+## 阶段 6：Trace 与评估系统
 
 目标：为后续优化和 RL 做准备。
 
@@ -143,7 +185,10 @@ reward modeling
 RL training data generation
 ```
 
-## 阶段 6：RL 扩展预留
+LLM Agent Policy 与固定流程 policy 应使用相同 evaluation cases 和指标进行
+对比，为后续 reward 设计和 RL policy 提供可复现的行为基线。
+
+## 阶段 7：RL 扩展预留
 
 目标：让系统可以从 LLM-driven agent 平滑扩展到 RL-driven agent。
 
