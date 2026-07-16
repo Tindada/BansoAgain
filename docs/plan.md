@@ -29,7 +29,7 @@
 - 已实现可替换的 retrieval、document reader、evidence extractor、synthesizer 和 LLM client 接口及部分实现。
 - 已接入 Tavily retrieval、HTTP document reader、OpenAI SDK LLM client、LLM evidence extractor 和 LLM synthesizer。
 - 已实现超长文档的分块 evidence extraction，并隔离单篇文档的 LLM 提取失败。
-- 已实现 retrieval filter、search result evaluator 和基础 artifact store。
+- 已实现 retrieval filter、search result source classifier 和基础 artifact store。
 - 已定义 `AgentTrace` 和 `TraceStep` 数据结构，用于记录运行轨迹。
 - 已补充覆盖核心 runtime、新闻执行器、retrieval、document reader、LLM 配置和 LLM 组件的测试。
 
@@ -263,10 +263,9 @@ state -> action -> observation -> next_state -> reward
 - 不同 Search 返回的结果仅在单次 Search 内去重，尚未跨整个检索计划进行全局
   去重。相同 URL 出现在多个查询结果中时，可能被重复保存和读取。
 
-### 来源评估
+### 来源分类
 
-- 来源识别覆盖不足，部分可信的官方或专业来源可能被识别为 `unknown_source`。
-  真实评估中曾出现 Google Cloud、Meta AI、Stanford HAI 和欧盟机构等来源未被
-  正确识别的情况。
-- 来源评分尚未经过充分校准。真实评估中的搜索结果拒绝比例较高，可能将有效
-  搜索结果与低质量来源一并过滤。
+- 搜索结果会使用扩展后的官方、研究、政府、主流新闻、社交平台和聚合站点域名
+  注册表补充来源类型；未命中注册表时使用 provider 已提供的非 `unknown` 类型。
+- 来源分类只补充可观测元数据，不决定结果是否准入、如何排序或是否读取。
+  `unknown` 来源会保留，后续选择策略留给 agent policy 或独立动作实现。

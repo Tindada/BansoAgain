@@ -21,9 +21,9 @@ from banso.retrieval import (
     RetrievalProvider,
     SearchRequest,
     SearchResult,
-    SearchResultEvaluator,
     SearchPlanningRequest,
     SearchQueryPlanner,
+    SourceClassifier,
 )
 from banso.retrieval.filter import RetrievalFilter
 from banso.synthesis import Synthesizer, SynthesisRequest
@@ -40,7 +40,7 @@ class NewsActionExecutor:
         evidence_extractor: EvidenceExtractor,
         synthesizer: Synthesizer,
         retrieval_filter: RetrievalFilter | None = None,
-        search_result_evaluator: SearchResultEvaluator | None = None,
+        source_classifier: SourceClassifier | None = None,
         search_query_planner: SearchQueryPlanner | None = None,
         max_extraction_concurrency: int = 3,
     ) -> None:
@@ -53,7 +53,7 @@ class NewsActionExecutor:
         self.evidence_extractor = evidence_extractor
         self.synthesizer = synthesizer
         self.retrieval_filter = retrieval_filter or RetrievalFilter()
-        self.search_result_evaluator = search_result_evaluator or SearchResultEvaluator()
+        self.source_classifier = source_classifier or SourceClassifier()
         self.search_query_planner = search_query_planner or OriginalQueryPlanner()
         self.max_extraction_concurrency = max_extraction_concurrency
 
@@ -99,8 +99,8 @@ class NewsActionExecutor:
             )
         )
         filtered = self.retrieval_filter.apply(raw_results)
-        evaluated = self.search_result_evaluator.apply(filtered.results)
-        results = evaluated.results
+        classified = self.source_classifier.apply(filtered.results)
+        results = classified.results
         result_ids = [self.store.put(result) for result in results]
 
         return Observation(
@@ -109,7 +109,7 @@ class NewsActionExecutor:
                 "search_queries": [query],
                 "search_result_ids": result_ids,
                 "retrieval_filter_report": filtered.report.model_dump(),
-                "search_result_evaluation_report": evaluated.report(),
+                "source_classification_report": classified.report(),
             },
         )
 
@@ -122,7 +122,6 @@ class NewsActionExecutor:
             result = self.store.get(result_id, SearchResult)
             if result is None:
                 continue
-
             try:
                 document = await self.document_reader.read(
                     DocumentReadRequest(

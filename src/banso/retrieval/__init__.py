@@ -1,12 +1,6 @@
 """Search and retrieval provider interfaces."""
 
 from banso.retrieval.fake import FakeRetrievalProvider
-from banso.retrieval.evaluator import (
-    SearchResultEvaluation,
-    SearchResultEvaluationResult,
-    SearchResultEvaluator,
-    SearchResultEvaluatorConfig,
-)
 from banso.retrieval.filter import (
     RetrievalFilter,
     RetrievalFilterConfig,
@@ -23,6 +17,12 @@ from banso.retrieval.planner import (
 )
 from banso.retrieval.provider import RetrievalProvider, SearchRequest
 from banso.retrieval.simple_planner import OriginalQueryPlanner
+from banso.retrieval.source_classifier import (
+    SourceClassification,
+    SourceClassificationResult,
+    SourceClassifier,
+    SourceClassifierConfig,
+)
 from banso.retrieval.tavily_provider import TavilyRetrievalProvider
 
 __all__ = [
@@ -36,14 +36,14 @@ __all__ = [
     "RetrievalProvider",
     "SearchRequest",
     "SearchResult",
-    "SearchResultEvaluation",
-    "SearchResultEvaluationResult",
-    "SearchResultEvaluator",
-    "SearchResultEvaluatorConfig",
     "SearchPlanningError",
     "SearchPlanningRequest",
     "SearchQueryPlanner",
     "Source",
+    "SourceClassification",
+    "SourceClassificationResult",
+    "SourceClassifier",
+    "SourceClassifierConfig",
     "SourceType",
     "TavilyRetrievalProvider",
     "normalize_url",

@@ -75,9 +75,10 @@ def test_extract_evaluation_result() -> None:
     assert result.trace_id is not None
     assert result.retrieved_result_count == 1
     assert result.filtered_result_count == 1
-    assert result.admitted_result_count == 1
-    assert result.rejected_result_count == 0
-    assert result.source_rejections == []
+    assert result.classified_result_count == 1
+    assert result.recognized_source_count == 1
+    assert result.unknown_source_count == 0
+    assert result.classification_coverage == 1.0
     assert result.document_count == 1
     assert result.evidence_count == 1
     assert result.citations == ["https://example.com/news/fake-result"]
@@ -152,8 +153,9 @@ def test_extract_evaluation_result_preserves_multiple_searches() -> None:
     ]
     assert result.retrieved_result_count == 3
     assert result.filtered_result_count == 3
-    assert result.admitted_result_count == 3
-    assert result.rejected_result_count == 0
+    assert result.classified_result_count == 3
+    assert result.recognized_source_count == 3
+    assert result.unknown_source_count == 0
 
     search_duration = sum(
         step.duration_seconds or 0.0
@@ -178,7 +180,7 @@ class UnknownSourceRetrievalProvider:
         ]
 
 
-async def _extract_rejected_source_evaluation_result():
+async def _extract_unknown_source_evaluation_result():
     case = NewsEvaluationCase(
         id="case-2",
         category="research",
@@ -200,32 +202,49 @@ async def _extract_rejected_source_evaluation_result():
     return extract_evaluation_result(case, output, store)
 
 
-def test_extract_evaluation_result_records_source_rejections() -> None:
-    result = asyncio.run(_extract_rejected_source_evaluation_result())
+def test_extract_evaluation_result_records_unknown_source() -> None:
+    result = asyncio.run(_extract_unknown_source_evaluation_result())
 
     assert result.retrieved_result_count == 1
     assert result.filtered_result_count == 1
-    assert result.admitted_result_count == 0
-    assert result.rejected_result_count == 1
-    rejection = result.source_rejections[0]
-    assert rejection["accepted"] is False
-    assert rejection["publisher_domain"] == "unknown.example"
-    assert rejection["source_type"] == "unknown"
-    assert rejection["reasons"] == ["unknown_source"]
+    assert result.classified_result_count == 1
+    assert result.recognized_source_count == 0
+    assert result.unknown_source_count == 1
+    assert result.classification_coverage == 0.0
+    assert result.document_count == 1
+    assert len(result.source_classifications) == 1
+    classification = result.source_classifications[0]
+    assert classification["publisher_domain"] == "unknown.example"
+    assert classification["source_type"] == "unknown"
+    assert classification["classification_source"] == "unknown"
 
 
 def test_summarize_evaluation_results() -> None:
     result = asyncio.run(_extract_successful_evaluation_result())
-    rejected_result = asyncio.run(_extract_rejected_source_evaluation_result())
+    unknown_result = asyncio.run(_extract_unknown_source_evaluation_result())
 
-    summary = summarize_evaluation_results([result, rejected_result])
+    summary = summarize_evaluation_results([result, unknown_result])
 
     assert summary["case_count"] == 2
     assert summary["completed_count"] == 2
-    assert summary["passed_minimums_count"] == 1
-    assert summary["with_documents_count"] == 1
-    assert summary["with_evidence_count"] == 1
-    assert summary["with_citations_count"] == 1
+    assert summary["passed_minimums_count"] == 2
+    assert summary["with_documents_count"] == 2
+    assert summary["with_evidence_count"] == 2
+    assert summary["with_citations_count"] == 2
     assert summary["preferred_source_match_count"] == 1
     assert summary["error_count"] == 0
-    assert summary["source_rejection_reasons"] == {"unknown_source": 1}
+    assert summary["classification_coverage"] == 0.5
+    assert summary["classification_source_counts"] == {
+        "provider": 1,
+        "unknown": 1,
+    }
+    assert summary["source_type_counts"] == {
+        "news": 1,
+        "unknown": 1,
+    }
+    assert summary["unknown_source_candidates"] == [
+        {
+            "publisher_domain": "unknown.example",
+            "count": 1,
+        }
+    ]

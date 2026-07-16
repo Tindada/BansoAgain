@@ -8,7 +8,8 @@ The cases intentionally do not contain fixed reference answers because the
 queries are time-relative. The first evaluation stage measures objective
 pipeline health only:
 
-- whether search results survive source evaluation;
+- how completely search result sources are classified;
+- which source types and unknown domains appear;
 - which searches were planned and executed;
 - whether documents can be read;
 - whether evidence and citations are produced;

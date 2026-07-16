@@ -39,9 +39,11 @@ class NewsEvaluationResult(BaseModel):
     trace_id: str | None = None
     retrieved_result_count: int = 0
     filtered_result_count: int = 0
-    admitted_result_count: int = 0
-    rejected_result_count: int = 0
-    source_rejections: list[dict[str, Any]] = Field(default_factory=list)
+    classified_result_count: int = 0
+    recognized_source_count: int = 0
+    unknown_source_count: int = 0
+    classification_coverage: float = 0.0
+    source_classifications: list[dict[str, Any]] = Field(default_factory=list)
     document_count: int = 0
     evidence_count: int = 0
     citations: list[str] = Field(default_factory=list)
@@ -105,34 +107,35 @@ def extract_evaluation_result(
     )
     retrieved_result_count = 0
     filtered_result_count = 0
-    admitted_result_count = 0
-    rejected_result_count = 0
-    source_rejections: list[dict[str, Any]] = []
+    classified_result_count = 0
+    recognized_source_count = 0
+    unknown_source_count = 0
+    source_classifications: list[dict[str, Any]] = []
     for step in output.trace.steps:
         if step.action.type != AgentActionType.SEARCH:
             continue
         filter_report = _dict_value(
             step.observation.data.get("retrieval_filter_report")
         )
-        evaluation_report = _dict_value(
-            step.observation.data.get("search_result_evaluation_report")
+        classification_report = _dict_value(
+            step.observation.data.get("source_classification_report")
         )
         retrieved_result_count += filter_report.get("input_count", 0)
         filtered_result_count += filter_report.get("output_count", 0)
         result_ids = step.observation.data.get("search_result_ids")
-        fallback_admitted_count = (
+        fallback_classified_count = (
             len(result_ids) if isinstance(result_ids, list) else 0
         )
-        admitted_result_count += evaluation_report.get(
-            "accepted_count", fallback_admitted_count
+        classified_result_count += classification_report.get(
+            "input_count", fallback_classified_count
         )
-        rejected_result_count += evaluation_report.get("rejected_count", 0)
-        evaluations = evaluation_report.get("evaluations", [])
-        source_rejections.extend(
-            evaluation
-            for evaluation in evaluations
-            if isinstance(evaluation, dict)
-            and evaluation.get("accepted") is False
+        recognized_source_count += classification_report.get("recognized_count", 0)
+        unknown_source_count += classification_report.get("unknown_count", 0)
+        classifications = classification_report.get("classifications", [])
+        source_classifications.extend(
+            classification
+            for classification in classifications
+            if isinstance(classification, dict)
         )
     step_durations: dict[str, float] = {}
     total_action_seconds = 0.0
@@ -159,9 +162,13 @@ def extract_evaluation_result(
         trace_id=output.trace.trace_id,
         retrieved_result_count=retrieved_result_count,
         filtered_result_count=filtered_result_count,
-        admitted_result_count=admitted_result_count,
-        rejected_result_count=rejected_result_count,
-        source_rejections=source_rejections,
+        classified_result_count=classified_result_count,
+        recognized_source_count=recognized_source_count,
+        unknown_source_count=unknown_source_count,
+        classification_coverage=_ratio(
+            recognized_source_count, classified_result_count
+        ),
+        source_classifications=source_classifications,
         document_count=len(state.document_ids),
         evidence_count=len(state.evidence_ids),
         citations=citations,
@@ -190,6 +197,12 @@ def _dict_value(value: object) -> dict[str, Any]:
     return value
 
 
+def _ratio(numerator: int, denominator: int) -> float:
+    if denominator <= 0:
+        return 0.0
+    return round(numerator / denominator, 4)
+
+
 def summarize_evaluation_results(
     results: list[NewsEvaluationResult],
 ) -> dict[str, Any]:
@@ -199,14 +212,44 @@ def summarize_evaluation_results(
     if count == 0:
         return {"case_count": 0}
 
-    rejection_reason_counts: dict[str, int] = {}
+    classification_source_counts: dict[str, int] = {}
+    source_type_counts: dict[str, int] = {}
+    unknown_domains: dict[str, dict[str, Any]] = {}
     for result in results:
-        for rejection in result.source_rejections:
-            for reason in rejection.get("reasons", []):
-                if isinstance(reason, str):
-                    rejection_reason_counts[reason] = (
-                        rejection_reason_counts.get(reason, 0) + 1
-                    )
+        for classification in result.source_classifications:
+            classification_source = classification.get("classification_source")
+            if isinstance(classification_source, str):
+                classification_source_counts[classification_source] = (
+                    classification_source_counts.get(classification_source, 0) + 1
+                )
+            source_type = classification.get("source_type")
+            if isinstance(source_type, str):
+                source_type_counts[source_type] = (
+                    source_type_counts.get(source_type, 0) + 1
+                )
+            if source_type != "unknown":
+                continue
+            domain = classification.get("publisher_domain")
+            if not isinstance(domain, str) or not domain:
+                continue
+            candidate = unknown_domains.setdefault(
+                domain,
+                {
+                    "publisher_domain": domain,
+                    "count": 0,
+                },
+            )
+            candidate["count"] += 1
+
+    unknown_source_candidates = list(unknown_domains.values())
+    unknown_source_candidates.sort(
+        key=lambda item: (-item["count"], item["publisher_domain"])
+    )
+
+    total_filtered = sum(result.filtered_result_count for result in results)
+    total_classified = sum(result.classified_result_count for result in results)
+    total_recognized = sum(result.recognized_source_count for result in results)
+    total_unknown = sum(result.unknown_source_count for result in results)
 
     return {
         "case_count": count,
@@ -219,18 +262,28 @@ def summarize_evaluation_results(
             result.preferred_source_type_match for result in results
         ),
         "error_count": sum(result.error_type is not None for result in results),
-        "source_rejection_reasons": rejection_reason_counts,
+        "classification_source_counts": classification_source_counts,
+        "source_type_counts": source_type_counts,
+        "unknown_source_candidates": unknown_source_candidates,
+        "total_filtered_results": total_filtered,
+        "total_classified_results": total_classified,
+        "total_recognized_sources": total_recognized,
+        "total_unknown_sources": total_unknown,
+        "classification_coverage": _ratio(total_recognized, total_classified),
         "average_retrieved_results": round(
             sum(result.retrieved_result_count for result in results) / count, 2
         ),
         "average_filtered_results": round(
             sum(result.filtered_result_count for result in results) / count, 2
         ),
-        "average_admitted_results": round(
-            sum(result.admitted_result_count for result in results) / count, 2
+        "average_classified_results": round(
+            sum(result.classified_result_count for result in results) / count, 2
         ),
-        "average_rejected_results": round(
-            sum(result.rejected_result_count for result in results) / count, 2
+        "average_recognized_sources": round(
+            sum(result.recognized_source_count for result in results) / count, 2
+        ),
+        "average_unknown_sources": round(
+            sum(result.unknown_source_count for result in results) / count, 2
         ),
         "average_documents": round(
             sum(result.document_count for result in results) / count, 2

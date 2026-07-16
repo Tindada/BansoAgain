@@ -5,9 +5,17 @@ import asyncio
 import pytest
 
 from banso.artifacts import InMemoryArtifactStore
-from banso.core import AgentRuntime, AgentState, ExecutionBudget, UserQuery
+from banso.core import (
+    AgentRuntime,
+    AgentState,
+    ExecutionBudget,
+    PlannedSearch,
+    SearchPlan,
+    UserQuery,
+)
 from banso.core.action import AgentActionType
 from banso.documents import (
+    Document,
     DocumentHTTPStatusError,
     FakeDocumentReader,
     FakeEvidenceExtractor,
@@ -16,6 +24,7 @@ from banso.executors import NewsActionExecutor
 from banso.policies import NewsRuleBasedPolicy
 from banso.retrieval import (
     FakeRetrievalProvider,
+    SearchPlanningRequest,
     SearchRequest,
     SearchResult,
     Source,
@@ -78,6 +87,53 @@ class PartiallyBlockedRetrievalProvider:
                 rank=2,
                 source=source,
             ),
+        ]
+
+
+class TwoQueryPlanner:
+    async def plan(self, request: SearchPlanningRequest) -> SearchPlan:
+        return SearchPlan(
+            searches=[
+                PlannedSearch(query="first unknown search"),
+                PlannedSearch(query="second trusted search"),
+            ][: request.max_searches]
+        )
+
+
+class MixedTrustRetrievalProvider:
+    async def search(self, request: SearchRequest) -> list[SearchResult]:
+        if request.query.startswith("first"):
+            return [
+                SearchResult(
+                    title=f"Early unknown {index}",
+                    url=f"https://early-{index}.example/report",
+                    rank=index,
+                    metadata={"provider": "tavily", "score": score},
+                )
+                for index, score in enumerate([0.9, 0.8, 0.7], start=1)
+            ]
+        return [
+            SearchResult(
+                title="Later official release",
+                url="https://openai.com/index/release",
+                rank=1,
+                metadata={"provider": "tavily", "score": 0.4},
+            ),
+            SearchResult(
+                title="Later research paper",
+                url="https://arxiv.org/abs/2607.00001",
+                rank=2,
+                metadata={"provider": "tavily", "score": 0.3},
+            ),
+            *[
+                SearchResult(
+                    title=f"Later unknown {index}",
+                    url=f"https://later-{index}.example/report",
+                    rank=index + 2,
+                    metadata={"provider": "tavily", "score": score},
+                )
+                for index, score in enumerate([0.95, 0.85, 0.75], start=1)
+            ],
         ]
 
 
@@ -153,11 +209,12 @@ async def _run_news_runtime_filters_search_results() -> None:
         "dropped_duplicate_url": 1,
         "truncated_count": 0,
     }
-    evaluation_report = search_observation.data[
-        "search_result_evaluation_report"
+    classification_report = search_observation.data[
+        "source_classification_report"
     ]
-    assert evaluation_report["accepted_count"] == 2
-    assert evaluation_report["rejected_count"] == 0
+    assert classification_report["input_count"] == 2
+    assert classification_report["recognized_count"] == 2
+    assert classification_report["unknown_count"] == 0
 
 
 async def _run_news_runtime_respects_document_read_budget() -> None:
@@ -182,6 +239,51 @@ async def _run_news_runtime_respects_document_read_budget() -> None:
 
     assert len(output.result.state.search_result_ids) == 2
     assert len(output.result.state.document_ids) == 1
+
+
+async def _run_news_runtime_preserves_search_order_when_reading() -> None:
+    store = InMemoryArtifactStore()
+    runtime = AgentRuntime(
+        policy=NewsRuleBasedPolicy(),
+        executor=NewsActionExecutor(
+            store=store,
+            retrieval_provider=MixedTrustRetrievalProvider(),
+            document_reader=FakeDocumentReader(),
+            evidence_extractor=FakeEvidenceExtractor(),
+            synthesizer=FakeSynthesizer(),
+            search_query_planner=TwoQueryPlanner(),
+        ),
+    )
+
+    output = await runtime.run(
+        AgentState(
+            query=UserQuery(text="latest AI news"),
+            budget=ExecutionBudget(max_searches=2, max_documents_to_read=8),
+        )
+    )
+    results = [
+        store.get(result_id, SearchResult)
+        for result_id in output.result.state.search_result_ids
+    ]
+    documents = [
+        store.get(document_id, Document)
+        for document_id in output.result.state.document_ids
+    ]
+
+    assert len(output.result.state.search_result_ids) == 8
+    assert len(output.result.state.document_ids) == 8
+    assert [result.title for result in results if result][:4] == [
+        "Early unknown 1",
+        "Early unknown 2",
+        "Early unknown 3",
+        "Later official release",
+    ]
+    assert [document.title for document in documents if document][:4] == [
+        "Early unknown 1",
+        "Early unknown 2",
+        "Early unknown 3",
+        "Later official release",
+    ]
 
 
 async def _run_news_runtime_skips_unreadable_document(status_code: int) -> None:
@@ -222,6 +324,10 @@ def test_news_runtime_filters_search_results() -> None:
 
 def test_news_runtime_respects_document_read_budget() -> None:
     asyncio.run(_run_news_runtime_respects_document_read_budget())
+
+
+def test_news_runtime_preserves_search_order_when_reading() -> None:
+    asyncio.run(_run_news_runtime_preserves_search_order_when_reading())
 
 
 @pytest.mark.parametrize("status_code", [401, 403, 404])
