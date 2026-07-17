@@ -272,9 +272,6 @@ Rollout 必须保存 LLM 实际接收的 prompt/messages、原始 completion、�
   检索词，导致计划与原始时间范围不一致，并可能引入过时的搜索结果。
 - `PlannedSearch.intent` 当前仅保存在计划、Action 参数和 Trace 中，不会影响
   实际发送给 retrieval provider 的检索请求。
-- `AgentState.search_queries` 当前既记录实际搜索历史，又通过列表长度充当固定流程的
-  搜索计划游标。设计 Agent Policy state 时，需要将执行历史与计划进度明确区分，
-  以支持重试、跳过计划项和临时生成计划外 query。
 
 ### 检索执行
 

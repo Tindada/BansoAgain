@@ -216,10 +216,15 @@ def test_runtime_executes_bounded_search_plan_in_order() -> None:
         AgentActionType.SYNTHESIZE,
         AgentActionType.STOP,
     ]
-    assert output.result.state.search_queries == [
+    assert [
+        entry.observation.data["search_queries"][0]
+        for entry in output.result.state.action_history
+        if entry.action_type == AgentActionType.SEARCH
+    ] == [
         "general AI update",
         "official AI release",
     ]
+    assert "search_queries" not in output.result.state.model_dump()
     assert [
         entry.step_index for entry in output.result.state.action_history
     ] == list(range(7))

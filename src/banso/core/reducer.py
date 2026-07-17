@@ -53,10 +53,6 @@ class DefaultStateReducer:
                 next_state.search_plan = SearchPlan.model_validate(search_plan)
 
         _extend_string_list(
-            next_state.search_queries,
-            observation.data.get("search_queries"),
-        )
-        _extend_string_list(
             next_state.search_result_ids,
             observation.data.get("search_result_ids"),
         )

@@ -55,7 +55,6 @@ class AgentState(BaseModel):
     budget: ExecutionBudget = Field(default_factory=ExecutionBudget)
     search_plan: SearchPlan | None = None
     action_history: list[ActionHistoryEntry] = Field(default_factory=list)
-    search_queries: list[str] = Field(default_factory=list)
     search_result_ids: list[str] = Field(default_factory=list)
     document_ids: list[str] = Field(default_factory=list)
     evidence_ids: list[str] = Field(default_factory=list)

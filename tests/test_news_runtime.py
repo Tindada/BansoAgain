@@ -184,7 +184,9 @@ async def _run_news_runtime() -> None:
     assert output.trace.steps[0].observation.data["search_plan"] == (
         state.search_plan.model_dump(mode="json")
     )
-    assert state.search_queries == ["latest AI news"]
+    assert state.action_history[1].observation.data["search_queries"] == [
+        "latest AI news"
+    ]
     assert len(state.search_result_ids) == 1
     assert len(state.document_ids) == 1
     assert len(state.evidence_ids) == 1

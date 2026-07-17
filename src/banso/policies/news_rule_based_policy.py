@@ -14,7 +14,10 @@ class NewsRuleBasedPolicy:
                 rationale="Plan searches for the user query.",
             )
 
-        search_index = len(state.search_queries)
+        search_index = sum(
+            entry.action_type == AgentActionType.SEARCH
+            for entry in state.action_history
+        )
         if (
             search_index < state.budget.max_searches
             and search_index < len(state.search_plan.searches)

@@ -6,7 +6,14 @@ import pytest
 
 from banso.apps import real_news
 from banso.artifacts import InMemoryArtifactStore
-from banso.core import AgentRuntime, AgentState, ExecutionBudget, SearchPlan, UserQuery
+from banso.core import (
+    AgentActionType,
+    AgentRuntime,
+    AgentState,
+    ExecutionBudget,
+    SearchPlan,
+    UserQuery,
+)
 from banso.documents import FakeDocumentReader, FakeEvidenceExtractor
 from banso.executors import NewsActionExecutor
 from banso.llm import FakeLLMClient, LLMMessageRole
@@ -145,7 +152,11 @@ async def _run_news_runtime_with_llm_plan():
 def test_news_runtime_executes_llm_generated_search_plan() -> None:
     output = asyncio.run(_run_news_runtime_with_llm_plan())
 
-    assert output.result.state.search_queries == [
+    assert [
+        entry.observation.data["search_queries"][0]
+        for entry in output.result.state.action_history
+        if entry.action_type == AgentActionType.SEARCH
+    ] == [
         "official AI releases",
         "recent AI research",
     ]
