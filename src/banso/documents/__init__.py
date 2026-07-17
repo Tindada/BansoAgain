@@ -10,14 +10,14 @@ from banso.documents.http_reader import HTTPDocumentReader
 from banso.documents.llm_extractor import LLMEvidenceExtractor
 from banso.documents.models import Document, EvidenceItem
 from banso.documents.reader import (
-    DocumentHTTPStatusError,
+    DocumentReadError,
     DocumentReader,
     DocumentReadRequest,
 )
 
 __all__ = [
     "Document",
-    "DocumentHTTPStatusError",
+    "DocumentReadError",
     "DocumentReader",
     "DocumentReadRequest",
     "EvidenceExtractionError",

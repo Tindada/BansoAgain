@@ -20,7 +20,7 @@ from banso.apps.news_evaluation import (
     summarize_evaluation_results,
 )
 from banso.apps.real_news import build_real_news_runtime
-from banso.core import AgentState, ExecutionBudget, UserQuery
+from banso.core import AgentState, ExecutionBudget, RuntimeExecutionError, UserQuery
 from banso.tracing import AgentTrace
 
 
@@ -59,6 +59,22 @@ async def run_case(
         )
         result = extract_evaluation_result(case, output, bundle.store)
         trace = output.trace
+    except RuntimeExecutionError as error:
+        failure = error.trace.failure
+        result = NewsEvaluationResult(
+            case_id=case.id,
+            category=case.category,
+            query=case.query,
+            error_type=(
+                failure.error_type
+                if failure is not None
+                else type(error.original_error).__name__
+            ),
+            error_message=(
+                failure.message if failure is not None else str(error.original_error)
+            ),
+        )
+        trace = error.trace
     except Exception as error:
         result = NewsEvaluationResult(
             case_id=case.id,

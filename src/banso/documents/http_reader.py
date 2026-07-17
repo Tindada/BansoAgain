@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 from bs4.element import Tag
 
 from banso.documents.models import Document
-from banso.documents.reader import DocumentHTTPStatusError, DocumentReadRequest
+from banso.documents.reader import DocumentReadError, DocumentReadRequest
 
 
 class HTTPDocumentReader:
@@ -31,22 +31,45 @@ class HTTPDocumentReader:
     async def read(self, request: DocumentReadRequest) -> Document:
         """Fetch and parse a document from the requested URL."""
 
-        if self._client is not None:
-            response = await self._client.get(request.url)
-        else:
-            async with httpx.AsyncClient(
-                timeout=self._timeout,
-                headers=self._headers,
-                follow_redirects=True,
-            ) as client:
-                response = await client.get(request.url)
-
         try:
+            if self._client is not None:
+                response = await self._client.get(request.url)
+            else:
+                async with httpx.AsyncClient(
+                    timeout=self._timeout,
+                    headers=self._headers,
+                    follow_redirects=True,
+                ) as client:
+                    response = await client.get(request.url)
+
             response.raise_for_status()
         except httpx.HTTPStatusError as error:
-            raise DocumentHTTPStatusError(
+            message = (
+                f"HTTP {error.response.status_code} while reading document: "
+                f"{error.response.url}"
+            )
+            raise DocumentReadError(
                 url=str(response.url),
                 status_code=response.status_code,
+                reason="http_status",
+                message=message,
+                source_error_type=type(error).__name__,
+            ) from error
+        except httpx.TimeoutException as error:
+            message = str(error) or f"Timed out while reading document: {request.url}"
+            raise DocumentReadError(
+                url=request.url,
+                reason="timeout",
+                message=message,
+                source_error_type=type(error).__name__,
+            ) from error
+        except httpx.TransportError as error:
+            message = str(error) or (f"Transport error while reading document: {request.url}")
+            raise DocumentReadError(
+                url=request.url,
+                reason="transport",
+                message=message,
+                source_error_type=type(error).__name__,
             ) from error
 
         title, text, extraction_strategy = _extract_html_content(response.text)

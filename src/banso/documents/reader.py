@@ -1,6 +1,6 @@
 """Document reader interface."""
 
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, Field
 
@@ -8,13 +8,27 @@ from banso.documents.models import Document
 from banso.retrieval.models import Source
 
 
-class DocumentHTTPStatusError(Exception):
-    """Raised when a document server returns an unsuccessful HTTP status."""
+DocumentReadFailureReason = Literal["http_status", "timeout", "transport"]
 
-    def __init__(self, *, url: str, status_code: int) -> None:
+
+class DocumentReadError(Exception):
+    """A known external failure while reading a document."""
+
+    def __init__(
+        self,
+        *,
+        url: str,
+        reason: DocumentReadFailureReason,
+        message: str,
+        source_error_type: str,
+        status_code: int | None = None,
+    ) -> None:
         self.url = url
+        self.reason = reason
+        self.message = message
+        self.source_error_type = source_error_type
         self.status_code = status_code
-        super().__init__(f"HTTP {status_code} while reading document: {url}")
+        super().__init__(message)
 
 
 class DocumentReadRequest(BaseModel):

@@ -5,7 +5,7 @@ import asyncio
 import httpx
 
 from banso.documents import (
-    DocumentHTTPStatusError,
+    DocumentReadError,
     DocumentReadRequest,
     HTTPDocumentReader,
 )
@@ -115,18 +115,63 @@ async def _run_http_document_reader_exposes_http_status() -> None:
     try:
         try:
             await reader.read(DocumentReadRequest(url="https://example.com/blocked"))
-        except DocumentHTTPStatusError as error:
+        except DocumentReadError as error:
             assert error.url == "https://example.com/blocked"
+            assert error.reason == "http_status"
             assert error.status_code == 403
+            assert error.source_error_type == "HTTPStatusError"
             assert isinstance(error.__cause__, httpx.HTTPStatusError)
         else:
-            raise AssertionError("expected DocumentHTTPStatusError")
+            raise AssertionError("expected DocumentReadError")
     finally:
         await client.aclose()
 
 
 def test_http_document_reader_exposes_http_status() -> None:
     asyncio.run(_run_http_document_reader_exposes_http_status())
+
+
+async def _run_http_document_reader_exposes_transport_failure(
+    source_error: httpx.TransportError,
+    expected_reason: str,
+) -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise source_error
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    reader = HTTPDocumentReader(client=client)
+
+    try:
+        try:
+            await reader.read(DocumentReadRequest(url="https://example.com/news"))
+        except DocumentReadError as error:
+            assert error.url == "https://example.com/news"
+            assert error.reason == expected_reason
+            assert error.status_code is None
+            assert error.source_error_type == type(source_error).__name__
+            assert error.__cause__ is source_error
+        else:
+            raise AssertionError("expected DocumentReadError")
+    finally:
+        await client.aclose()
+
+
+def test_http_document_reader_exposes_timeout() -> None:
+    asyncio.run(
+        _run_http_document_reader_exposes_transport_failure(
+            httpx.ReadTimeout("read timed out"),
+            "timeout",
+        )
+    )
+
+
+def test_http_document_reader_exposes_other_transport_error() -> None:
+    asyncio.run(
+        _run_http_document_reader_exposes_transport_failure(
+            httpx.ConnectError("connection failed"),
+            "transport",
+        )
+    )
 
 
 def test_html_extraction_prefers_longest_article_and_removes_noise() -> None:

@@ -8,7 +8,7 @@ from banso.core.result import Observation
 from banso.core.state import AgentState
 from banso.documents import (
     Document,
-    DocumentHTTPStatusError,
+    DocumentReadError,
     DocumentReadRequest,
     DocumentReader,
     EvidenceExtractionError,
@@ -115,7 +115,7 @@ class NewsActionExecutor:
 
     async def _read_document(self, state: AgentState) -> Observation:
         document_ids: list[str] = []
-        failures: list[dict[str, str | int]] = []
+        failures: list[dict[str, str | int | None]] = []
 
         result_ids = state.search_result_ids[: state.budget.max_documents_to_read]
         for result_id in result_ids:
@@ -131,15 +131,15 @@ class NewsActionExecutor:
                         metadata={"search_result_id": result.id},
                     )
                 )
-            except DocumentHTTPStatusError as error:
-                if error.status_code not in {401, 403, 404}:
-                    raise
+            except DocumentReadError as error:
                 failures.append(
                     {
                         "search_result_id": result.id,
                         "url": error.url,
                         "status_code": error.status_code,
-                        "reason": "http_status",
+                        "reason": error.reason,
+                        "message": error.message,
+                        "source_error_type": error.source_error_type,
                     }
                 )
                 continue

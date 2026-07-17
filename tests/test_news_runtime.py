@@ -10,13 +10,14 @@ from banso.core import (
     AgentState,
     ExecutionBudget,
     PlannedSearch,
+    RuntimeExecutionError,
     SearchPlan,
     UserQuery,
 )
 from banso.core.action import AgentActionType
 from banso.documents import (
     Document,
-    DocumentHTTPStatusError,
+    DocumentReadError,
     FakeDocumentReader,
     FakeEvidenceExtractor,
 )
@@ -64,9 +65,12 @@ class PartiallyBlockedDocumentReader(FakeDocumentReader):
 
     async def read(self, request):
         if request.url.endswith("blocked"):
-            raise DocumentHTTPStatusError(
+            raise DocumentReadError(
                 url=request.url,
+                reason="http_status",
+                message=f"HTTP {self.status_code} while reading document",
                 status_code=self.status_code,
+                source_error_type="HTTPStatusError",
             )
         return await super().read(request)
 
@@ -175,7 +179,10 @@ async def _run_news_runtime() -> None:
     assert len(state.evidence_ids) == 1
     assert output.result.final_answer is not None
     assert "Fake summary for 'latest AI news'" in output.result.final_answer
+    assert state.final_answer == output.result.final_answer
     assert output.trace.final_result == output.result
+    assert output.trace.status == "completed"
+    assert output.trace.failure is None
     assert all(
         step.duration_seconds is not None and step.duration_seconds >= 0
         for step in output.trace.steps
@@ -310,6 +317,8 @@ async def _run_news_runtime_skips_unreadable_document(status_code: int) -> None:
             "url": "https://example.com/blocked",
             "status_code": status_code,
             "reason": "http_status",
+            "message": f"HTTP {status_code} while reading document",
+            "source_error_type": "HTTPStatusError",
         }
     ]
 
@@ -330,11 +339,36 @@ def test_news_runtime_preserves_search_order_when_reading() -> None:
     asyncio.run(_run_news_runtime_preserves_search_order_when_reading())
 
 
-@pytest.mark.parametrize("status_code", [401, 403, 404])
+@pytest.mark.parametrize("status_code", [401, 403, 404, 410, 500, 521])
 def test_news_runtime_skips_unreadable_document(status_code: int) -> None:
     asyncio.run(_run_news_runtime_skips_unreadable_document(status_code))
 
 
-def test_news_runtime_does_not_hide_other_http_errors() -> None:
-    with pytest.raises(DocumentHTTPStatusError, match="HTTP 500"):
-        asyncio.run(_run_news_runtime_skips_unreadable_document(500))
+class BrokenDocumentReader(FakeDocumentReader):
+    async def read(self, request):
+        raise TypeError("reader implementation bug")
+
+
+def test_news_runtime_does_not_hide_unknown_reader_errors() -> None:
+    store = InMemoryArtifactStore()
+    runtime = AgentRuntime(
+        policy=NewsRuleBasedPolicy(),
+        executor=NewsActionExecutor(
+            store=store,
+            retrieval_provider=FakeRetrievalProvider(),
+            document_reader=BrokenDocumentReader(),
+            evidence_extractor=FakeEvidenceExtractor(),
+            synthesizer=FakeSynthesizer(),
+        ),
+    )
+
+    with pytest.raises(RuntimeExecutionError) as caught:
+        asyncio.run(runtime.run(AgentState(query=UserQuery(text="latest AI news"))))
+
+    assert isinstance(caught.value.original_error, TypeError)
+    assert caught.value.trace.status == "failed"
+    assert caught.value.trace.failure is not None
+    assert caught.value.trace.failure.phase == "executor"
+    assert caught.value.trace.failure.error_type == "TypeError"
+    assert caught.value.trace.failure.step_index == 2
+    assert len(caught.value.trace.steps) == 2

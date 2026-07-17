@@ -60,6 +60,10 @@ class DefaultStateReducer:
             observation.data.get("evidence_ids"),
         )
 
+        final_answer = observation.data.get("final_answer")
+        if isinstance(final_answer, str):
+            next_state.final_answer = final_answer
+
         if action.type == AgentActionType.STOP or observation.error is not None:
             next_state.done = True
 

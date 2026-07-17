@@ -127,6 +127,20 @@ def test_reducer_writes_search_plan_without_mutating_input_state() -> None:
     assert next_state.current_step == 1
 
 
+def test_reducer_writes_final_answer_without_mutating_input_state() -> None:
+    state = AgentState(query=UserQuery(text="latest AI news"))
+    action = AgentAction(type=AgentActionType.SYNTHESIZE)
+    observation = Observation(
+        action_type=AgentActionType.SYNTHESIZE,
+        data={"final_answer": "Synthesized answer."},
+    )
+
+    next_state = DefaultStateReducer().apply(state, action, observation)
+
+    assert state.final_answer is None
+    assert next_state.final_answer == "Synthesized answer."
+
+
 async def _run_runtime_with_bounded_plan():
     plan = SearchPlan(
         searches=[
