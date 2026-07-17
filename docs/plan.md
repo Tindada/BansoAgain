@@ -29,7 +29,8 @@
 - 已实现可替换的 retrieval、document reader、evidence extractor、synthesizer 和 LLM client 接口及部分实现。
 - 已接入 Tavily retrieval、HTTP document reader、OpenAI SDK LLM client、LLM evidence extractor 和 LLM synthesizer。
 - 已实现超长文档的分块 evidence extraction，并隔离单篇文档的 LLM 提取失败。
-- 已实现 retrieval filter、search result source classifier 和基础 artifact store。
+- 已实现 retrieval filter、仅补充元数据而不做准入的 search result source
+  classifier，以及基础 artifact store。
 - 已定义 `AgentTrace` 和 `TraceStep` 数据结构，用于记录运行轨迹。
 - 已补充覆盖核心 runtime、新闻执行器、retrieval、document reader、LLM 配置和 LLM 组件的测试。
 
@@ -226,16 +227,9 @@ state -> action -> observation -> next_state -> reward
 
 ### 文档读取与异常处理
 
-- 当前文档读取流程仅隔离 HTTP 401、403 和 404，单篇读取失败不会终止整批新闻处理。
-- 部分页面存在正文抽取不完整的问题。真实运行中曾出现原始 HTML 约 22 万字符，
-  最终仅抽取出 75 字正文的情况，导致可用于 evidence extraction 的内容不足。
-
-后续按优先级补充：
-
-- HTTP 429：遵循 `Retry-After`，并使用有上限的指数退避。
-- HTTP 5xx：对可恢复状态进行有限次数重试。
-- 请求超时和连接错误：有限次数重试，最终失败后记录并跳过。
-- 统一失败分类、指标和日志，便于区分来源限制与基础设施故障。
+- HTTP 429、可恢复的 5xx、超时和连接错误尚未实现有上限的重试，也缺少按
+  失败类别聚合的指标和持久化日志。
+- HTML 正文抽取仍是启发式的，缺少质量判定和低质量结果的回退策略。
 
 ### 证据提取
 
@@ -245,9 +239,7 @@ state -> action -> observation -> next_state -> reward
 
 ### Trace
 
-- Trace 当前主要记录 artifact ID，没有持久化文档正文及其提取元数据。进程结束
-  后，无法仅依赖 Trace 检查文档的正文长度和提取策略，也无法完整审计 artifact
-  内容；运行在异常中断时不会保留 partial trace。
+- Trace 仍未持久化 artifact 内容，进程结束后无法独立审计或完整回放。
 
 ### 检索规划
 
@@ -268,7 +260,6 @@ state -> action -> observation -> next_state -> reward
 
 ### 来源分类
 
-- 搜索结果会使用扩展后的官方、研究、政府、主流新闻、社交平台和聚合站点域名
-  注册表补充来源类型；未命中注册表时使用 provider 已提供的非 `unknown` 类型。
-- 来源分类只补充可观测元数据，不决定结果是否准入、如何排序或是否读取。
-  `unknown` 来源会保留，后续选择策略留给 agent policy 或独立动作实现。
+- 来源类型注册表仍需要人工维护，可能漏掉新出现或低频的官方、研究、政府与新闻域名。
+  未命中注册表且 provider 未提供有效类型的结果仍会标记为 `unknown`，需要继续通过
+  evaluation 监测覆盖率和高频未知域名。
