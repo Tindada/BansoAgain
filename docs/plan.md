@@ -8,7 +8,7 @@
 
 - 可替换 LLM
 - 可替换搜索与 retrieval
-- 可插入 RL policy
+- 可基于 agent rollout 和 reward 对 LLM policy 进行 RL 后训练
 - 完整执行轨迹记录
 - 可评估、可回放、可迭代优化
 
@@ -25,7 +25,7 @@
 - 已实现最小 `AgentRuntime` 主循环，支持 policy 决策、executor 执行、reducer 更新状态和 trace 收集。
 - 已实现新闻场景的固定流程 policy：搜索、读取文档、抽取 evidence、生成总结。
 - 尚未实现由 LLM 根据当前 state 动态选择 action 的 agent policy；这是固定流程
-  policy 之后、RL policy 之前的下一项核心能力。
+  policy 之后的下一项核心能力，也是未来进行 LLM RL 后训练时被优化的 policy。
 - 已实现可替换的 retrieval、document reader、evidence extractor、synthesizer 和 LLM client 接口及部分实现。
 - 已接入 Tavily retrieval、HTTP document reader、OpenAI SDK LLM client、LLM evidence extractor 和 LLM synthesizer。
 - 已实现超长文档的分块 evidence extraction，并隔离单篇文档的 LLM 提取失败。
@@ -43,7 +43,7 @@
 - 系统整体架构图
 - 核心模块划分
 - Agent 执行流程
-- 未来 RL 扩展点说明
+- 未来基于 rollout 的 LLM RL 后训练扩展点说明
 
 重点模块：
 
@@ -58,7 +58,9 @@ DocumentRanker
 EvidenceExtractor
 Synthesizer
 TraceLogger
+RolloutStore
 RewardModel
+LLMPolicyTrainer
 ```
 
 ## 阶段 2：核心接口设计
@@ -73,7 +75,7 @@ RewardModel
 - `LLMProvider` 接口
 - `RetrievalProvider` 接口
 - `TraceLogger` 接口
-- `RewardModel` 预留接口
+- `RolloutRecord`、`RewardModel` 和 `LLMPolicyTrainer` 预留接口
 
 设计原则：
 
@@ -82,7 +84,7 @@ RewardModel
 可替换搜索/检索
 可替换 policy
 可记录完整 trace
-可支持未来 RL
+可支持未来对 LLM policy 进行 RL 后训练
 ```
 
 ## 阶段 3：最小 Agent Runtime
@@ -160,7 +162,7 @@ token 与调用成本
 
 ## 阶段 6：Trace 与评估系统
 
-目标：为后续优化和 RL 做准备。
+目标：为 LLM Agent Policy 的评估、迭代优化和未来 RL 后训练做准备。
 
 需要记录：
 
@@ -168,10 +170,14 @@ token 与调用成本
 用户输入
 每一步 state
 每一步 action
+policy 实际接收的 prompt/messages 和可用 action schema
+LLM 原始输出、结构化 action 解析结果和校验/重试记录
 工具调用输入
 工具调用输出
 中间判断
 最终答案
+episode 终止原因和 outcome metrics
+模型、prompt、schema、配置与代码版本
 用户反馈
 自动评分
 ```
@@ -183,31 +189,48 @@ trace replay
 offline evaluation
 policy comparison
 reward modeling
-RL training data generation
+LLM RL rollout/training data generation
 ```
 
 LLM Agent Policy 与固定流程 policy 应使用相同 evaluation cases 和指标进行
-对比，为后续 reward 设计和 RL policy 提供可复现的行为基线。
+对比，为后续 reward 设计和 LLM RL 后训练提供可复现的行为基线。Reward、
+自动评分和其他 evaluator 才能获得的信息应作为 rollout 完成后的训练标注保存，
+不能泄漏到生成当前 action 的 policy 输入中。
 
-## 阶段 7：RL 扩展预留
+## 阶段 7：LLM Policy RL 后训练预留
 
-目标：让系统可以从 LLM-driven agent 平滑扩展到 RL-driven agent。
+目标：利用 agent rollout、结果评估和 reward 对 LLM Agent Policy 进行 RL 后训练，
+优化的对象是生成 `AgentAction` 的 LLM 参数，而不是引入一个独立的传统
+`RLPolicy` 来替换 LLM policy。
 
 预留接口：
 
 ```text
-RLPolicy
+RolloutRunner
+RolloutStore
 RewardModel
-ReplayBuffer
-Environment
+LLMPolicyTrainer
 Evaluator
 ```
 
-核心抽象保持为：
+运行时继续使用统一的 `Policy` 接口和 `LLMAgentPolicy` 实现。训练侧消费完整、
+可复现的 rollout，并在 episode 结束后附加 reward。核心数据流为：
 
 ```text
-state -> action -> observation -> next_state -> reward
+policy prompt/messages
+    -> LLM completion
+    -> parsed AgentAction
+    -> observation
+    -> next policy prompt/messages
+    -> episode outcome
+    -> reward
+    -> update LLM parameters
 ```
+
+Rollout 必须保存 LLM 实际接收的 prompt/messages、原始 completion、解析和校验
+过程、action/observation、终止原因以及模型与配置版本，不能假设未来可以仅凭
+`AgentState` 精确重建当时的训练样本。具体 RL 算法和训练框架在该阶段再选型，
+当前不提前绑定 PPO、GRPO 或其他实现。
 
 ## 初始技术方向
 
