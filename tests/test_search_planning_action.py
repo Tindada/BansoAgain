@@ -8,6 +8,7 @@ from banso.core import (
     AgentActionType,
     AgentRuntime,
     AgentState,
+    ActionHistoryEntry,
     DefaultStateReducer,
     ExecutionBudget,
     Observation,
@@ -123,6 +124,37 @@ def test_reducer_writes_search_plan_without_mutating_input_state() -> None:
     )
     assert next_state.last_action == AgentActionType.PLAN_SEARCH
     assert next_state.current_step == 1
+    assert state.action_history == []
+    assert next_state.action_history == [
+        ActionHistoryEntry(
+            step_index=0,
+            action_type=AgentActionType.PLAN_SEARCH,
+            observation=observation,
+        )
+    ]
+
+
+def test_reducer_stores_independent_action_history_snapshot() -> None:
+    state = AgentState(query=UserQuery(text="latest AI news"))
+    action = AgentAction(
+        type=AgentActionType.SEARCH,
+        params={"filters": {"domains": ["example.com"]}},
+    )
+    observation = Observation(
+        data={"search_result_ids": ["result-1"]},
+    )
+
+    next_state = DefaultStateReducer().apply(state, action, observation)
+    action.params["filters"]["domains"].append("other.example")
+    observation.data["search_result_ids"].append("result-2")
+
+    history_entry = next_state.action_history[0]
+    assert history_entry.params == {
+        "filters": {"domains": ["example.com"]},
+    }
+    assert history_entry.observation.data == {
+        "search_result_ids": ["result-1"],
+    }
 
 
 def test_reducer_writes_final_answer_without_mutating_input_state() -> None:
@@ -188,6 +220,19 @@ def test_runtime_executes_bounded_search_plan_in_order() -> None:
         "general AI update",
         "official AI release",
     ]
+    assert [
+        entry.step_index for entry in output.result.state.action_history
+    ] == list(range(7))
+    assert [
+        entry.action_type for entry in output.result.state.action_history
+    ] == [step.action.type for step in output.trace.steps]
+    assert output.result.state.action_history[-1].action_type == AgentActionType.STOP
+    assert output.result.state.current_step == len(
+        output.result.state.action_history
+    )
+    assert [len(step.state.action_history) for step in output.trace.steps] == list(
+        range(7)
+    )
     assert output.trace.steps[0].observation.data["search_plan"]["searches"] == [
         {"query": "general AI update", "intent": "general"},
         {"query": "official AI release", "intent": "official"},
@@ -199,4 +244,7 @@ def test_runtime_executes_bounded_search_plan_in_order() -> None:
     assert replayable_trace.final_result is not None
     assert replayable_trace.final_result.state.search_plan == (
         output.result.state.search_plan
+    )
+    assert replayable_trace.final_result.state.action_history == (
+        output.result.state.action_history
     )

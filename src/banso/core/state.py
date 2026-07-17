@@ -1,8 +1,11 @@
 """Agent state models."""
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 from banso.core.action import AgentActionType
+from banso.core.observation import Observation
 
 
 class ExecutionBudget(BaseModel):
@@ -35,6 +38,15 @@ class SearchPlan(BaseModel):
     searches: list[PlannedSearch] = Field(default_factory=list)
 
 
+class ActionHistoryEntry(BaseModel):
+    """One completed action and its policy-visible observation."""
+
+    step_index: int
+    action_type: AgentActionType
+    params: dict[str, Any] = Field(default_factory=dict)
+    observation: Observation
+
+
 class AgentState(BaseModel):
     """Mutable state observed by the policy at each step."""
 
@@ -42,6 +54,7 @@ class AgentState(BaseModel):
     current_step: int = 0
     budget: ExecutionBudget = Field(default_factory=ExecutionBudget)
     search_plan: SearchPlan | None = None
+    action_history: list[ActionHistoryEntry] = Field(default_factory=list)
     search_queries: list[str] = Field(default_factory=list)
     search_result_ids: list[str] = Field(default_factory=list)
     document_ids: list[str] = Field(default_factory=list)

@@ -1,10 +1,11 @@
 """State reducer interface and default implementation."""
 
+from copy import deepcopy
 from typing import Protocol
 
 from banso.core.action import AgentAction, AgentActionType
 from banso.core.observation import Observation
-from banso.core.state import AgentState, SearchPlan
+from banso.core.state import ActionHistoryEntry, AgentState, SearchPlan
 
 
 def _extend_string_list(target: list[str], values: object) -> None:
@@ -35,6 +36,14 @@ class DefaultStateReducer:
         observation: Observation,
     ) -> AgentState:
         next_state = state.model_copy(deep=True)
+        next_state.action_history.append(
+            ActionHistoryEntry(
+                step_index=state.current_step,
+                action_type=action.type,
+                params=deepcopy(action.params),
+                observation=observation.model_copy(deep=True),
+            )
+        )
         next_state.current_step += 1
         next_state.last_action = action.type
 

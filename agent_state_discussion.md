@@ -62,7 +62,13 @@ class ActionHistoryEntry(BaseModel):
 
 过去 Action 的完整 rationale 不必进入 State，可以保留在 Trace 中。
 
-Observation 应当是可直接提供给 Policy 的结构化执行结果，而不是底层工具的原始响应。建议增加统一状态：
+`ActionHistoryEntry` 由 Reducer 在 Action 执行并产生 Observation 后写入，
+`step_index` 使用执行前的 `AgentState.current_step`。参数和 Observation 以深拷贝形式
+保存，避免后续修改污染历史快照。正常运行中 `action_history` 的长度应与
+`current_step` 一致，STOP Action 也需要进入历史；未产生 Observation 的失败步骤不
+进入 State 历史，其异常信息由 Trace 保存。
+
+Observation 应当是可直接提供给 Policy 的结构化执行结果，而不是底层工具的原始响应。建议使用统一容器：
 
 ```python
 class Observation(BaseModel):

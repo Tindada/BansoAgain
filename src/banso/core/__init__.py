@@ -8,6 +8,7 @@ from banso.core.reducer import DefaultStateReducer, StateReducer
 from banso.core.result import AgentResult
 from banso.core.runtime import AgentRuntime, RuntimeExecutionError, RuntimeRunResult
 from banso.core.state import (
+    ActionHistoryEntry,
     AgentState,
     ExecutionBudget,
     PlannedSearch,
@@ -17,6 +18,7 @@ from banso.core.state import (
 
 __all__ = [
     "ActionExecutor",
+    "ActionHistoryEntry",
     "AgentAction",
     "AgentActionType",
     "AgentResult",
