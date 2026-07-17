@@ -62,6 +62,14 @@ class PartiallyFailingEvidenceExtractor:
         ]
 
 
+class FailingEvidenceExtractor:
+    async def extract(
+        self,
+        request: EvidenceExtractionRequest,
+    ) -> list[EvidenceItem]:
+        raise EvidenceExtractionError("provider failed", reason="llm_error")
+
+
 async def _run_extraction_respects_concurrency_and_document_order() -> None:
     store = InMemoryArtifactStore()
     documents = [
@@ -98,6 +106,9 @@ async def _run_extraction_respects_concurrency_and_document_order() -> None:
         "Second",
         "Third",
     ]
+    assert observation.data["successful_document_count"] == 3
+    assert observation.data["failed_document_count"] == 0
+    assert observation.data["evidence_count"] == 3
 
 
 def test_extraction_respects_concurrency_and_document_order() -> None:
@@ -150,7 +161,43 @@ async def _run_extraction_isolates_known_failures() -> None:
         }
     ]
     assert observation.data["documents_without_evidence"] == [documents[2].id]
+    assert observation.data["successful_document_count"] == 2
+    assert observation.data["failed_document_count"] == 1
+    assert observation.data["evidence_count"] == 1
 
 
 def test_extraction_isolates_known_failures() -> None:
     asyncio.run(_run_extraction_isolates_known_failures())
+
+
+async def _run_extraction_reports_failed_when_all_documents_fail() -> None:
+    store = InMemoryArtifactStore()
+    documents = [
+        Document(title="First", url="https://example.com/first", text="First"),
+        Document(title="Second", url="https://example.com/second", text="Second"),
+    ]
+    state = AgentState(
+        query=UserQuery(text="test query"),
+        document_ids=[store.put(document) for document in documents],
+    )
+    executor = NewsActionExecutor(
+        store=store,
+        retrieval_provider=FakeRetrievalProvider(),
+        document_reader=FakeDocumentReader(),
+        evidence_extractor=FailingEvidenceExtractor(),
+        synthesizer=FakeSynthesizer(),
+    )
+
+    observation = await executor.execute(
+        AgentAction(type=AgentActionType.EXTRACT_EVIDENCE),
+        state,
+    )
+
+    assert observation.data["successful_document_count"] == 0
+    assert observation.data["failed_document_count"] == 2
+    assert observation.data["evidence_count"] == 0
+    assert observation.data["evidence_ids"] == []
+
+
+def test_extraction_reports_failed_when_all_documents_fail() -> None:
+    asyncio.run(_run_extraction_reports_failed_when_all_documents_fail())

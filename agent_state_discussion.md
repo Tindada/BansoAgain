@@ -66,11 +66,18 @@ Observation 应当是可直接提供给 Policy 的结构化执行结果，而不
 
 ```python
 class Observation(BaseModel):
-    status: Literal["success", "partial", "failed"] = "success"
-    data: dict[str, Any] = Field(default_factory=dict)
+    data: dict[str, JsonValue] = Field(default_factory=dict)
 ```
 
 Observation 可以包含 artifact ID、数量、过滤报告和失败信息，但不应包含完整网页正文、完整 provider 响应、LLM 原始 completion 或无界 metadata。
+
+批量处理 Action 应在 `data` 中使用带计数单位的字段，避免通用的 `success_count`、
+`failure_count` 和 `output_count` 产生歧义。例如文档读取记录
+`successfully_read_document_count` 和 `failed_document_count`；Evidence 提取记录
+`successful_document_count`、`failed_document_count` 和 `evidence_count`。具体失败
+原因继续使用 Action 对应的结构化字段，例如 `document_read_failures` 或
+`evidence_extraction_failures`。Policy 可以结合数量和失败原因决定是否重试，不额外
+维护一套重复的通用状态和错误模型。
 
 如果某个失败需要由 Policy 决定是否重试，应将其表示为 Observation；只有不可恢复的运行时错误才直接终止运行。
 

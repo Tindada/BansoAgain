@@ -4,7 +4,7 @@ import asyncio
 
 from banso.artifacts import ArtifactStore
 from banso.core.action import AgentAction, AgentActionType
-from banso.core.result import Observation
+from banso.core.observation import Observation
 from banso.core.state import AgentState
 from banso.documents import (
     Document,
@@ -145,6 +145,8 @@ class NewsActionExecutor:
 
         return Observation(
             data={
+                "successfully_read_document_count": len(document_ids),
+                "failed_document_count": len(failures),
                 "document_ids": document_ids,
                 "document_read_failures": failures,
             },
@@ -197,8 +199,14 @@ class NewsActionExecutor:
             if error is None and not evidence_items
         ]
 
+        successful_extractions = sum(
+            error is None for _, _, error in extraction_results
+        )
         return Observation(
             data={
+                "successful_document_count": successful_extractions,
+                "failed_document_count": len(failures),
+                "evidence_count": len(evidence_ids),
                 "evidence_ids": evidence_ids,
                 "evidence_extraction_failures": failures,
                 "documents_without_evidence": documents_without_evidence,

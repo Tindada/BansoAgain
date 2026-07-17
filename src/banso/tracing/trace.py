@@ -7,7 +7,8 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 from banso.core.action import AgentAction
-from banso.core.result import AgentResult, Observation
+from banso.core.observation import Observation
+from banso.core.result import AgentResult
 from banso.core.state import AgentState, UserQuery
 
 

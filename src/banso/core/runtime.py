@@ -7,9 +7,10 @@ from pydantic import BaseModel
 
 from banso.core.action import AgentAction
 from banso.core.executor import ActionExecutor
+from banso.core.observation import Observation
 from banso.core.policy import Policy
 from banso.core.reducer import DefaultStateReducer, StateReducer
-from banso.core.result import AgentResult, Observation
+from banso.core.result import AgentResult
 from banso.core.state import AgentState
 from banso.tracing.trace import AgentTrace, TraceFailure, TraceStep
 

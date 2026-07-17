@@ -3,7 +3,7 @@
 from typing import Protocol
 
 from banso.core.action import AgentAction, AgentActionType
-from banso.core.result import Observation
+from banso.core.observation import Observation
 from banso.core.state import AgentState, SearchPlan
 
 

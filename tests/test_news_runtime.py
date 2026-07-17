@@ -14,7 +14,7 @@ from banso.core import (
     SearchPlan,
     UserQuery,
 )
-from banso.core.action import AgentActionType
+from banso.core.action import AgentAction, AgentActionType
 from banso.documents import (
     Document,
     DocumentReadError,
@@ -73,6 +73,17 @@ class PartiallyBlockedDocumentReader(FakeDocumentReader):
                 source_error_type="HTTPStatusError",
             )
         return await super().read(request)
+
+
+class BlockedDocumentReader(FakeDocumentReader):
+    async def read(self, request):
+        raise DocumentReadError(
+            url=request.url,
+            reason="http_status",
+            message="HTTP 503 while reading document",
+            status_code=503,
+            source_error_type="HTTPStatusError",
+        )
 
 
 class PartiallyBlockedRetrievalProvider:
@@ -321,6 +332,8 @@ async def _run_news_runtime_skips_unreadable_document(status_code: int) -> None:
             "source_error_type": "HTTPStatusError",
         }
     ]
+    assert read_observation.data["successfully_read_document_count"] == 1
+    assert read_observation.data["failed_document_count"] == 1
 
 
 def test_news_runtime() -> None:
@@ -342,6 +355,38 @@ def test_news_runtime_preserves_search_order_when_reading() -> None:
 @pytest.mark.parametrize("status_code", [401, 403, 404, 410, 500, 521])
 def test_news_runtime_skips_unreadable_document(status_code: int) -> None:
     asyncio.run(_run_news_runtime_skips_unreadable_document(status_code))
+
+
+async def _run_document_read_reports_failed_when_all_documents_fail() -> None:
+    store = InMemoryArtifactStore()
+    search_result = SearchResult(
+        title="Unavailable",
+        url="https://example.com/unavailable",
+    )
+    state = AgentState(
+        query=UserQuery(text="latest AI news"),
+        search_result_ids=[store.put(search_result)],
+    )
+    executor = NewsActionExecutor(
+        store=store,
+        retrieval_provider=FakeRetrievalProvider(),
+        document_reader=BlockedDocumentReader(),
+        evidence_extractor=FakeEvidenceExtractor(),
+        synthesizer=FakeSynthesizer(),
+    )
+
+    observation = await executor.execute(
+        AgentAction(type=AgentActionType.READ_DOCUMENT),
+        state,
+    )
+
+    assert observation.data["successfully_read_document_count"] == 0
+    assert observation.data["failed_document_count"] == 1
+    assert observation.data["document_ids"] == []
+
+
+def test_document_read_reports_failed_when_all_documents_fail() -> None:
+    asyncio.run(_run_document_read_reports_failed_when_all_documents_fail())
 
 
 class BrokenDocumentReader(FakeDocumentReader):
