@@ -12,10 +12,10 @@ class AgentActionType(StrEnum):
     PLAN_SEARCH = "plan_search"
     SEARCH = "search"
     READ_DOCUMENT = "read_document"
-    RANK_DOCUMENTS = "rank_documents"
+    # RANK_DOCUMENTS = "rank_documents"
     EXTRACT_EVIDENCE = "extract_evidence"
     SYNTHESIZE = "synthesize"
-    ASK_CLARIFICATION = "ask_clarification"
+    # ASK_CLARIFICATION = "ask_clarification"
     STOP = "stop"
 
 
