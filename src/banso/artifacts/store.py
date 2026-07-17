@@ -11,15 +11,15 @@ class ArtifactStore(Protocol):
     """Stores structured artifacts produced during an agent run."""
 
     def put(self, artifact: BaseModel) -> str:
-        """Store an artifact and return its id."""
+        """Store an isolated artifact snapshot and return its id."""
         ...
 
     def get(self, artifact_id: str, artifact_type: type[TArtifact]) -> TArtifact | None:
-        """Return an artifact by id and expected type."""
+        """Return an artifact snapshot by id and expected type."""
         ...
 
     def list(self, artifact_type: type[TArtifact]) -> list[TArtifact]:
-        """Return all artifacts of a given type."""
+        """Return snapshots of all artifacts of a given type."""
         ...
 
 
@@ -33,19 +33,21 @@ class InMemoryArtifactStore:
         artifact_id = getattr(artifact, "id", None)
         if not isinstance(artifact_id, str):
             raise ValueError("artifact must expose a string 'id' field")
+        if artifact_id in self._artifacts:
+            raise ValueError(f"artifact already exists: {artifact_id}")
 
-        self._artifacts[artifact_id] = artifact
+        self._artifacts[artifact_id] = artifact.model_copy(deep=True)
         return artifact_id
 
     def get(self, artifact_id: str, artifact_type: type[TArtifact]) -> TArtifact | None:
         artifact = self._artifacts.get(artifact_id)
         if isinstance(artifact, artifact_type):
-            return artifact
+            return artifact.model_copy(deep=True)
         return None
 
     def list(self, artifact_type: type[TArtifact]) -> list[TArtifact]:
         return [
-            artifact
+            artifact.model_copy(deep=True)
             for artifact in self._artifacts.values()
             if isinstance(artifact, artifact_type)
         ]

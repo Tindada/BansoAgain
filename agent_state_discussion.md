@@ -43,7 +43,6 @@ class AgentState(BaseModel):
     citations: list[str]
     last_action: AgentActionType | None
     done: bool
-    termination_reason: str | None
 ```
 
 周期任务相关的历史基线暂不作为当前设计重点。
