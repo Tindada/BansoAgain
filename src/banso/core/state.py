@@ -59,5 +59,6 @@ class AgentState(BaseModel):
     document_ids: list[str] = Field(default_factory=list)
     evidence_ids: list[str] = Field(default_factory=list)
     final_answer: str | None = None
+    citations: list[str] = Field(default_factory=list)
     last_action: AgentActionType | None = None
     done: bool = False

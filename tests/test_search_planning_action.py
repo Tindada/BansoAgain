@@ -161,25 +161,59 @@ def test_reducer_writes_final_answer_without_mutating_input_state() -> None:
     state = AgentState(query=UserQuery(text="latest AI news"))
     action = AgentAction(type=AgentActionType.SYNTHESIZE)
     observation = Observation(
-        data={"final_answer": "Synthesized answer."},
+        data={
+            "final_answer": "Synthesized answer.",
+            "citations": ["https://example.com/source"],
+        },
     )
 
     next_state = DefaultStateReducer().apply(state, action, observation)
 
     assert state.final_answer is None
+    assert state.citations == []
     assert next_state.final_answer == "Synthesized answer."
+    assert next_state.citations == ["https://example.com/source"]
+
+
+def test_reducer_replaces_citations_with_new_final_answer() -> None:
+    state = AgentState(
+        query=UserQuery(text="latest AI news"),
+        final_answer="Old answer.",
+        citations=["https://example.com/old"],
+    )
+    action = AgentAction(type=AgentActionType.SYNTHESIZE)
+    observation = Observation(
+        data={
+            "final_answer": "New answer.",
+            "citations": ["https://example.com/new", 42],
+        },
+    )
+
+    next_state = DefaultStateReducer().apply(state, action, observation)
+
+    assert state.final_answer == "Old answer."
+    assert state.citations == ["https://example.com/old"]
+    assert next_state.final_answer == "New answer."
+    assert next_state.citations == ["https://example.com/new"]
 
 
 def test_reducer_ignores_final_answer_from_other_actions() -> None:
-    state = AgentState(query=UserQuery(text="latest AI news"))
+    state = AgentState(
+        query=UserQuery(text="latest AI news"),
+        citations=["https://example.com/existing"],
+    )
     action = AgentAction(type=AgentActionType.SEARCH)
     observation = Observation(
-        data={"final_answer": "Unexpected answer."},
+        data={
+            "final_answer": "Unexpected answer.",
+            "citations": ["https://example.com/unexpected"],
+        },
     )
 
     next_state = DefaultStateReducer().apply(state, action, observation)
 
     assert next_state.final_answer is None
+    assert next_state.citations == ["https://example.com/existing"]
 
 
 async def _run_runtime_with_bounded_plan():

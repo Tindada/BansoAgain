@@ -69,6 +69,12 @@ class DefaultStateReducer:
             final_answer = observation.data.get("final_answer")
             if isinstance(final_answer, str):
                 next_state.final_answer = final_answer
+                citations = observation.data.get("citations")
+                next_state.citations = (
+                    [value for value in citations if isinstance(value, str)]
+                    if isinstance(citations, list)
+                    else []
+                )
 
         if action.type == AgentActionType.STOP:
             next_state.done = True

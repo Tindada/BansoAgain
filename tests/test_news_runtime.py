@@ -192,6 +192,8 @@ async def _run_news_runtime() -> None:
     assert len(state.evidence_ids) == 1
     assert state.final_answer is not None
     assert "Fake summary for 'latest AI news'" in state.final_answer
+    synthesis_observation = output.trace.steps[4].observation
+    assert state.citations == synthesis_observation.data["citations"]
     assert "final_answer" not in output.result.model_dump()
     assert output.trace.final_result == output.result
     assert output.trace.status == "completed"

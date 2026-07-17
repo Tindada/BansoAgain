@@ -59,14 +59,9 @@ async def main(*, verbose: bool = False) -> None:
     print("evidence items:", len(state.evidence_ids))
     print("final answer:", state.final_answer)
 
-    synthesis_step = next(
-        (step for step in output.trace.steps if step.action.type.value == "synthesize"),
-        None,
-    )
-    citations = synthesis_step.observation.data.get("citations", []) if synthesis_step else []
-    if citations:
+    if state.citations:
         print("citations:")
-        for citation in citations:
+        for citation in state.citations:
             print("-", citation)
 
     if not verbose:

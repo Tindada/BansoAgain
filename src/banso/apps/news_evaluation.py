@@ -86,11 +86,8 @@ def extract_evaluation_result(
         for step in output.trace.steps
         if step.action.type != AgentActionType.SEARCH
     }
-    synthesis = observations.get(AgentActionType.SYNTHESIZE)
     read_document = observations.get(AgentActionType.READ_DOCUMENT)
     extract_evidence = observations.get(AgentActionType.EXTRACT_EVIDENCE)
-    citations = synthesis.data.get("citations", []) if synthesis else []
-    citations = [value for value in citations if isinstance(value, str)]
 
     sources = [
         result.source
@@ -148,7 +145,7 @@ def extract_evaluation_result(
         state.done
         and len(state.document_ids) >= case.min_documents
         and len(state.evidence_ids) >= case.min_evidence
-        and len(citations) >= case.min_citations
+        and len(state.citations) >= case.min_citations
         and bool(state.final_answer)
     )
 
@@ -171,7 +168,7 @@ def extract_evaluation_result(
         source_classifications=source_classifications,
         document_count=len(state.document_ids),
         evidence_count=len(state.evidence_ids),
-        citations=citations,
+        citations=state.citations,
         source_domains=source_domains,
         source_types=source_types,
         preferred_source_types=case.preferred_source_types,

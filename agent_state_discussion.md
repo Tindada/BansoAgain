@@ -48,6 +48,9 @@ class AgentState(BaseModel):
 
 周期任务相关的历史基线暂不作为当前设计重点。
 
+`final_answer` 和 `citations` 属于同一次 SYNTHESIZE 的输出，应由 Reducer 一起更新。
+再次生成答案时使用新的 citations 替换旧值，不能追加到上一版答案的引用中。
+
 ## Action 历史与 Observation
 
 不再额外维护一套 `ActionResultSummary`，直接将有界的 Observation 作为 Action 执行结果保存：
