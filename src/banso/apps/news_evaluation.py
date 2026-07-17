@@ -149,7 +149,7 @@ def extract_evaluation_result(
         and len(state.document_ids) >= case.min_documents
         and len(state.evidence_ids) >= case.min_evidence
         and len(citations) >= case.min_citations
-        and bool(output.result.final_answer)
+        and bool(state.final_answer)
     )
 
     return NewsEvaluationResult(
@@ -158,7 +158,7 @@ def extract_evaluation_result(
         query=case.query,
         completed=state.done,
         passed_minimums=passed_minimums,
-        final_answer=output.result.final_answer,
+        final_answer=state.final_answer,
         trace_id=output.trace.trace_id,
         retrieved_result_count=retrieved_result_count,
         filtered_result_count=filtered_result_count,

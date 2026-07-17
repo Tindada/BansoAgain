@@ -141,6 +141,19 @@ def test_reducer_writes_final_answer_without_mutating_input_state() -> None:
     assert next_state.final_answer == "Synthesized answer."
 
 
+def test_reducer_ignores_final_answer_from_other_actions() -> None:
+    state = AgentState(query=UserQuery(text="latest AI news"))
+    action = AgentAction(type=AgentActionType.SEARCH)
+    observation = Observation(
+        action_type=AgentActionType.SEARCH,
+        data={"final_answer": "Unexpected answer."},
+    )
+
+    next_state = DefaultStateReducer().apply(state, action, observation)
+
+    assert next_state.final_answer is None
+
+
 async def _run_runtime_with_bounded_plan():
     plan = SearchPlan(
         searches=[

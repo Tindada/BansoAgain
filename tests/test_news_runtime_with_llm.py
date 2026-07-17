@@ -57,7 +57,7 @@ async def _run_news_runtime_with_llm() -> None:
     assert len(state.search_result_ids) == 1
     assert len(state.document_ids) == 1
     assert len(state.evidence_ids) == 1
-    assert output.result.final_answer == "LLM synthesized news summary."
+    assert state.final_answer == "LLM synthesized news summary."
 
     assert len(evidence_client.requests) == 1
     assert evidence_client.requests[0].model == "fake-evidence-model"

@@ -52,7 +52,7 @@ async def main(*, verbose: bool = False) -> None:
     print("search results:", len(state.search_result_ids))
     print("documents:", len(state.document_ids))
     print("evidence items:", len(state.evidence_ids))
-    print("final answer:", output.result.final_answer)
+    print("final answer:", state.final_answer)
 
     synthesis_step = next(
         (step for step in output.trace.steps if step.action.type.value == "synthesize"),

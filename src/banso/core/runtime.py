@@ -139,7 +139,7 @@ class AgentRuntime:
                     duration_seconds=perf_counter() - phase_started_at,
                 ) from error
 
-        result = AgentResult(final_answer=state.final_answer, state=state)
+        result = AgentResult(state=state)
         trace.status = "completed"
         trace.final_result = result
 

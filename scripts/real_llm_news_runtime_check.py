@@ -87,7 +87,7 @@ async def main() -> None:
         print(f"   supporting_text: {evidence.supporting_text}")
         print(f"   confidence: {evidence.confidence}")
         print(f"   source_url: {evidence.source_url}")
-    print("final answer:", output.result.final_answer)
+    print("final answer:", state.final_answer)
     print("observations:")
     for step in output.trace.steps:
         print(f"- {step.action.type.value}: {step.observation.data}")

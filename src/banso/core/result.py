@@ -19,6 +19,5 @@ class Observation(BaseModel):
 class AgentResult(BaseModel):
     """Final result returned by an agent run."""
 
-    final_answer: str | None = None
     state: AgentState
     metadata: dict[str, Any] = Field(default_factory=dict)

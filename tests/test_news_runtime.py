@@ -177,9 +177,9 @@ async def _run_news_runtime() -> None:
     assert len(state.search_result_ids) == 1
     assert len(state.document_ids) == 1
     assert len(state.evidence_ids) == 1
-    assert output.result.final_answer is not None
-    assert "Fake summary for 'latest AI news'" in output.result.final_answer
-    assert state.final_answer == output.result.final_answer
+    assert state.final_answer is not None
+    assert "Fake summary for 'latest AI news'" in state.final_answer
+    assert "final_answer" not in output.result.model_dump()
     assert output.trace.final_result == output.result
     assert output.trace.status == "completed"
     assert output.trace.failure is None
