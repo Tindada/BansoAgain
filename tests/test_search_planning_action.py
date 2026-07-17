@@ -99,7 +99,6 @@ def test_news_executor_executes_plan_search() -> None:
         SearchPlanningRequest(query=state.query, max_searches=2)
     ]
     assert observation == Observation(
-        action_type=AgentActionType.PLAN_SEARCH,
         data={"search_plan": plan.model_dump(mode="json")},
     )
 
@@ -108,7 +107,6 @@ def test_reducer_writes_search_plan_without_mutating_input_state() -> None:
     state = AgentState(query=UserQuery(text="latest AI news"))
     action = AgentAction(type=AgentActionType.PLAN_SEARCH)
     observation = Observation(
-        action_type=AgentActionType.PLAN_SEARCH,
         data={
             "search_plan": {
                 "searches": [{"query": "AI release", "intent": "official"}]
@@ -131,7 +129,6 @@ def test_reducer_writes_final_answer_without_mutating_input_state() -> None:
     state = AgentState(query=UserQuery(text="latest AI news"))
     action = AgentAction(type=AgentActionType.SYNTHESIZE)
     observation = Observation(
-        action_type=AgentActionType.SYNTHESIZE,
         data={"final_answer": "Synthesized answer."},
     )
 
@@ -145,7 +142,6 @@ def test_reducer_ignores_final_answer_from_other_actions() -> None:
     state = AgentState(query=UserQuery(text="latest AI news"))
     action = AgentAction(type=AgentActionType.SEARCH)
     observation = Observation(
-        action_type=AgentActionType.SEARCH,
         data={"final_answer": "Unexpected answer."},
     )
 

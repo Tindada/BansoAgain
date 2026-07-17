@@ -65,7 +65,7 @@ class DefaultStateReducer:
             if isinstance(final_answer, str):
                 next_state.final_answer = final_answer
 
-        if action.type == AgentActionType.STOP or observation.error is not None:
+        if action.type == AgentActionType.STOP:
             next_state.done = True
 
         return next_state

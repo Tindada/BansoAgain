@@ -42,7 +42,7 @@ class StopExecutor:
         action: AgentAction,
         state: AgentState,
     ) -> Observation:
-        return Observation(action_type=action.type)
+        return Observation()
 
 
 class RaisingExecutor:
@@ -147,7 +147,7 @@ def test_runtime_records_trace_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     assert failure is not None
     assert failure.phase == "trace"
     assert failure.action == AgentAction(type=AgentActionType.STOP)
-    assert failure.observation == Observation(action_type=AgentActionType.STOP)
+    assert failure.observation == Observation()
     assert error.trace.steps == []
 
 
@@ -163,7 +163,7 @@ def test_runtime_records_reducer_failure_and_serializes_trace() -> None:
     failure = error.trace.failure
     assert failure is not None
     assert failure.phase == "reducer"
-    assert failure.observation == Observation(action_type=AgentActionType.STOP)
+    assert failure.observation == Observation()
     assert len(error.trace.steps) == 1
 
     restored = AgentTrace.model_validate_json(error.trace.model_dump_json())

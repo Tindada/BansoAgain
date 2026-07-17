@@ -110,8 +110,6 @@ async def main(*, verbose: bool = False) -> None:
     print("observations:")
     for step in output.trace.steps:
         print(f"- {step.action.type.value}: {step.observation.data}")
-        if step.observation.error:
-            print(f"  error: {step.observation.error}")
 
 
 if __name__ == "__main__":

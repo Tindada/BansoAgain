@@ -12,14 +12,12 @@ class SimpleActionExecutor:
         if action.type == AgentActionType.SEARCH:
             query = action.params.get("query", state.query.text)
             return Observation(
-                action_type=action.type,
                 data={"search_queries": [query]},
             )
 
         if action.type == AgentActionType.SYNTHESIZE:
             return Observation(
-                action_type=action.type,
                 data={"final_answer": "TODO: synthesize answer"},
             )
 
-        return Observation(action_type=action.type)
+        return Observation()

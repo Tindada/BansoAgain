@@ -67,7 +67,6 @@ class NewsActionExecutor:
                 )
             )
             return Observation(
-                action_type=action.type,
                 data={"search_plan": plan.model_dump(mode="json")},
             )
 
@@ -83,7 +82,7 @@ class NewsActionExecutor:
         if action.type == AgentActionType.SYNTHESIZE:
             return await self._synthesize(state)
 
-        return Observation(action_type=action.type)
+        return Observation()
 
     async def _search(self, action: AgentAction, state: AgentState) -> Observation:
         query = action.params.get("query", state.query.text)
@@ -104,7 +103,6 @@ class NewsActionExecutor:
         result_ids = [self.store.put(result) for result in results]
 
         return Observation(
-            action_type=action.type,
             data={
                 "search_queries": [query],
                 "search_result_ids": result_ids,
@@ -146,7 +144,6 @@ class NewsActionExecutor:
             document_ids.append(self.store.put(document))
 
         return Observation(
-            action_type=AgentActionType.READ_DOCUMENT,
             data={
                 "document_ids": document_ids,
                 "document_read_failures": failures,
@@ -201,7 +198,6 @@ class NewsActionExecutor:
         ]
 
         return Observation(
-            action_type=AgentActionType.EXTRACT_EVIDENCE,
             data={
                 "evidence_ids": evidence_ids,
                 "evidence_extraction_failures": failures,
@@ -230,7 +226,6 @@ class NewsActionExecutor:
         )
 
         return Observation(
-            action_type=AgentActionType.SYNTHESIZE,
             data={
                 "final_answer": result.answer,
                 "citations": result.citations,
