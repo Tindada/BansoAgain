@@ -68,7 +68,4 @@ class DefaultStateReducer:
         if action.type == AgentActionType.STOP or observation.error is not None:
             next_state.done = True
 
-        if next_state.current_step >= next_state.budget.max_steps:
-            next_state.done = True
-
         return next_state

@@ -13,6 +13,7 @@ from banso.core import (
     AgentActionType,
     AgentRuntime,
     AgentState,
+    ExecutionBudget,
     Observation,
     RuntimeExecutionError,
     UserQuery,
@@ -28,6 +29,11 @@ class StopPolicy:
 class RaisingPolicy:
     async def select_action(self, state: AgentState) -> AgentAction:
         raise ValueError("policy failed")
+
+
+class ContinuePolicy:
+    async def select_action(self, state: AgentState) -> AgentAction:
+        return AgentAction(type=AgentActionType.SEARCH)
 
 
 class StopExecutor:
@@ -62,6 +68,37 @@ def _run_and_capture(runtime: AgentRuntime) -> RuntimeExecutionError:
     with pytest.raises(RuntimeExecutionError) as caught:
         asyncio.run(runtime.run(AgentState(query=UserQuery(text="test query"))))
     return caught.value
+
+
+def test_runtime_budget_exhaustion_does_not_mark_task_done() -> None:
+    output = asyncio.run(
+        AgentRuntime(policy=ContinuePolicy(), executor=StopExecutor()).run(
+            AgentState(
+                query=UserQuery(text="test query"),
+                budget=ExecutionBudget(max_steps=1),
+            )
+        )
+    )
+
+    assert len(output.trace.steps) == 1
+    assert output.result.state.current_step == 1
+    assert output.result.state.done is False
+    assert output.trace.status == "completed"
+
+
+def test_runtime_stop_marks_task_done_before_budget_exhaustion() -> None:
+    output = asyncio.run(
+        AgentRuntime(policy=StopPolicy(), executor=StopExecutor()).run(
+            AgentState(
+                query=UserQuery(text="test query"),
+                budget=ExecutionBudget(max_steps=1),
+            )
+        )
+    )
+
+    assert len(output.trace.steps) == 1
+    assert output.result.state.done is True
+    assert output.result.state.last_action == AgentActionType.STOP
 
 
 def test_runtime_records_policy_failure() -> None:
