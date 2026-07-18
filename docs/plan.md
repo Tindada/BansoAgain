@@ -3,8 +3,9 @@
 ## 背景
 
 目标是设计并逐步实现一个“新闻搜索 + 信息筛选 + 总结”的 agent 系统。当前已完成
-固定流程 MVP 和 LLM Policy 所需的 State、Artifact 与 Policy View 基础，下一步实现
-由 LLM 动态选择 Action 的新闻 Policy。
+固定流程 MVP、LLM Policy 所需的 State、Artifact 与 Policy View 基础，以及根据这些
+输入动态选择 Action 的最小 `LLMNewsPolicy`。下一步将 LLM Policy 接入真实运行入口，
+并补充独立的 LLM tracing。
 
 系统需要长期支持：
 
@@ -26,8 +27,12 @@
 - 已定义核心 runtime、state、action、policy、executor、reducer、result 等基础模块。
 - 已实现最小 `AgentRuntime` 主循环，支持 policy 决策、executor 执行、reducer 更新状态和 trace 收集。
 - 已实现新闻场景的固定流程 policy：搜索、读取文档、抽取 evidence、生成总结。
-- 尚未实现由 LLM 根据当前 state 动态选择 action 的 agent policy；这是固定流程
-  policy 之后的下一项核心能力，也是未来进行 LLM RL 后训练时被优化的 policy。
+- 已实现最小 `LLMNewsPolicy`，由 LLM 根据有界 Policy View、可用 action 和剩余预算
+  选择结构化 `AgentAction`，并校验动作参数、搜索预算、重复 query 和资源前置条件。
+- `LLMNewsPolicy` 的非法输出和已知 LLM 调用失败会作为带 reason 的 policy error
+  交由 Runtime 保存 partial trace；第一版不重试或自动回退。
+- 尚未将 `LLMNewsPolicy` 接入真实新闻运行入口，也尚未记录 prompt、原始响应和
+  token usage；这是下一步工作。
 - 已实现可替换的 retrieval、document reader、evidence extractor、synthesizer 和 LLM client 接口及部分实现。
 - 已接入 Tavily retrieval、HTTP document reader、OpenAI SDK LLM client、LLM evidence extractor 和 LLM synthesizer。
 - 已实现超长文档的分块 evidence extraction，并隔离单篇文档的 LLM 提取失败。
@@ -156,6 +161,9 @@ STOP
 - 记录 action 选择所需的简短 decision metadata，保证行为可审计。
 - 继续使用固定流程 policy 作为 baseline，而不是直接替换或删除。
 - 通过最大步骤数、搜索数、文档数和 token/cost 预算约束 agent 行为。
+
+当前已完成最小 Policy 本身及其确定性输出校验；应用入口接入、独立 LLM tracing、
+token/cost 预算和基于评估结果的重试策略仍属于后续工作。
 
 评估重点：
 
