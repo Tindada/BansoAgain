@@ -2,7 +2,9 @@
 
 ## 背景
 
-目标是设计并逐步实现一个“新闻搜索 + 信息筛选 + 总结”的 agent 系统。当前阶段先做系统设计和环境准备，不直接进入完整实现。
+目标是设计并逐步实现一个“新闻搜索 + 信息筛选 + 总结”的 agent 系统。当前已完成
+固定流程 MVP 和 LLM Policy 所需的 State、Artifact 与 Policy View 基础，下一步实现
+由 LLM 动态选择 Action 的新闻 Policy。
 
 系统需要长期支持：
 
@@ -32,6 +34,13 @@
 - 已实现 retrieval filter、仅补充元数据而不做准入的 search result source
   classifier，以及基础 artifact store。
 - 已定义 `AgentTrace` 和 `TraceStep` 数据结构，用于记录运行轨迹。
+- `AgentState` 已保存有界的 Action/Observation 历史、artifact ID、最终答案和
+  citations；完整 artifact 继续由 `ArtifactStore` 作为权威数据源保存。
+- 内存 ArtifactStore 已保证同 ID 不可覆盖，并在写入、读取和列举时提供隔离快照。
+- 已实现新闻专用的 `NewsPolicyStateViewBuilder`，按 State 中的 ID 顺序构造有界的
+  SearchResult、Document 和 Evidence Policy View。
+- TraceStep 已分别记录 Policy、Executor 和 Reducer 耗时；失败 Trace 记录失败阶段及
+  该阶段耗时。
 - 已补充覆盖核心 runtime、新闻执行器、retrieval、document reader、LLM 配置和 LLM 组件的测试。
 
 ## 阶段 1：系统架构设计
@@ -139,7 +148,10 @@ STOP
 核心要求：
 
 - 输出可校验的结构化 `AgentAction`，不允许生成任意工具调用。
-- 明确向 policy 提供当前 state、已完成步骤、可用 action 和剩余预算。
+- `LLMNewsPolicy` 内部使用 `NewsPolicyStateViewBuilder`，根据 State 和 ArtifactStore
+  构造模型可见输入；通用 `Policy` 接口继续只返回 `AgentAction`。
+- 向模型提供当前 state、已完成步骤、有界 artifact view、可用 action 和剩余预算，
+  不在 State 中重复保存 artifact summary。
 - 对非法 action、无效参数、重复动作和 LLM 调用失败提供校验、重试或安全回退。
 - 记录 action 选择所需的简短 decision metadata，保证行为可审计。
 - 继续使用固定流程 policy 作为 baseline，而不是直接替换或删除。
@@ -181,6 +193,10 @@ episode 终止原因和 outcome metrics
 用户反馈
 自动评分
 ```
+
+当前 Runtime Trace 负责 State、Action、Observation、阶段耗时和失败信息。LLM 实际
+接收的 messages、原始响应、token usage 和解析过程属于独立的 LLM tracing 能力，
+不通过通用 Policy 返回模型暴露给规则 Policy。
 
 后续可以支持：
 
@@ -262,7 +278,8 @@ Rollout 必须保存 LLM 实际接收的 prompt/messages、原始 completion、�
 
 ### Trace
 
-- Trace 仍未持久化 artifact 内容，进程结束后无法独立审计或完整回放。
+- Trace 仍未持久化 artifact 内容，也尚未记录 LLM 实际收到的 messages 和原始响应，
+  进程结束后无法独立审计或完整回放。
 
 ### 检索规划
 

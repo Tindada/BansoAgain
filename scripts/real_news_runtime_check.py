@@ -44,9 +44,11 @@ async def main(*, verbose: bool = False) -> None:
     print("actions:", [step.action.type.value for step in output.trace.steps])
     print("timings:")
     for step in output.trace.steps:
-        duration = step.duration_seconds or 0.0
+        duration = step.executor_duration_seconds or 0.0
         print(f"- {step.action.type.value}: {duration:.2f}s")
-    total_duration = sum(step.duration_seconds or 0.0 for step in output.trace.steps)
+    total_duration = sum(
+        step.executor_duration_seconds or 0.0 for step in output.trace.steps
+    )
     print(f"total action time: {total_duration:.2f}s")
     search_queries = [
         entry.observation.data["search_queries"][0]
