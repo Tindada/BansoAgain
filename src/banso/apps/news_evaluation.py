@@ -137,7 +137,7 @@ def extract_evaluation_result(
     step_durations: dict[str, float] = {}
     total_action_seconds = 0.0
     for step in output.trace.steps:
-        duration = step.duration_seconds or 0.0
+        duration = step.executor_duration_seconds or 0.0
         action_type = step.action.type.value
         step_durations[action_type] = step_durations.get(action_type, 0.0) + duration
         total_action_seconds += duration

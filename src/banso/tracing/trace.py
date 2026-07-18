@@ -19,7 +19,9 @@ class TraceStep(BaseModel):
     state: AgentState
     action: AgentAction
     observation: Observation
-    duration_seconds: float | None = None
+    policy_duration_seconds: float | None = None
+    executor_duration_seconds: float | None = None
+    reducer_duration_seconds: float | None = None
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -33,7 +35,7 @@ class TraceFailure(BaseModel):
     observation: Observation | None = None
     error_type: str
     message: str
-    duration_seconds: float | None = None
+    phase_duration_seconds: float | None = None
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

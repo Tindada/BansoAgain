@@ -38,7 +38,7 @@ def _execution_error(
     phase: Literal["policy", "executor", "trace", "reducer"],
     step_index: int,
     state: AgentState,
-    duration_seconds: float,
+    phase_duration_seconds: float,
     action: AgentAction | None = None,
     observation: Observation | None = None,
 ) -> RuntimeExecutionError:
@@ -51,7 +51,7 @@ def _execution_error(
         observation=observation,
         error_type=type(error).__name__,
         message=str(error),
-        duration_seconds=duration_seconds,
+        phase_duration_seconds=phase_duration_seconds,
     )
     return RuntimeExecutionError(trace=trace, original_error=error)
 
@@ -75,6 +75,9 @@ class AgentRuntime:
 
         while not state.done and state.current_step < state.budget.max_steps:
             step_index = state.current_step
+            state_before = state.model_copy(deep=True)
+
+            # Select the next action with the policy.
             phase_started_at = perf_counter()
             try:
                 action = await self.policy.select_action(state)
@@ -84,10 +87,12 @@ class AgentRuntime:
                     error=error,
                     phase="policy",
                     step_index=step_index,
-                    state=state,
-                    duration_seconds=perf_counter() - phase_started_at,
+                    state=state_before,
+                    phase_duration_seconds=perf_counter() - phase_started_at,
                 ) from error
+            policy_duration_seconds = perf_counter() - phase_started_at
 
+            # Execute the selected action.
             phase_started_at = perf_counter()
             try:
                 observation = await self.executor.execute(action, state)
@@ -97,20 +102,41 @@ class AgentRuntime:
                     error=error,
                     phase="executor",
                     step_index=step_index,
-                    state=state,
+                    state=state_before,
                     action=action,
-                    duration_seconds=perf_counter() - phase_started_at,
+                    phase_duration_seconds=perf_counter() - phase_started_at,
                 ) from error
-            duration_seconds = perf_counter() - phase_started_at
+            executor_duration_seconds = perf_counter() - phase_started_at
+
+            # Reduce the observation into the next state.
+            phase_started_at = perf_counter()
+            try:
+                next_state = self.reducer.apply(state, action, observation)
+            except Exception as error:
+                raise _execution_error(
+                    trace=trace,
+                    error=error,
+                    phase="reducer",
+                    step_index=step_index,
+                    state=state_before,
+                    action=action,
+                    observation=observation,
+                    phase_duration_seconds=perf_counter() - phase_started_at,
+                ) from error
+            reducer_duration_seconds = perf_counter() - phase_started_at
+
+            # Record the completed transition in the trace.
             phase_started_at = perf_counter()
             try:
                 trace.steps.append(
                     TraceStep(
                         step_index=step_index,
-                        state=state.model_copy(deep=True),
+                        state=state_before,
                         action=action,
                         observation=observation,
-                        duration_seconds=duration_seconds,
+                        policy_duration_seconds=policy_duration_seconds,
+                        executor_duration_seconds=executor_duration_seconds,
+                        reducer_duration_seconds=reducer_duration_seconds,
                     )
                 )
             except Exception as error:
@@ -119,26 +145,12 @@ class AgentRuntime:
                     error=error,
                     phase="trace",
                     step_index=step_index,
-                    state=state,
+                    state=state_before,
                     action=action,
                     observation=observation,
-                    duration_seconds=perf_counter() - phase_started_at,
+                    phase_duration_seconds=perf_counter() - phase_started_at,
                 ) from error
-
-            phase_started_at = perf_counter()
-            try:
-                state = self.reducer.apply(state, action, observation)
-            except Exception as error:
-                raise _execution_error(
-                    trace=trace,
-                    error=error,
-                    phase="reducer",
-                    step_index=step_index,
-                    state=state,
-                    action=action,
-                    observation=observation,
-                    duration_seconds=perf_counter() - phase_started_at,
-                ) from error
+            state = next_state
 
         result = AgentResult(state=state)
         trace.status = "completed"

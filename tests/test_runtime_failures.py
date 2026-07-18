@@ -118,8 +118,8 @@ def test_runtime_records_policy_failure() -> None:
     assert failure.error_type == "ValueError"
     assert failure.message == "policy failed"
     assert failure.state.current_step == 0
-    assert failure.duration_seconds is not None
-    assert failure.duration_seconds >= 0
+    assert failure.phase_duration_seconds is not None
+    assert failure.phase_duration_seconds >= 0
 
 
 def test_runtime_records_executor_failure() -> None:
@@ -164,7 +164,7 @@ def test_runtime_records_reducer_failure_and_serializes_trace() -> None:
     assert failure is not None
     assert failure.phase == "reducer"
     assert failure.observation == Observation()
-    assert len(error.trace.steps) == 1
+    assert error.trace.steps == []
 
     restored = AgentTrace.model_validate_json(error.trace.model_dump_json())
     assert restored.status == "failed"

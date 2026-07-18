@@ -199,7 +199,12 @@ async def _run_news_runtime() -> None:
     assert output.trace.status == "completed"
     assert output.trace.failure is None
     assert all(
-        step.duration_seconds is not None and step.duration_seconds >= 0
+        step.policy_duration_seconds is not None
+        and step.policy_duration_seconds >= 0
+        and step.executor_duration_seconds is not None
+        and step.executor_duration_seconds >= 0
+        and step.reducer_duration_seconds is not None
+        and step.reducer_duration_seconds >= 0
         for step in output.trace.steps
     )
 

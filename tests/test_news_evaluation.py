@@ -158,12 +158,12 @@ def test_extract_evaluation_result_preserves_multiple_searches() -> None:
     assert result.unknown_source_count == 0
 
     search_duration = sum(
-        step.duration_seconds or 0.0
+        step.executor_duration_seconds or 0.0
         for step in output.trace.steps
         if step.action.type.value == "search"
     )
     total_duration = sum(
-        step.duration_seconds or 0.0 for step in output.trace.steps
+        step.executor_duration_seconds or 0.0 for step in output.trace.steps
     )
     assert result.step_durations["search"] == pytest.approx(search_duration)
     assert result.total_action_seconds == pytest.approx(total_duration)
