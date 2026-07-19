@@ -12,7 +12,11 @@ from banso.llm import (
     build_external_llm_client_from_env,
     build_vllm_llm_client_from_env,
 )
-from banso.policies import NewsRuleBasedPolicy
+from banso.policies import (
+    LLMNewsPolicy,
+    NewsPolicyStateViewBuilder,
+    NewsRuleBasedPolicy,
+)
 from banso.retrieval import LLMSearchQueryPlanner, TavilyRetrievalProvider
 from banso.synthesis import LLMSynthesizer
 
@@ -41,20 +45,35 @@ def build_tavily_provider_from_env() -> TavilyRetrievalProvider:
 def build_real_news_runtime() -> RealNewsRuntimeBundle:
     """Build a fresh real news runtime from environment variables."""
 
-    evidence_llm_client = ThinkingTagStrippingLLMClient(
+    policy_name = os.getenv("BANSO_NEWS_POLICY", "rule_based").strip().casefold()
+    if policy_name not in {"rule_based", "llm"}:
+        raise RuntimeError(
+            "BANSO_NEWS_POLICY must be 'rule_based' or 'llm', "
+            f"got {policy_name!r}"
+        )
+
+    local_llm_client = ThinkingTagStrippingLLMClient(
         build_vllm_llm_client_from_env()
     )
     external_llm_client = build_external_llm_client_from_env()
     store = InMemoryArtifactStore()
+    policy = (
+        LLMNewsPolicy(
+            client=local_llm_client,
+            view_builder=NewsPolicyStateViewBuilder(store),
+        )
+        if policy_name == "llm"
+        else NewsRuleBasedPolicy()
+    )
     runtime = AgentRuntime(
-        policy=NewsRuleBasedPolicy(),
+        policy=policy,
         executor=NewsActionExecutor(
             store=store,
             retrieval_provider=build_tavily_provider_from_env(),
             document_reader=HTTPDocumentReader(),
-            evidence_extractor=LLMEvidenceExtractor(client=evidence_llm_client),
+            evidence_extractor=LLMEvidenceExtractor(client=local_llm_client),
             synthesizer=LLMSynthesizer(client=external_llm_client),
-            search_query_planner=LLMSearchQueryPlanner(client=evidence_llm_client),
+            search_query_planner=LLMSearchQueryPlanner(client=local_llm_client),
             max_extraction_concurrency=int(
                 os.getenv("BANSO_MAX_EXTRACTION_CONCURRENCY", "3")
             ),

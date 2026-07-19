@@ -17,7 +17,7 @@ from banso.core import (
 from banso.documents import FakeDocumentReader, FakeEvidenceExtractor
 from banso.executors import NewsActionExecutor
 from banso.llm import FakeLLMClient, LLMMessageRole
-from banso.policies import NewsRuleBasedPolicy
+from banso.policies import LLMNewsPolicy, NewsRuleBasedPolicy
 from banso.retrieval import (
     FakeRetrievalProvider,
     LLMSearchQueryPlanner,
@@ -168,11 +168,12 @@ def test_news_runtime_executes_llm_generated_search_plan() -> None:
     }
 
 
-def test_real_news_runtime_reuses_local_llm_for_search_planning(
+def test_real_news_runtime_defaults_to_rule_policy_and_reuses_llm_clients(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     local_client = FakeLLMClient()
     external_client = FakeLLMClient()
+    monkeypatch.delenv("BANSO_NEWS_POLICY", raising=False)
     monkeypatch.setattr(
         real_news,
         "build_vllm_llm_client_from_env",
@@ -192,7 +193,55 @@ def test_real_news_runtime_reuses_local_llm_for_search_planning(
     bundle = real_news.build_real_news_runtime()
     executor = bundle.runtime.executor
 
+    assert isinstance(bundle.runtime.policy, NewsRuleBasedPolicy)
     assert isinstance(executor, NewsActionExecutor)
     assert isinstance(executor.search_query_planner, LLMSearchQueryPlanner)
     assert executor.search_query_planner.client is executor.evidence_extractor.client
     assert executor.synthesizer.client is external_client
+
+
+def test_real_news_runtime_builds_llm_policy_with_shared_store_and_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    local_client = FakeLLMClient()
+    external_client = FakeLLMClient()
+    monkeypatch.setenv("BANSO_NEWS_POLICY", "llm")
+    monkeypatch.setattr(
+        real_news,
+        "build_vllm_llm_client_from_env",
+        lambda: local_client,
+    )
+    monkeypatch.setattr(
+        real_news,
+        "build_external_llm_client_from_env",
+        lambda: external_client,
+    )
+    monkeypatch.setattr(
+        real_news,
+        "build_tavily_provider_from_env",
+        FakeRetrievalProvider,
+    )
+
+    bundle = real_news.build_real_news_runtime()
+    policy = bundle.runtime.policy
+    executor = bundle.runtime.executor
+
+    assert isinstance(policy, LLMNewsPolicy)
+    assert isinstance(executor, NewsActionExecutor)
+    assert policy.client is executor.search_query_planner.client
+    assert policy.client is executor.evidence_extractor.client
+    assert policy.view_builder.store is bundle.store
+    assert executor.store is bundle.store
+    assert executor.synthesizer.client is external_client
+
+
+def test_real_news_runtime_rejects_unknown_policy_before_building_dependencies(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BANSO_NEWS_POLICY", "unknown")
+
+    with pytest.raises(
+        RuntimeError,
+        match="BANSO_NEWS_POLICY must be 'rule_based' or 'llm', got 'unknown'",
+    ):
+        real_news.build_real_news_runtime()

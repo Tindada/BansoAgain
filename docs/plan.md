@@ -4,8 +4,8 @@
 
 目标是设计并逐步实现一个“新闻搜索 + 信息筛选 + 总结”的 agent 系统。当前已完成
 固定流程 MVP、LLM Policy 所需的 State、Artifact 与 Policy View 基础，以及根据这些
-输入动态选择 Action 的最小 `LLMNewsPolicy`。下一步将 LLM Policy 接入真实运行入口，
-并补充独立的 LLM tracing。
+输入动态选择 Action 的最小 `LLMNewsPolicy`，并已通过应用层配置将规则 Policy 和
+LLM Policy 接入真实运行入口。下一步补充独立的 LLM tracing。
 
 系统需要长期支持：
 
@@ -31,8 +31,9 @@
   选择结构化 `AgentAction`，并校验动作参数、搜索预算、重复 query 和资源前置条件。
 - `LLMNewsPolicy` 的非法输出和已知 LLM 调用失败会作为带 reason 的 policy error
   交由 Runtime 保存 partial trace；第一版不重试或自动回退。
-- 尚未将 `LLMNewsPolicy` 接入真实新闻运行入口，也尚未记录 prompt、原始响应和
-  token usage；这是下一步工作。
+- 真实新闻运行入口支持通过 `BANSO_NEWS_POLICY` 选择规则 Policy 或 LLM Policy，
+  默认继续使用规则 Policy；LLM Policy 当前复用本地 vLLM client。
+- 尚未记录 Policy 实际接收的 prompt、原始响应和 token usage；这是下一步工作。
 - 已实现可替换的 retrieval、document reader、evidence extractor、synthesizer 和 LLM client 接口及部分实现。
 - 已接入 Tavily retrieval、HTTP document reader、OpenAI SDK LLM client、LLM evidence extractor 和 LLM synthesizer。
 - 已实现超长文档的分块 evidence extraction，并隔离单篇文档的 LLM 提取失败。
@@ -162,7 +163,7 @@ STOP
 - 继续使用固定流程 policy 作为 baseline，而不是直接替换或删除。
 - 通过最大步骤数、搜索数、文档数和 token/cost 预算约束 agent 行为。
 
-当前已完成最小 Policy 本身及其确定性输出校验；应用入口接入、独立 LLM tracing、
+当前已完成最小 Policy、确定性输出校验和真实运行入口接入；独立 LLM tracing、
 token/cost 预算和基于评估结果的重试策略仍属于后续工作。
 
 评估重点：
