@@ -20,7 +20,8 @@ from banso.policies.news_policy_view import NewsPolicyStateViewBuilder
 SYSTEM_PROMPT = (
     "You are the action-selection policy for a news research agent. Select exactly "
     "one next action from the supplied available_actions. Follow the action "
-    "instructions and remaining budget. Return only one valid JSON object with no "
+    "instructions and remaining budget. Return exactly one JSON object with exactly "
+    'these top-level keys: "type", "params", and "rationale". Do not include '
     "markdown or additional explanation. The rationale must be a brief decision "
     "reason, not hidden chain-of-thought."
 )
@@ -48,9 +49,22 @@ ACTION_INSTRUCTIONS = {
 class LLMPolicyError(Exception):
     """Raised when an LLM policy cannot produce a valid action."""
 
-    def __init__(self, message: str, *, reason: str) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason: str,
+        raw_output: str | None = None,
+    ) -> None:
         super().__init__(message)
         self.reason = reason
+        self.raw_output = raw_output
+
+    def __str__(self) -> str:
+        message = super().__str__()
+        if self.raw_output is None:
+            return message
+        return f"{message}; raw_output={self.raw_output!r}"
 
 
 class _LLMActionOutput(BaseModel):
@@ -116,8 +130,12 @@ class LLMNewsPolicy:
                 reason="llm_error",
             ) from error
 
-        output = self._parse_output(response.content)
-        return self._validate_action(output, state, search_count)
+        try:
+            output = self._parse_output(response.content)
+            return self._validate_action(output, state, search_count)
+        except LLMPolicyError as error:
+            error.raw_output = response.content
+            raise
 
     def _build_user_prompt(
         self,

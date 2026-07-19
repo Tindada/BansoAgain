@@ -200,6 +200,8 @@ def test_rejects_invalid_llm_output(content: str, reason: str) -> None:
         asyncio.run(policy.select_action(state))
 
     assert exc_info.value.reason == reason
+    assert exc_info.value.raw_output == content
+    assert "raw_output=" in str(exc_info.value)
     assert len(client.requests) == 1
     assert state == state_before
 
@@ -341,5 +343,6 @@ def test_wraps_known_llm_error_without_retrying() -> None:
         asyncio.run(policy.select_action(state))
 
     assert exc_info.value.reason == "llm_error"
+    assert exc_info.value.raw_output is None
     assert isinstance(exc_info.value.__cause__, LLMError)
     assert client.call_count == 1
