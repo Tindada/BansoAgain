@@ -26,6 +26,7 @@ EVIDENCE_OUTPUT_FORMAT = (
 )
 
 DEFAULT_MAX_INPUT_BYTES = 24000
+DEFAULT_MAX_CHUNKS_PER_DOCUMENT = 20
 DEFAULT_MAX_OUTPUT_TOKENS = 2048
 
 
@@ -111,15 +112,19 @@ class LLMEvidenceExtractor:
         temperature: float | None = 0.0,
         max_tokens: int | None = DEFAULT_MAX_OUTPUT_TOKENS,
         max_input_bytes: int = DEFAULT_MAX_INPUT_BYTES,
+        max_chunks_per_document: int = DEFAULT_MAX_CHUNKS_PER_DOCUMENT,
     ) -> None:
         if max_input_bytes <= 0:
             raise ValueError("max_input_bytes must be greater than zero")
+        if max_chunks_per_document <= 0:
+            raise ValueError("max_chunks_per_document must be greater than zero")
 
         self.client = client
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.max_input_bytes = max_input_bytes
+        self.max_chunks_per_document = max_chunks_per_document
 
     async def extract(self, request: EvidenceExtractionRequest) -> list[EvidenceItem]:
         document_chunks = self._split_document(request)
@@ -193,7 +198,7 @@ class LLMEvidenceExtractor:
             )
 
         try:
-            return _split_text_by_bytes(
+            chunks = _split_text_by_bytes(
                 request.document.text,
                 document_byte_budget,
             )
@@ -204,6 +209,19 @@ class LLMEvidenceExtractor:
                 f"document_byte_budget={document_byte_budget}",
                 reason="input_budget",
             ) from error
+
+        if len(chunks) > self.max_chunks_per_document:
+            document = request.document
+            raise EvidenceExtractionError(
+                "Document requires too many evidence extraction chunks; "
+                f"max_chunks_per_document={self.max_chunks_per_document}; "
+                f"chunk_count={len(chunks)}; "
+                f"document_chars={len(document.text)}; "
+                f"document_bytes={len(document.text.encode('utf-8'))}",
+                reason="document_too_large",
+            )
+
+        return chunks
 
     def _build_user_prompt(
         self,

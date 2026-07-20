@@ -37,6 +37,8 @@ LLM Policy 接入真实运行入口。下一步补充独立的 LLM tracing。
 - 已实现可替换的 retrieval、document reader、evidence extractor、synthesizer 和 LLM client 接口及部分实现。
 - 已接入 Tavily retrieval、HTTP document reader、OpenAI SDK LLM client、LLM evidence extractor 和 LLM synthesizer。
 - 已实现超长文档的分块 evidence extraction，并隔离单篇文档的 LLM 提取失败。
+- LLM evidence extraction 为单篇文档设置最大 chunk 数，超过上限时在调用 LLM 前
+  将该文档记录为 `document_too_large`，避免异常文档无上限占用执行时间。
 - 已实现 retrieval filter、仅补充元数据而不做准入的 search result source
   classifier，以及基础 artifact store。
 - Retrieval filter 仅允许可由当前文档读取链路直接消费的绝对 HTTP(S) URL，非法
@@ -285,10 +287,6 @@ Rollout 必须保存 LLM 实际接收的 prompt/messages、原始 completion、�
 
 - 当前 evidence extraction 的输入预算估算较为粗糙，在不同模型和 provider 配置下
   可能不够准确。
-- 超大文档尚无单文档字符数、chunk 数或累计处理时间上限。全量 evaluation 中，
-  PDF 抽取曾产生 394 和 2533 个 chunk，单次 `EXTRACT_EVIDENCE` 耗时超过
-  1600 秒后仍未生成 evidence。需要在进入分块提取前设置明确上限，并对截断或
-  跳过结果留下可审计的 failure 信息。
 - 分块提取结果尚未去重，重复 evidence 可能增加后续 synthesis 的上下文开销。
 
 ### Trace

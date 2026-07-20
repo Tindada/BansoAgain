@@ -211,6 +211,32 @@ async def _run_later_chunk_failure_case() -> None:
     assert f"chunk_count={chunk_count}" in str(caught.value)
 
 
+async def _run_document_chunk_limit_case() -> None:
+    document = _document().model_copy(update={"text": "x" * 80})
+    client = ChunkingLLMClient()
+    extractor = LLMEvidenceExtractor(
+        client=client,
+        max_input_bytes=600,
+        max_chunks_per_document=1,
+    )
+
+    with pytest.raises(EvidenceExtractionError) as caught:
+        await extractor.extract(
+            EvidenceExtractionRequest(
+                query=UserQuery(text="latest AI product news"),
+                document=document,
+            )
+        )
+
+    assert caught.value.reason == "document_too_large"
+    assert client.requests == []
+    message = str(caught.value)
+    assert "max_chunks_per_document=1" in message
+    assert "chunk_count=" in message
+    assert f"document_chars={len(document.text)}" in message
+    assert f"document_bytes={len(document.text.encode('utf-8'))}" in message
+
+
 def test_llm_evidence_extractor() -> None:
     asyncio.run(_run_llm_evidence_extractor())
 
@@ -237,3 +263,7 @@ def test_llm_evidence_extractor_chunks_document_within_input_budget() -> None:
 
 def test_llm_evidence_extractor_fails_document_when_later_chunk_fails() -> None:
     asyncio.run(_run_later_chunk_failure_case())
+
+
+def test_llm_evidence_extractor_rejects_documents_over_the_chunk_limit() -> None:
+    asyncio.run(_run_document_chunk_limit_case())
