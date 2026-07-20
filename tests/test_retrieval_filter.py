@@ -25,6 +25,7 @@ def test_retrieval_filter_drops_empty_and_duplicate_results() -> None:
     assert output.report.dropped_duplicate_url == 1
     assert output.report.dropped_empty_title == 1
     assert output.report.dropped_empty_url == 1
+    assert output.report.dropped_invalid_url == 0
     assert output.report.truncated_count == 0
 
 
@@ -40,6 +41,38 @@ def test_retrieval_filter_preserves_order_and_limits_results() -> None:
     assert [result.title for result in output.results] == ["First", "Second"]
     assert output.report.input_count == 3
     assert output.report.output_count == 2
+    assert output.report.truncated_count == 1
+
+
+def test_retrieval_filter_drops_urls_that_cannot_be_read_over_http() -> None:
+    results = [
+        SearchResult(title="Relative redirect", url="/goto?url=opaque-token"),
+        SearchResult(title="Protocol relative", url="//example.com/article"),
+        SearchResult(title="Unsupported scheme", url="ftp://example.com/article"),
+        SearchResult(title="Missing host", url="https:///article"),
+        SearchResult(title="HTTP", url="http://example.com/first"),
+        SearchResult(title="HTTPS", url="https://example.com/second"),
+    ]
+
+    output = RetrievalFilter().apply(results)
+
+    assert [result.title for result in output.results] == ["HTTP", "HTTPS"]
+    assert output.report.input_count == 6
+    assert output.report.output_count == 2
+    assert output.report.dropped_invalid_url == 4
+
+
+def test_invalid_urls_do_not_consume_the_result_limit() -> None:
+    results = [
+        SearchResult(title="Invalid", url="/goto?url=opaque-token"),
+        SearchResult(title="First valid", url="https://example.com/first"),
+        SearchResult(title="Second valid", url="https://example.com/second"),
+    ]
+
+    output = RetrievalFilter(RetrievalFilterConfig(max_results=1)).apply(results)
+
+    assert [result.title for result in output.results] == ["First valid"]
+    assert output.report.dropped_invalid_url == 1
     assert output.report.truncated_count == 1
 
 

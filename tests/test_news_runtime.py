@@ -233,6 +233,7 @@ async def _run_news_runtime_filters_search_results() -> None:
         "output_count": 2,
         "dropped_empty_title": 0,
         "dropped_empty_url": 0,
+        "dropped_invalid_url": 0,
         "dropped_duplicate_url": 1,
         "truncated_count": 0,
     }

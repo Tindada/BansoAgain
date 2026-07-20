@@ -36,6 +36,7 @@ class RetrievalFilterReport(BaseModel):
     output_count: int
     dropped_empty_title: int = 0
     dropped_empty_url: int = 0
+    dropped_invalid_url: int = 0
     dropped_duplicate_url: int = 0
     truncated_count: int = 0
 
@@ -70,6 +71,10 @@ class RetrievalFilter:
                 report.dropped_empty_url += 1
                 continue
 
+            if not _is_readable_http_url(url):
+                report.dropped_invalid_url += 1
+                continue
+
             if self.config.deduplicate_urls:
                 normalized_url = normalize_url(
                     url,
@@ -88,6 +93,16 @@ class RetrievalFilter:
 
         report.output_count = len(filtered)
         return RetrievalFilterResult(results=filtered, report=report)
+
+
+def _is_readable_http_url(url: str) -> bool:
+    """Return whether a URL can be passed directly to an HTTP document reader."""
+
+    try:
+        parsed = urlsplit(url)
+        return parsed.scheme.lower() in {"http", "https"} and bool(parsed.hostname)
+    except ValueError:
+        return False
 
 
 def normalize_url(url: str, *, ignored_query_params: set[str] | None = None) -> str:
