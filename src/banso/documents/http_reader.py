@@ -11,6 +11,9 @@ from banso.documents.models import Document
 from banso.documents.reader import DocumentReadError, DocumentReadRequest
 
 
+_SUPPORTED_CONTENT_TYPES = {"application/xhtml+xml", "text/html"}
+
+
 class HTTPDocumentReader:
     """Reads HTML documents over HTTP and extracts plain text."""
 
@@ -72,6 +75,22 @@ class HTTPDocumentReader:
                 source_error_type=type(error).__name__,
             ) from error
 
+        content_type = response.headers.get("content-type")
+        media_type = _media_type(content_type)
+        if media_type not in _SUPPORTED_CONTENT_TYPES:
+            displayed_content_type = content_type or "<missing>"
+            message = (
+                f"Unsupported content type {displayed_content_type!r} while reading "
+                f"document: {response.url}"
+            )
+            raise DocumentReadError(
+                url=str(response.url),
+                status_code=response.status_code,
+                reason="unsupported_content_type",
+                message=message,
+                source_error_type="UnsupportedContentType",
+            )
+
         title, text, extraction_strategy = _extract_html_content(response.text)
         resolved_title = request.title or title or request.url
 
@@ -94,6 +113,13 @@ class HTTPDocumentReader:
             retrieved_at=datetime.now(timezone.utc),
             metadata=metadata,
         )
+
+
+def _media_type(content_type: str | None) -> str | None:
+    if content_type is None:
+        return None
+    media_type = content_type.partition(";")[0].strip().casefold()
+    return media_type or None
 
 
 _REMOVABLE_TAGS = ("script", "style", "noscript", "template", "svg")

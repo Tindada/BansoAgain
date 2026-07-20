@@ -74,6 +74,7 @@ async def _run_http_document_reader_prefers_request_title() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             200,
+            headers={"content-type": "text/html"},
             text="<html><head><title>HTML title</title></head><body>Body text</body></html>",
             request=request,
         )
@@ -172,6 +173,54 @@ def test_http_document_reader_exposes_other_transport_error() -> None:
             "transport",
         )
     )
+
+
+async def _run_http_document_reader_rejects_unsupported_content_type(
+    content_type: str | None,
+) -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        headers = {"content-type": content_type} if content_type is not None else {}
+        return httpx.Response(
+            200,
+            headers=headers,
+            content=b"%PDF-binary-content",
+            request=request,
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    reader = HTTPDocumentReader(client=client)
+
+    try:
+        try:
+            await reader.read(DocumentReadRequest(url="https://example.com/report"))
+        except DocumentReadError as error:
+            assert error.url == "https://example.com/report"
+            assert error.reason == "unsupported_content_type"
+            assert error.status_code == 200
+            assert error.source_error_type == "UnsupportedContentType"
+            assert (content_type or "<missing>") in error.message
+        else:
+            raise AssertionError("expected DocumentReadError")
+    finally:
+        await client.aclose()
+
+
+def test_http_document_reader_rejects_pdf_content() -> None:
+    asyncio.run(
+        _run_http_document_reader_rejects_unsupported_content_type(
+            "application/pdf; charset=binary"
+        )
+    )
+
+
+def test_http_document_reader_rejects_other_content_types() -> None:
+    asyncio.run(
+        _run_http_document_reader_rejects_unsupported_content_type("image/png")
+    )
+
+
+def test_http_document_reader_rejects_missing_content_type() -> None:
+    asyncio.run(_run_http_document_reader_rejects_unsupported_content_type(None))
 
 
 def test_html_extraction_prefers_longest_article_and_removes_noise() -> None:

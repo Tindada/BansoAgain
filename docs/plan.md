@@ -36,6 +36,8 @@ LLM Policy 接入真实运行入口。下一步补充独立的 LLM tracing。
 - 尚未记录 Policy 实际接收的 prompt、原始响应和 token usage；这是下一步工作。
 - 已实现可替换的 retrieval、document reader、evidence extractor、synthesizer 和 LLM client 接口及部分实现。
 - 已接入 Tavily retrieval、HTTP document reader、OpenAI SDK LLM client、LLM evidence extractor 和 LLM synthesizer。
+- HTTP document reader 会在解析正文前校验响应 Content-Type，仅将 HTML/XHTML
+  交给现有 HTML 提取逻辑，其他类型作为明确的文档读取失败记录。
 - 已实现超长文档的分块 evidence extraction，并隔离单篇文档的 LLM 提取失败。
 - LLM evidence extraction 为单篇文档设置最大 chunk 数，超过上限时在调用 LLM 前
   将该文档记录为 `document_too_large`，避免异常文档无上限占用执行时间。
@@ -281,6 +283,10 @@ Rollout 必须保存 LLM 实际接收的 prompt/messages、原始 completion、�
 
 - HTTP 429、可恢复的 5xx、超时和连接错误尚未实现有上限的重试，也缺少按
   失败类别聚合的指标和持久化日志。
+- PDF 是政策、安全和研究类官方来源的重要载体。当前 Content-Type 校验会明确拒绝
+  `application/pdf`，后续需要增加真正的 PDF 正文提取能力，再将提取后的纯文本交给
+  evidence extraction；不能长期以过滤 PDF 作为最终方案。第一版不要求 OCR，缺少
+  文本层的扫描 PDF 应记录为可审计的提取失败。
 - HTML 正文抽取仍是启发式的，缺少质量判定和低质量结果的回退策略。
 
 ### 证据提取

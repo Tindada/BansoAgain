@@ -8,7 +8,12 @@ from banso.documents.models import Document
 from banso.retrieval.models import Source
 
 
-DocumentReadFailureReason = Literal["http_status", "timeout", "transport"]
+DocumentReadFailureReason = Literal[
+    "http_status",
+    "timeout",
+    "transport",
+    "unsupported_content_type",
+]
 
 
 class DocumentReadError(Exception):
