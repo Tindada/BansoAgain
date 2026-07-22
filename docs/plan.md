@@ -79,7 +79,8 @@ DocumentReader
 DocumentRanker
 EvidenceExtractor
 Synthesizer
-TraceLogger
+Tracer
+TraceSink
 RolloutStore
 RewardModel
 LLMPolicyTrainer
@@ -96,7 +97,7 @@ LLMPolicyTrainer
 - `Policy` 接口
 - `LLMProvider` 接口
 - `RetrievalProvider` 接口
-- `TraceLogger` 接口
+- `Tracer` 和 `TraceSink` 接口
 - `RolloutRecord`、`RewardModel` 和 `LLMPolicyTrainer` 预留接口
 
 设计原则：
@@ -121,7 +122,7 @@ LLMPolicyTrainer
 policy 选择 action
 executor 执行动作
 reducer 更新 state
-trace logger 记录步骤
+tracer 记录运行边界 Span
 循环直到 STOP
 ```
 
@@ -210,9 +211,20 @@ episode 终止原因和 outcome metrics
 自动评分
 ```
 
-当前 Runtime Trace 负责 State、Action、Observation、阶段耗时和失败信息。LLM 实际
-接收的 messages、原始响应、token usage 和解析过程属于独立的 LLM tracing 能力，
-不通过通用 Policy 返回模型暴露给规则 Policy。
+此前 Trace 由 Runtime 持有，并绑定 `AgentTrace`、`TraceStep` 等业务模型，因此只能
+记录 Runtime 直接可见的 State、Action、Observation、耗时和失败信息；LLM、Retrieval
+等深层组件产生的观测数据无法在不修改业务参数和返回值的情况下关联到同一次运行。
+
+当前 Trace 已重构为通用 Span：业务数据继续通过显式参数和返回值传递，`ContextVar`
+只传播当前 Span，组件通过 `Tracer` 记录观测数据并由 `TraceSink` 独立收集。Runtime
+只声明 `agent.run`、`agent.step`、Policy、Executor 和 Reducer 等观测边界，不再拥有或
+拼装完整 trace；Sink 和序列化失败不会改变业务执行结果。
+
+每个组合完成的 Runtime bundle 只创建一个 `Tracer` 作为该调用链的 tracing owner。
+Runtime 使用它建立根 Span，LLM、Retrieval 等深层组件不创建自己的 `Tracer`，而是
+调用模块级 `start_span()` 加入当前 trace。不同 Runtime 或并发 Agent run 仍可拥有
+彼此独立的 trace，并由 `ContextVar` 隔离。LLM 实际接收的 messages、原始响应、token
+usage 和解析过程属于下一步 LLM tracing，不通过业务返回值逐层传递。
 
 后续可以支持：
 
@@ -300,6 +312,11 @@ Rollout 必须保存 LLM 实际接收的 prompt/messages、原始 completion、�
 
 - Trace 仍未持久化 artifact 内容，也尚未记录 LLM 实际收到的 messages 和原始响应，
   进程结束后无法独立审计或完整回放。
+- TraceSink 写入失败已经与业务异常隔离，但目前会被静默忽略，后续需要增加不会反向
+  影响业务执行的诊断日志。
+- Evaluation 当前仍从 `agent.step` Span 的输出还原 Action 和 Observation。二者已经
+  存在于 `AgentState.action_history`，后续应以 State 作为业务事实来源，只从 Span
+  读取阶段耗时、失败和 LLM usage 等观测数据，避免评估结果依赖 best-effort Trace。
 
 ### 检索规划
 
