@@ -9,7 +9,10 @@ from banso.retrieval.models import Source
 
 
 DocumentReadFailureReason = Literal[
+    "document_too_large",
     "http_status",
+    "no_extractable_text",
+    "parse_error",
     "timeout",
     "transport",
     "unsupported_content_type",

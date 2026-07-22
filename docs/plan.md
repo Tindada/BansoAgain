@@ -283,10 +283,10 @@ Rollout 必须保存 LLM 实际接收的 prompt/messages、原始 completion、�
 
 - HTTP 429、可恢复的 5xx、超时和连接错误尚未实现有上限的重试，也缺少按
   失败类别聚合的指标和持久化日志。
-- PDF 是政策、安全和研究类官方来源的重要载体。当前 Content-Type 校验会明确拒绝
-  `application/pdf`，后续需要增加真正的 PDF 正文提取能力，再将提取后的纯文本交给
-  evidence extraction；不能长期以过滤 PDF 作为最终方案。第一版不要求 OCR，缺少
-  文本层的扫描 PDF 应记录为可审计的提取失败。
+- PDF 是政策、安全和研究类官方来源的重要载体。HTTP document reader 已支持按
+  `application/pdf` 分流，并使用 `pypdf` 提取有文本层 PDF 的正文；第一版不做 OCR，
+  缺少文本层的扫描 PDF 会记录为可审计的提取失败。复杂版面、表格结构和公式恢复仍
+  需要后续基于真实语料评估更强的解析方案。
 - HTML 正文抽取仍是启发式的，缺少质量判定和低质量结果的回退策略。
 
 ### 证据提取

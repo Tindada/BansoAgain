@@ -1,21 +1,41 @@
 """HTTP-backed document reader."""
 
+import asyncio
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from io import BytesIO
 from typing import Any
 
 import httpx
 from bs4 import BeautifulSoup
 from bs4.element import Tag
+from pypdf import PdfReader
 
 from banso.documents.models import Document
 from banso.documents.reader import DocumentReadError, DocumentReadRequest
 
 
-_SUPPORTED_CONTENT_TYPES = {"application/xhtml+xml", "text/html"}
+_HTML_CONTENT_TYPES = {"application/xhtml+xml", "text/html"}
+_PDF_CONTENT_TYPE = "application/pdf"
+_SUPPORTED_CONTENT_TYPES = {*_HTML_CONTENT_TYPES, _PDF_CONTENT_TYPE}
+_DEFAULT_MAX_PDF_BYTES = 20 * 1024 * 1024
+_DEFAULT_MAX_PDF_PAGES = 200
+
+
+@dataclass(frozen=True)
+class _ContentExtraction:
+    title: str | None
+    text: str
+    strategy: str
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+class _PDFPageLimitError(Exception):
+    """Raised when a PDF exceeds the configured page limit."""
 
 
 class HTTPDocumentReader:
-    """Reads HTML documents over HTTP and extracts plain text."""
+    """Reads supported documents over HTTP and extracts plain text."""
 
     def __init__(
         self,
@@ -23,12 +43,21 @@ class HTTPDocumentReader:
         client: httpx.AsyncClient | None = None,
         timeout: float = 20.0,
         headers: dict[str, str] | None = None,
+        max_pdf_bytes: int = _DEFAULT_MAX_PDF_BYTES,
+        max_pdf_pages: int = _DEFAULT_MAX_PDF_PAGES,
     ) -> None:
+        if max_pdf_bytes <= 0:
+            raise ValueError("max_pdf_bytes must be greater than zero")
+        if max_pdf_pages <= 0:
+            raise ValueError("max_pdf_pages must be greater than zero")
+
         self._client = client
         self._timeout = timeout
+        self._max_pdf_bytes = max_pdf_bytes
+        self._max_pdf_pages = max_pdf_pages
         self._headers = headers or {
             "User-Agent": "banso-news-agent/0.1",
-            "Accept": "text/html,application/xhtml+xml",
+            "Accept": "text/html,application/xhtml+xml,application/pdf",
         }
 
     async def read(self, request: DocumentReadRequest) -> Document:
@@ -91,8 +120,8 @@ class HTTPDocumentReader:
                 source_error_type="UnsupportedContentType",
             )
 
-        title, text, extraction_strategy = _extract_html_content(response.text)
-        resolved_title = request.title or title or request.url
+        extraction = await self._extract_response(response, media_type)
+        resolved_title = request.title or extraction.title or request.url
 
         metadata: dict[str, Any] = {
             **request.metadata,
@@ -100,19 +129,78 @@ class HTTPDocumentReader:
             "status_code": response.status_code,
             "content_type": response.headers.get("content-type"),
             "final_url": str(response.url),
-            "extraction_strategy": extraction_strategy,
-            "raw_html_chars": len(response.text),
-            "extracted_text_chars": len(text),
+            "extraction_strategy": extraction.strategy,
+            **extraction.metadata,
+            "extracted_text_chars": len(extraction.text),
         }
 
         return Document(
             url=str(response.url),
             title=resolved_title,
-            text=text,
+            text=extraction.text,
             source=request.source,
             retrieved_at=datetime.now(timezone.utc),
             metadata=metadata,
         )
+
+    async def _extract_response(
+        self,
+        response: httpx.Response,
+        media_type: str,
+    ) -> _ContentExtraction:
+        if media_type in _HTML_CONTENT_TYPES:
+            return _extract_html_content(response.text)
+
+        content = response.content
+        if len(content) > self._max_pdf_bytes:
+            message = (
+                "PDF exceeds the configured byte limit; "
+                f"max_pdf_bytes={self._max_pdf_bytes}; "
+                f"pdf_bytes={len(content)}; url={response.url}"
+            )
+            raise DocumentReadError(
+                url=str(response.url),
+                status_code=response.status_code,
+                reason="document_too_large",
+                message=message,
+                source_error_type="PDFByteLimitExceeded",
+            )
+
+        try:
+            extraction = await asyncio.to_thread(
+                _extract_pdf_content,
+                content,
+                max_pages=self._max_pdf_pages,
+            )
+        except _PDFPageLimitError as error:
+            raise DocumentReadError(
+                url=str(response.url),
+                status_code=response.status_code,
+                reason="document_too_large",
+                message=f"{error}; url={response.url}",
+                source_error_type="PDFPageLimitExceeded",
+            ) from error
+        except Exception as error:
+            detail = str(error) or "PDF parser failed"
+            message = f"{detail} while parsing PDF document: {response.url}"
+            raise DocumentReadError(
+                url=str(response.url),
+                status_code=response.status_code,
+                reason="parse_error",
+                message=message,
+                source_error_type=type(error).__name__,
+            ) from error
+
+        if not extraction.text.strip():
+            message = f"PDF contains no extractable text: {response.url}"
+            raise DocumentReadError(
+                url=str(response.url),
+                status_code=response.status_code,
+                reason="no_extractable_text",
+                message=message,
+                source_error_type="NoExtractableText",
+            )
+        return extraction
 
 
 def _media_type(content_type: str | None) -> str | None:
@@ -138,7 +226,7 @@ _TEXT_BLOCK_TAGS = (
 )
 
 
-def _extract_html_content(html: str) -> tuple[str | None, str, str]:
+def _extract_html_content(html: str) -> _ContentExtraction:
     soup = BeautifulSoup(html, "html.parser")
     title = soup.title.string.strip() if soup.title and soup.title.string else None
 
@@ -149,7 +237,43 @@ def _extract_html_content(html: str) -> tuple[str | None, str, str]:
     _remove_content_noise(content_root, strategy=strategy)
     text = _extract_block_text(content_root)
 
-    return title, text, strategy
+    return _ContentExtraction(
+        title=title,
+        text=text,
+        strategy=strategy,
+        metadata={"raw_html_chars": len(html)},
+    )
+
+
+def _extract_pdf_content(content: bytes, *, max_pages: int) -> _ContentExtraction:
+    reader = PdfReader(BytesIO(content))
+    page_count = len(reader.pages)
+    if page_count > max_pages:
+        raise _PDFPageLimitError(
+            "PDF exceeds the configured page limit; "
+            f"max_pdf_pages={max_pages}; pdf_page_count={page_count}"
+        )
+
+    page_texts: list[str] = []
+    pages_with_text = 0
+    for page in reader.pages:
+        page_text = (page.extract_text() or "").strip()
+        if page_text:
+            page_texts.append(page_text)
+            pages_with_text += 1
+
+    metadata_title = reader.metadata.title if reader.metadata is not None else None
+    title = str(metadata_title).strip() if metadata_title else None
+    return _ContentExtraction(
+        title=title or None,
+        text="\n\n".join(page_texts),
+        strategy="pypdf",
+        metadata={
+            "raw_bytes": len(content),
+            "pdf_page_count": page_count,
+            "pdf_pages_with_text": pages_with_text,
+        },
+    )
 
 
 def _select_content_root(soup: BeautifulSoup) -> tuple[Tag, str]:
