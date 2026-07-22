@@ -122,6 +122,7 @@ class LLMNewsPolicy:
                     model=self.model,
                     temperature=self.temperature,
                     max_tokens=self.max_tokens,
+                    metadata={"trace": {"operation": "news_policy.select_action"}},
                 )
             )
         except LLMError as error:

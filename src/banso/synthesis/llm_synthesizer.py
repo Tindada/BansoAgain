@@ -42,9 +42,9 @@ class LLMSynthesizer:
                 model=self.model,
                 temperature=self.temperature,
                 max_tokens=self.max_tokens,
+                metadata={"trace": {"operation": "synthesizer.synthesize"}},
             )
         )
-
         return SynthesisResult(
             answer=response.content,
             citations=self._citations(request.evidence),

@@ -17,6 +17,7 @@ from banso.core import (
 from banso.documents import FakeDocumentReader, FakeEvidenceExtractor
 from banso.executors import NewsActionExecutor
 from banso.llm import FakeLLMClient, LLMMessageRole
+from banso.llm.tracing import TracingLLMClient
 from banso.policies import LLMNewsPolicy, NewsRuleBasedPolicy
 from banso.retrieval import (
     FakeRetrievalProvider,
@@ -197,7 +198,10 @@ def test_real_news_runtime_defaults_to_rule_policy_and_reuses_llm_clients(
     assert isinstance(executor, NewsActionExecutor)
     assert isinstance(executor.search_query_planner, LLMSearchQueryPlanner)
     assert executor.search_query_planner.client is executor.evidence_extractor.client
-    assert executor.synthesizer.client is external_client
+    assert isinstance(executor.search_query_planner.client, TracingLLMClient)
+    assert executor.search_query_planner.client.client.client is local_client
+    assert isinstance(executor.synthesizer.client, TracingLLMClient)
+    assert executor.synthesizer.client.client is external_client
 
 
 def test_real_news_runtime_builds_llm_policy_with_shared_store_and_client(
@@ -230,9 +234,12 @@ def test_real_news_runtime_builds_llm_policy_with_shared_store_and_client(
     assert isinstance(executor, NewsActionExecutor)
     assert policy.client is executor.search_query_planner.client
     assert policy.client is executor.evidence_extractor.client
+    assert isinstance(policy.client, TracingLLMClient)
+    assert policy.client.client.client is local_client
     assert policy.view_builder.store is bundle.store
     assert executor.store is bundle.store
-    assert executor.synthesizer.client is external_client
+    assert isinstance(executor.synthesizer.client, TracingLLMClient)
+    assert executor.synthesizer.client.client is external_client
 
 
 def test_real_news_runtime_rejects_unknown_policy_before_building_dependencies(

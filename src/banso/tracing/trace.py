@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Generator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timezone
@@ -175,7 +175,7 @@ class Tracer:
         *,
         input: Any | None = None,
         attributes: Mapping[str, Any] | None = None,
-    ) -> Iterator[Span]:
+    ) -> Generator[Span, None, None]:
         """Start a child of the active span, or a new root if none is active."""
 
         parent = _CURRENT_SPAN.get()
@@ -199,7 +199,7 @@ class Tracer:
         parent_span_id: str | None,
         input: Any | None,
         attributes: Mapping[str, Any] | None,
-    ) -> Iterator[Span]:
+    ) -> Generator[Span, None, None]:
         span = Span(
             tracer=self,
             trace_id=trace_id,
@@ -236,7 +236,7 @@ def start_span(
     *,
     input: Any | None = None,
     attributes: Mapping[str, Any] | None = None,
-) -> Iterator[Span | _NonRecordingSpan]:
+) -> Generator[Span | _NonRecordingSpan, None, None]:
     """Start a child span using the tracer stored in the current context."""
 
     current = _CURRENT_SPAN.get()

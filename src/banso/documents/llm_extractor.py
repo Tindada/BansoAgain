@@ -149,6 +149,14 @@ class LLMEvidenceExtractor:
                         model=self.model,
                         temperature=self.temperature,
                         max_tokens=self.max_tokens,
+                        metadata={
+                            "trace": {
+                                "operation": "evidence_extractor.extract",
+                                "document_id": request.document.id,
+                                "chunk_index": chunk_index,
+                                "chunk_count": chunk_count,
+                            }
+                        },
                     )
                 )
             except LLMError as error:

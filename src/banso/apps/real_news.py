@@ -9,6 +9,7 @@ from banso.documents import HTTPDocumentReader, LLMEvidenceExtractor
 from banso.executors import NewsActionExecutor
 from banso.llm import (
     ThinkingTagStrippingLLMClient,
+    TracingLLMClient,
     build_external_llm_client_from_env,
     build_vllm_llm_client_from_env,
 )
@@ -54,10 +55,10 @@ def build_real_news_runtime() -> RealNewsRuntimeBundle:
             f"got {policy_name!r}"
         )
 
-    local_llm_client = ThinkingTagStrippingLLMClient(
-        build_vllm_llm_client_from_env()
+    local_llm_client = TracingLLMClient(
+        ThinkingTagStrippingLLMClient(build_vllm_llm_client_from_env())
     )
-    external_llm_client = build_external_llm_client_from_env()
+    external_llm_client = TracingLLMClient(build_external_llm_client_from_env())
     store = InMemoryArtifactStore()
     trace_sink = InMemoryTraceSink()
     policy = (

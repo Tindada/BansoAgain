@@ -223,8 +223,17 @@ episode 终止原因和 outcome metrics
 每个组合完成的 Runtime bundle 只创建一个 `Tracer` 作为该调用链的 tracing owner。
 Runtime 使用它建立根 Span，LLM、Retrieval 等深层组件不创建自己的 `Tracer`，而是
 调用模块级 `start_span()` 加入当前 trace。不同 Runtime 或并发 Agent run 仍可拥有
-彼此独立的 trace，并由 `ContextVar` 隔离。LLM 实际接收的 messages、原始响应、token
-usage 和解析过程属于下一步 LLM tracing，不通过业务返回值逐层传递。
+彼此独立的 trace，并由 `ContextVar` 隔离。
+
+真实 Runtime 通过 provider-independent 的 `TracingLLMClient` 装饰器，为 LLM Policy、
+搜索规划、证据抽取和总结统一记录 `llm.call` Span。Span 输入记录实际发送的
+`LLMRequest`，输出只记录进入业务层的 completion、provider 原始响应、模型和 token
+usage；其状态只表示模型调用是否成功，不混入后续解析和业务校验结果。
+
+调用方通过 `LLMRequest.metadata.trace` 提供 operation 等关联属性；证据抽取额外记录
+文档和 chunk 位置。解析后的业务结果继续由 Step、Observation 和 ArtifactStore 持有，
+可恢复的证据解析失败继续写入 `evidence_extraction_failures`，其他解析异常由既有外层
+Span 记录。上述观测数据通过当前 trace 直接写入 Sink，不通过业务返回值逐层传递。
 
 后续可以支持：
 
@@ -310,8 +319,8 @@ Rollout 必须保存 LLM 实际接收的 prompt/messages、原始 completion、�
 
 ### Trace
 
-- Trace 仍未持久化 artifact 内容，也尚未记录 LLM 实际收到的 messages 和原始响应，
-  进程结束后无法独立审计或完整回放。
+- Trace 仍未持久化 artifact 内容；LLM prompt 和响应可随评测 trace JSONL 保存，但
+  常规运行使用内存 Sink，进程结束后仍无法独立审计或完整回放。
 - TraceSink 写入失败已经与业务异常隔离，但目前会被静默忽略，后续需要增加不会反向
   影响业务执行的诊断日志。
 - Evaluation 当前仍从 `agent.step` Span 的输出还原 Action 和 Observation。二者已经
