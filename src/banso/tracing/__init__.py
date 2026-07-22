@@ -1,9 +1,23 @@
-"""Trace logging and replay components."""
+"""Business-independent tracing primitives."""
 
-from banso.tracing.trace import AgentTrace, TraceFailure, TraceStep
+from banso.tracing.trace import (
+    InMemoryTraceSink,
+    Span,
+    SpanError,
+    SpanRecord,
+    TraceSink,
+    Tracer,
+    get_current_span,
+    start_span,
+)
 
 __all__ = [
-    "AgentTrace",
-    "TraceFailure",
-    "TraceStep",
+    "InMemoryTraceSink",
+    "Span",
+    "SpanError",
+    "SpanRecord",
+    "TraceSink",
+    "Tracer",
+    "get_current_span",
+    "start_span",
 ]

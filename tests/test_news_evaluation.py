@@ -29,6 +29,7 @@ from banso.retrieval import (
     SearchResult,
 )
 from banso.synthesis import FakeSynthesizer
+from banso.tracing import InMemoryTraceSink, Tracer
 
 
 def test_load_evaluation_cases(tmp_path) -> None:
@@ -52,6 +53,7 @@ async def _extract_successful_evaluation_result():
         preferred_source_types=["news"],
     )
     store = InMemoryArtifactStore()
+    trace_sink = InMemoryTraceSink()
     runtime = AgentRuntime(
         policy=NewsRuleBasedPolicy(),
         executor=NewsActionExecutor(
@@ -61,10 +63,12 @@ async def _extract_successful_evaluation_result():
             evidence_extractor=FakeEvidenceExtractor(),
             synthesizer=FakeSynthesizer(),
         ),
+        tracer=Tracer(trace_sink),
     )
     output = await runtime.run(AgentState(query=UserQuery(text=case.query)))
 
-    return extract_evaluation_result(case, output, store)
+    spans = trace_sink.get_trace(output.trace_id)
+    return extract_evaluation_result(case, output, store, spans)
 
 
 def test_extract_evaluation_result() -> None:
@@ -112,6 +116,7 @@ async def _extract_multi_search_evaluation_result():
         query="latest AI news",
     )
     store = InMemoryArtifactStore()
+    trace_sink = InMemoryTraceSink()
     runtime = AgentRuntime(
         policy=NewsRuleBasedPolicy(),
         executor=NewsActionExecutor(
@@ -122,6 +127,7 @@ async def _extract_multi_search_evaluation_result():
             synthesizer=FakeSynthesizer(),
             search_query_planner=ThreeQueryPlanner(),
         ),
+        tracer=Tracer(trace_sink),
     )
     output = await runtime.run(
         AgentState(
@@ -129,24 +135,27 @@ async def _extract_multi_search_evaluation_result():
             budget=ExecutionBudget(max_searches=3),
         )
     )
-    return extract_evaluation_result(case, output, store), output
+    spans = trace_sink.get_trace(output.trace_id)
+    return extract_evaluation_result(case, output, store, spans), output, spans
 
 
 def test_extract_evaluation_result_preserves_multiple_searches() -> None:
-    result, output = asyncio.run(_extract_multi_search_evaluation_result())
+    result, output, spans = asyncio.run(_extract_multi_search_evaluation_result())
 
-    assert result.trace_id == output.trace.trace_id
-    plan = output.trace.final_result.state.search_plan
+    assert result.trace_id == output.trace_id
+    plan = output.result.state.search_plan
     assert plan is not None
     assert [search.query for search in plan.searches] == [
         "AI releases",
         "AI research",
         "AI policy",
     ]
-    search_steps = [
-        step for step in output.trace.steps if step.action.type.value == "search"
+    search_entries = [
+        entry
+        for entry in output.result.state.action_history
+        if entry.action_type.value == "search"
     ]
-    assert [step.action.params["query"] for step in search_steps] == [
+    assert [entry.params["query"] for entry in search_entries] == [
         "AI releases",
         "AI research",
         "AI policy",
@@ -158,12 +167,15 @@ def test_extract_evaluation_result_preserves_multiple_searches() -> None:
     assert result.unknown_source_count == 0
 
     search_duration = sum(
-        step.executor_duration_seconds or 0.0
-        for step in output.trace.steps
-        if step.action.type.value == "search"
+        span.duration_seconds
+        for span in spans
+        if span.name == "agent.action.execute"
+        and span.attributes.get("action_type") == "search"
     )
     total_duration = sum(
-        step.executor_duration_seconds or 0.0 for step in output.trace.steps
+        span.duration_seconds
+        for span in spans
+        if span.name == "agent.action.execute" and span.status == "ok"
     )
     assert result.step_durations["search"] == pytest.approx(search_duration)
     assert result.total_action_seconds == pytest.approx(total_duration)
@@ -187,6 +199,7 @@ async def _extract_unknown_source_evaluation_result():
         query="recent AI research",
     )
     store = InMemoryArtifactStore()
+    trace_sink = InMemoryTraceSink()
     runtime = AgentRuntime(
         policy=NewsRuleBasedPolicy(),
         executor=NewsActionExecutor(
@@ -196,10 +209,12 @@ async def _extract_unknown_source_evaluation_result():
             evidence_extractor=FakeEvidenceExtractor(),
             synthesizer=FakeSynthesizer(),
         ),
+        tracer=Tracer(trace_sink),
     )
     output = await runtime.run(AgentState(query=UserQuery(text=case.query)))
 
-    return extract_evaluation_result(case, output, store)
+    spans = trace_sink.get_trace(output.trace_id)
+    return extract_evaluation_result(case, output, store, spans)
 
 
 def test_extract_evaluation_result_records_unknown_source() -> None:

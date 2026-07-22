@@ -1,14 +1,16 @@
 """Models and result extraction for news runtime evaluations."""
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from banso.artifacts import ArtifactStore
-from banso.core import AgentActionType, RuntimeRunResult
+from banso.core import AgentAction, AgentActionType, Observation, RuntimeRunResult
 from banso.retrieval import SearchResult
+from banso.tracing import SpanRecord
 
 
 class NewsEvaluationCase(BaseModel):
@@ -77,14 +79,16 @@ def extract_evaluation_result(
     case: NewsEvaluationCase,
     output: RuntimeRunResult,
     store: ArtifactStore,
+    spans: Sequence[SpanRecord],
 ) -> NewsEvaluationResult:
     """Convert a runtime output into stable evaluation fields."""
 
     state = output.result.state
+    steps = _completed_steps(spans)
     observations = {
-        step.action.type: step.observation
-        for step in output.trace.steps
-        if step.action.type != AgentActionType.SEARCH
+        action.type: observation
+        for action, observation in steps
+        if action.type != AgentActionType.SEARCH
     }
     read_document = observations.get(AgentActionType.READ_DOCUMENT)
     extract_evidence = observations.get(AgentActionType.EXTRACT_EVIDENCE)
@@ -108,18 +112,18 @@ def extract_evaluation_result(
     recognized_source_count = 0
     unknown_source_count = 0
     source_classifications: list[dict[str, Any]] = []
-    for step in output.trace.steps:
-        if step.action.type != AgentActionType.SEARCH:
+    for action, observation in steps:
+        if action.type != AgentActionType.SEARCH:
             continue
         filter_report = _dict_value(
-            step.observation.data.get("retrieval_filter_report")
+            observation.data.get("retrieval_filter_report")
         )
         classification_report = _dict_value(
-            step.observation.data.get("source_classification_report")
+            observation.data.get("source_classification_report")
         )
         retrieved_result_count += filter_report.get("input_count", 0)
         filtered_result_count += filter_report.get("output_count", 0)
-        result_ids = step.observation.data.get("search_result_ids")
+        result_ids = observation.data.get("search_result_ids")
         fallback_classified_count = (
             len(result_ids) if isinstance(result_ids, list) else 0
         )
@@ -136,9 +140,13 @@ def extract_evaluation_result(
         )
     step_durations: dict[str, float] = {}
     total_action_seconds = 0.0
-    for step in output.trace.steps:
-        duration = step.executor_duration_seconds or 0.0
-        action_type = step.action.type.value
+    for span in spans:
+        if span.name != "agent.action.execute" or span.status != "ok":
+            continue
+        action_type = span.attributes.get("action_type")
+        if not isinstance(action_type, str):
+            continue
+        duration = span.duration_seconds
         step_durations[action_type] = step_durations.get(action_type, 0.0) + duration
         total_action_seconds += duration
     passed_minimums = (
@@ -156,7 +164,7 @@ def extract_evaluation_result(
         completed=state.done,
         passed_minimums=passed_minimums,
         final_answer=state.final_answer,
-        trace_id=output.trace.trace_id,
+        trace_id=output.trace_id,
         retrieved_result_count=retrieved_result_count,
         filtered_result_count=filtered_result_count,
         classified_result_count=classified_result_count,
@@ -186,6 +194,35 @@ def extract_evaluation_result(
         step_durations=step_durations,
         total_action_seconds=total_action_seconds,
     )
+
+
+def _completed_steps(
+    spans: Sequence[SpanRecord],
+) -> list[tuple[AgentAction, Observation]]:
+    """Decode completed runtime steps without coupling tracing to core models."""
+
+    decoded: list[tuple[int, AgentAction, Observation]] = []
+    for span in spans:
+        if span.name != "agent.step" or span.status != "ok":
+            continue
+        if not isinstance(span.output, dict):
+            continue
+        action_value = span.output.get("action")
+        observation_value = span.output.get("observation")
+        if action_value is None or observation_value is None:
+            continue
+        action = AgentAction.model_validate(action_value)
+        observation = Observation.model_validate(observation_value)
+        step_index = span.attributes.get("step_index", 0)
+        decoded.append(
+            (
+                step_index if isinstance(step_index, int) else 0,
+                action,
+                observation,
+            )
+        )
+    decoded.sort(key=lambda item: item[0])
+    return [(action, observation) for _, action, observation in decoded]
 
 
 def _dict_value(value: object) -> dict[str, Any]:

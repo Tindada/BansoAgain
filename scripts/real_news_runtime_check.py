@@ -38,17 +38,18 @@ async def main(*, verbose: bool = False) -> None:
 
     output = await runtime.run(AgentState(query=UserQuery(text=query)))
     state = output.result.state
+    spans = bundle.trace_sink.get_trace(output.trace_id)
+    action_spans = [
+        span for span in spans if span.name == "agent.action.execute"
+    ]
 
     print("done:", state.done)
-    print("trace steps:", len(output.trace.steps))
-    print("actions:", [step.action.type.value for step in output.trace.steps])
+    print("trace steps:", len(state.action_history))
+    print("actions:", [entry.action_type.value for entry in state.action_history])
     print("timings:")
-    for step in output.trace.steps:
-        duration = step.executor_duration_seconds or 0.0
-        print(f"- {step.action.type.value}: {duration:.2f}s")
-    total_duration = sum(
-        step.executor_duration_seconds or 0.0 for step in output.trace.steps
-    )
+    for span in action_spans:
+        print(f"- {span.attributes['action_type']}: {span.duration_seconds:.2f}s")
+    total_duration = sum(span.duration_seconds for span in action_spans)
     print(f"total action time: {total_duration:.2f}s")
     search_queries = [
         entry.observation.data["search_queries"][0]
@@ -110,8 +111,8 @@ async def main(*, verbose: bool = False) -> None:
         print(f"   source_url: {evidence.source_url}")
 
     print("observations:")
-    for step in output.trace.steps:
-        print(f"- {step.action.type.value}: {step.observation.data}")
+    for entry in state.action_history:
+        print(f"- {entry.action_type.value}: {entry.observation.data}")
 
 
 if __name__ == "__main__":

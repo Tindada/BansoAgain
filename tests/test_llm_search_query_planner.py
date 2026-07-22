@@ -160,7 +160,7 @@ def test_news_runtime_executes_llm_generated_search_plan() -> None:
         "official AI releases",
         "recent AI research",
     ]
-    assert output.trace.steps[0].observation.data["search_plan"] == {
+    assert output.result.state.action_history[0].observation.data["search_plan"] == {
         "searches": [
             {"query": "official AI releases", "intent": "official"},
             {"query": "recent AI research", "intent": "research"},

@@ -30,7 +30,7 @@ LLM Policy 接入真实运行入口。下一步补充独立的 LLM tracing。
 - 已实现最小 `LLMNewsPolicy`，由 LLM 根据有界 Policy View、可用 action 和剩余预算
   选择结构化 `AgentAction`，并校验动作参数、搜索预算、重复 query 和资源前置条件。
 - `LLMNewsPolicy` 的非法输出和已知 LLM 调用失败会作为带 reason 的 policy error
-  交由 Runtime 保存 partial trace；第一版不重试或自动回退。
+  向上抛出，由 Runtime Span 保存失败信息；第一版不重试或自动回退。
 - 真实新闻运行入口支持通过 `BANSO_NEWS_POLICY` 选择规则 Policy 或 LLM Policy，
   默认继续使用规则 Policy；LLM Policy 当前复用本地 vLLM client。
 - 尚未记录 Policy 实际接收的 prompt、原始响应和 token usage；这是下一步工作。
@@ -45,14 +45,15 @@ LLM Policy 接入真实运行入口。下一步补充独立的 LLM tracing。
   classifier，以及基础 artifact store。
 - Retrieval filter 仅允许可由当前文档读取链路直接消费的绝对 HTTP(S) URL，非法
   URL 会在保存 artifact 前被丢弃并记录分类计数。
-- 已定义 `AgentTrace` 和 `TraceStep` 数据结构，用于记录运行轨迹。
+- 已实现与业务模型解耦的 `SpanRecord`、`Tracer` 和 `InMemoryTraceSink`，通过
+  `ContextVar` 传播当前 Span，并以 `trace_id` 关联运行结果和执行轨迹。
 - `AgentState` 已保存有界的 Action/Observation 历史、artifact ID、最终答案和
   citations；完整 artifact 继续由 `ArtifactStore` 作为权威数据源保存。
 - 内存 ArtifactStore 已保证同 ID 不可覆盖，并在写入、读取和列举时提供隔离快照。
 - 已实现新闻专用的 `NewsPolicyStateViewBuilder`，按 State 中的 ID 顺序构造有界的
   SearchResult、Document 和 Evidence Policy View。
-- TraceStep 已分别记录 Policy、Executor 和 Reducer 耗时；失败 Trace 记录失败阶段及
-  该阶段耗时。
+- Runtime 已分别使用 Policy、Executor 和 Reducer 子 Span 记录耗时；失败 Span
+  记录异常类型和信息，Trace 自身失败不会改变业务执行结果。
 - 已补充覆盖核心 runtime、新闻执行器、retrieval、document reader、LLM 配置和 LLM 组件的测试。
 
 ## 阶段 1：系统架构设计
@@ -270,8 +271,8 @@ Rollout 必须保存 LLM 实际接收的 prompt/messages、原始 completion、�
 - Python
 - Pydantic
 - asyncio
-- JSONL trace
-- SQLite 或 Postgres 作为后续持久化选项
+- InMemory TraceSink
+- JSONL、SQLite 或 Postgres 作为后续持久化选项
 - 自研轻量 `AgentRuntime`
 
 外部 agent 框架暂不作为核心依赖。LangGraph、LangChain、LlamaIndex、Haystack 等后续可以作为 adapter 接入。

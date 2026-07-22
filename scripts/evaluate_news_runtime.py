@@ -21,7 +21,7 @@ from banso.apps.news_evaluation import (
 )
 from banso.apps.real_news import build_real_news_runtime
 from banso.core import AgentState, ExecutionBudget, RuntimeExecutionError, UserQuery
-from banso.tracing import AgentTrace
+from banso.tracing import SpanRecord
 
 
 DEFAULT_CASES = Path("evaluations/ai_professional_news.jsonl")
@@ -40,8 +40,10 @@ async def run_case(
     case,
     *,
     max_documents_to_read: int,
-) -> tuple[NewsEvaluationResult, AgentTrace | None]:
+) -> tuple[NewsEvaluationResult, list[SpanRecord]]:
     print(f"running {case.id}: {case.query}", flush=True)
+    spans: list[SpanRecord] = []
+    bundle = None
     try:
         bundle = build_real_news_runtime()
         output = await bundle.runtime.run(
@@ -57,24 +59,19 @@ async def run_case(
                 ),
             )
         )
-        result = extract_evaluation_result(case, output, bundle.store)
-        trace = output.trace
+        spans = bundle.trace_sink.get_trace(output.trace_id)
+        result = extract_evaluation_result(case, output, bundle.store, spans)
     except RuntimeExecutionError as error:
-        failure = error.trace.failure
+        if bundle is not None:
+            spans = bundle.trace_sink.get_trace(error.trace_id)
         result = NewsEvaluationResult(
             case_id=case.id,
             category=case.category,
             query=case.query,
-            error_type=(
-                failure.error_type
-                if failure is not None
-                else type(error.original_error).__name__
-            ),
-            error_message=(
-                failure.message if failure is not None else str(error.original_error)
-            ),
+            trace_id=error.trace_id,
+            error_type=type(error.original_error).__name__,
+            error_message=str(error.original_error),
         )
-        trace = error.trace
     except Exception as error:
         result = NewsEvaluationResult(
             case_id=case.id,
@@ -83,14 +80,13 @@ async def run_case(
             error_type=type(error).__name__,
             error_message=str(error),
         )
-        trace = None
     print(
         f"finished {case.id}: documents={result.document_count}, "
         f"evidence={result.evidence_count}, citations={len(result.citations)}, "
         f"passed={result.passed_minimums}",
         flush=True,
     )
-    return result, trace
+    return result, spans
 
 
 async def main(args: argparse.Namespace) -> None:
@@ -104,24 +100,33 @@ async def main(args: argparse.Namespace) -> None:
     output_path = args.output or Path(f"runs/news_evaluation_{timestamp}.jsonl")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     traces_path = output_path.with_name(f"{output_path.stem}.traces.jsonl")
-
     results: list[NewsEvaluationResult] = []
     with (
         output_path.open("w", encoding="utf-8") as output_file,
         traces_path.open("w", encoding="utf-8") as traces_file,
     ):
         for case in cases:
-            result, trace = await run_case(
+            result, spans = await run_case(
                 case,
                 max_documents_to_read=args.max_documents_to_read,
             )
             results.append(result)
             output_file.write(result.model_dump_json() + "\n")
             output_file.flush()
-            if trace is not None:
-                trace = trace.model_copy(deep=True)
-                trace.metadata["evaluation_case_id"] = case.id
-                traces_file.write(trace.model_dump_json() + "\n")
+            if spans:
+                traces_file.write(
+                    json.dumps(
+                        {
+                            "trace_id": spans[0].trace_id,
+                            "evaluation_case_id": case.id,
+                            "spans": [
+                                span.model_dump(mode="json") for span in spans
+                            ],
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
                 traces_file.flush()
 
     summary = summarize_evaluation_results(results)

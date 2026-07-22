@@ -29,6 +29,7 @@ from banso.llm import (
 from banso.policies import NewsRuleBasedPolicy
 from banso.retrieval import FakeRetrievalProvider
 from banso.synthesis import LLMSynthesizer
+from banso.tracing import InMemoryTraceSink, Tracer
 
 
 class SampleNewsDocumentReader:
@@ -57,6 +58,7 @@ async def main() -> None:
     )
     external_llm_client = build_external_llm_client_from_env()
     store = InMemoryArtifactStore()
+    trace_sink = InMemoryTraceSink()
     runtime = AgentRuntime(
         policy=NewsRuleBasedPolicy(),
         executor=NewsActionExecutor(
@@ -66,14 +68,15 @@ async def main() -> None:
             evidence_extractor=LLMEvidenceExtractor(client=evidence_llm_client),
             synthesizer=LLMSynthesizer(client=external_llm_client),
         ),
+        tracer=Tracer(trace_sink),
     )
 
     output = await runtime.run(AgentState(query=UserQuery(text=query)))
     state = output.result.state
 
     print("done:", state.done)
-    print("trace steps:", len(output.trace.steps))
-    print("actions:", [step.action.type.value for step in output.trace.steps])
+    print("trace steps:", len(state.action_history))
+    print("actions:", [entry.action_type.value for entry in state.action_history])
     print("search result ids:", state.search_result_ids)
     print("document ids:", state.document_ids)
     print("evidence ids:", state.evidence_ids)
@@ -89,8 +92,8 @@ async def main() -> None:
         print(f"   source_url: {evidence.source_url}")
     print("final answer:", state.final_answer)
     print("observations:")
-    for step in output.trace.steps:
-        print(f"- {step.action.type.value}: {step.observation.data}")
+    for entry in state.action_history:
+        print(f"- {entry.action_type.value}: {entry.observation.data}")
 
 
 if __name__ == "__main__":

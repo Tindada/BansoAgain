@@ -25,7 +25,7 @@ from banso.retrieval import (
     SearchPlanningRequest,
 )
 from banso.synthesis import FakeSynthesizer
-from banso.tracing import AgentTrace
+from banso.tracing import InMemoryTraceSink, SpanRecord, Tracer
 
 
 class RecordingSearchQueryPlanner:
@@ -225,23 +225,26 @@ async def _run_runtime_with_bounded_plan():
         ]
     )
     planner = RecordingSearchQueryPlanner(plan)
+    trace_sink = InMemoryTraceSink()
     runtime = AgentRuntime(
         policy=NewsRuleBasedPolicy(),
         executor=_news_executor(planner),
+        tracer=Tracer(trace_sink),
     )
 
-    return await runtime.run(
+    output = await runtime.run(
         AgentState(
             query=UserQuery(text="latest AI news"),
             budget=ExecutionBudget(max_searches=2),
         )
     )
+    return output, trace_sink.get_trace(output.trace_id)
 
 
 def test_runtime_executes_bounded_search_plan_in_order() -> None:
-    output = asyncio.run(_run_runtime_with_bounded_plan())
+    output, spans = asyncio.run(_run_runtime_with_bounded_plan())
 
-    assert [step.action.type for step in output.trace.steps] == [
+    assert [entry.action_type for entry in output.result.state.action_history] == [
         AgentActionType.PLAN_SEARCH,
         AgentActionType.SEARCH,
         AgentActionType.SEARCH,
@@ -264,26 +267,32 @@ def test_runtime_executes_bounded_search_plan_in_order() -> None:
     ] == list(range(7))
     assert [
         entry.action_type for entry in output.result.state.action_history
-    ] == [step.action.type for step in output.trace.steps]
+    ] == [
+        AgentActionType(span.output["action"]["type"])
+        for span in spans
+        if span.name == "agent.step" and span.status == "ok"
+    ]
     assert output.result.state.action_history[-1].action_type == AgentActionType.STOP
     assert output.result.state.current_step == len(
         output.result.state.action_history
     )
-    assert [len(step.state.action_history) for step in output.trace.steps] == list(
+    step_spans = [
+        span for span in spans if span.name == "agent.step" and span.status == "ok"
+    ]
+    assert [len(span.input["state"]["action_history"]) for span in step_spans] == list(
         range(7)
     )
-    assert output.trace.steps[0].observation.data["search_plan"]["searches"] == [
+    assert step_spans[0].output["observation"]["data"]["search_plan"][
+        "searches"
+    ] == [
         {"query": "general AI update", "intent": "general"},
         {"query": "official AI release", "intent": "official"},
         {"query": "AI research paper", "intent": "research"},
     ]
 
-    replayable_trace = AgentTrace.model_validate_json(output.trace.model_dump_json())
-    assert replayable_trace.steps[0].action.type == AgentActionType.PLAN_SEARCH
-    assert replayable_trace.final_result is not None
-    assert replayable_trace.final_result.state.search_plan == (
-        output.result.state.search_plan
-    )
-    assert replayable_trace.final_result.state.action_history == (
-        output.result.state.action_history
-    )
+    replayable_spans = [
+        SpanRecord.model_validate_json(span.model_dump_json()) for span in spans
+    ]
+    assert replayable_spans == spans
+    run_span = next(span for span in spans if span.name == "agent.run")
+    assert run_span.output["result"] == output.result.model_dump(mode="json")

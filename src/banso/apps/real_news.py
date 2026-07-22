@@ -19,6 +19,7 @@ from banso.policies import (
 )
 from banso.retrieval import LLMSearchQueryPlanner, TavilyRetrievalProvider
 from banso.synthesis import LLMSynthesizer
+from banso.tracing import InMemoryTraceSink, Tracer
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,7 @@ class RealNewsRuntimeBundle:
 
     runtime: AgentRuntime
     store: InMemoryArtifactStore
+    trace_sink: InMemoryTraceSink
 
 
 def build_tavily_provider_from_env() -> TavilyRetrievalProvider:
@@ -57,6 +59,7 @@ def build_real_news_runtime() -> RealNewsRuntimeBundle:
     )
     external_llm_client = build_external_llm_client_from_env()
     store = InMemoryArtifactStore()
+    trace_sink = InMemoryTraceSink()
     policy = (
         LLMNewsPolicy(
             client=local_llm_client,
@@ -78,5 +81,10 @@ def build_real_news_runtime() -> RealNewsRuntimeBundle:
                 os.getenv("BANSO_MAX_EXTRACTION_CONCURRENCY", "3")
             ),
         ),
+        tracer=Tracer(trace_sink),
     )
-    return RealNewsRuntimeBundle(runtime=runtime, store=store)
+    return RealNewsRuntimeBundle(
+        runtime=runtime,
+        store=store,
+        trace_sink=trace_sink,
+    )
