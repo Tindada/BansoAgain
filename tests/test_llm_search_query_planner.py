@@ -204,9 +204,10 @@ def test_real_news_runtime_defaults_to_rule_policy_and_reuses_llm_clients(
     assert isinstance(bundle.runtime.policy, NewsRuleBasedPolicy)
     assert isinstance(executor, NewsActionExecutor)
     assert isinstance(executor.search_query_planner, LLMSearchQueryPlanner)
-    assert executor.search_query_planner.client is executor.evidence_extractor.client
+    assert executor.search_query_planner.client is executor.synthesizer.client
     assert isinstance(executor.search_query_planner.client, TracingLLMClient)
-    assert executor.search_query_planner.client.client.client is local_client
+    assert executor.search_query_planner.client.client is external_client
+    assert executor.evidence_extractor.client.client.client is local_client
     assert isinstance(executor.synthesizer.client, TracingLLMClient)
     assert executor.synthesizer.client.client is external_client
 
@@ -239,10 +240,11 @@ def test_real_news_runtime_builds_llm_policy_with_shared_store_and_client(
 
     assert isinstance(policy, LLMNewsPolicy)
     assert isinstance(executor, NewsActionExecutor)
-    assert policy.client is executor.search_query_planner.client
     assert policy.client is executor.evidence_extractor.client
     assert isinstance(policy.client, TracingLLMClient)
     assert policy.client.client.client is local_client
+    assert executor.search_query_planner.client is executor.synthesizer.client
+    assert executor.search_query_planner.client.client is external_client
     assert policy.context_builder.store is bundle.store
     assert executor.store is bundle.store
     assert isinstance(executor.synthesizer.client, TracingLLMClient)

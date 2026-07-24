@@ -77,7 +77,7 @@ def build_real_news_runtime() -> RealNewsRuntimeBundle:
             document_reader=HTTPDocumentReader(),
             evidence_extractor=LLMEvidenceExtractor(client=local_llm_client),
             synthesizer=LLMSynthesizer(client=external_llm_client),
-            search_query_planner=LLMSearchQueryPlanner(client=local_llm_client),
+            search_query_planner=LLMSearchQueryPlanner(client=external_llm_client),
             max_extraction_concurrency=int(
                 os.getenv("BANSO_MAX_EXTRACTION_CONCURRENCY", "3")
             ),
