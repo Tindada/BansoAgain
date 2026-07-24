@@ -24,6 +24,7 @@ from banso.retrieval import (
     SearchPlanningRequest,
     SearchQueryPlanner,
     SourceClassifier,
+    normalize_url,
 )
 from banso.retrieval.filter import RetrievalFilter
 from banso.synthesis import Synthesizer, SynthesisRequest
@@ -100,12 +101,37 @@ class NewsActionExecutor:
         filtered = self.retrieval_filter.apply(raw_results)
         classified = self.source_classifier.apply(filtered.results)
         results = classified.results
-        result_ids = [self.store.put(result) for result in results]
+        index_updates: dict[str, str] = {}
+        result_ids: list[str] = []
+        new_result_count = 0
+        reused_result_count = 0
+
+        for result in results:
+            normalized_url = normalize_url(
+                result.url,
+                ignored_query_params=self.retrieval_filter.config.ignored_query_params,
+            )
+            existing_result_id = state.search_result_index.get(normalized_url)
+            if existing_result_id is not None:
+                result_ids.append(existing_result_id)
+                reused_result_count += 1
+                continue
+
+            result_id = self.store.put(result)
+            index_updates[normalized_url] = result_id
+            result_ids.append(result_id)
+            new_result_count += 1
 
         return Observation(
             data={
                 "search_queries": [query],
                 "search_result_ids": result_ids,
+                "search_result_index_updates": index_updates,
+                "search_result_merge_report": {
+                    "candidate_count": len(results),
+                    "new_result_count": new_result_count,
+                    "reused_result_count": reused_result_count,
+                },
                 "retrieval_filter_report": filtered.report.model_dump(),
                 "source_classification_report": classified.report(),
             },

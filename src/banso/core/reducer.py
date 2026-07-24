@@ -8,9 +8,24 @@ from banso.core.observation import Observation
 from banso.core.state import ActionHistoryEntry, AgentState, SearchPlan
 
 
-def _extend_string_list(target: list[str], values: object) -> None:
+def _extend_unique_string_list(target: list[str], values: object) -> None:
     if isinstance(values, list):
-        target.extend(value for value in values if isinstance(value, str))
+        seen = set(target)
+        for value in values:
+            if isinstance(value, str) and value not in seen:
+                target.append(value)
+                seen.add(value)
+
+
+def _update_search_result_index(
+    target_index: dict[str, str],
+    index_updates: object,
+) -> None:
+    if not isinstance(index_updates, dict):
+        raise ValueError("search result index updates must be a mapping")
+    if target_index.keys() & index_updates.keys():
+        raise ValueError("search result index update contains an existing URL")
+    target_index.update(index_updates)
 
 
 class StateReducer(Protocol):
@@ -52,15 +67,20 @@ class DefaultStateReducer:
             if isinstance(search_plan, dict):
                 next_state.search_plan = SearchPlan.model_validate(search_plan)
 
-        _extend_string_list(
-            next_state.search_result_ids,
-            observation.data.get("search_result_ids"),
-        )
-        _extend_string_list(
+        if action.type == AgentActionType.SEARCH:
+            _extend_unique_string_list(
+                next_state.search_result_ids,
+                observation.data.get("search_result_ids"),
+            )
+            _update_search_result_index(
+                next_state.search_result_index,
+                observation.data.get("search_result_index_updates", {}),
+            )
+        _extend_unique_string_list(
             next_state.document_ids,
             observation.data.get("document_ids"),
         )
-        _extend_string_list(
+        _extend_unique_string_list(
             next_state.evidence_ids,
             observation.data.get("evidence_ids"),
         )

@@ -60,6 +60,33 @@ class DuplicateRetrievalProvider:
         ]
 
 
+class CrossSearchDuplicateRetrievalProvider:
+    async def search(self, request: SearchRequest) -> list[SearchResult]:
+        if request.query.startswith("first"):
+            return [
+                SearchResult(
+                    title="First search title",
+                    url="https://example.com/news?a=1&utm_source=first",
+                    snippet="First search snippet",
+                    rank=1,
+                )
+            ]
+        return [
+            SearchResult(
+                title="Second search title",
+                url="https://EXAMPLE.com/news?utm_medium=second&a=1#details",
+                snippet="Second search snippet",
+                rank=3,
+            ),
+            SearchResult(
+                title="New result",
+                url="https://example.com/new",
+                snippet="New result snippet",
+                rank=1,
+            ),
+        ]
+
+
 class PartiallyBlockedDocumentReader(FakeDocumentReader):
     def __init__(self, status_code: int = 403) -> None:
         self.status_code = status_code
@@ -320,6 +347,66 @@ async def _run_news_runtime_preserves_search_order_when_reading() -> None:
     ]
 
 
+async def _run_news_runtime_deduplicates_across_searches() -> None:
+    store = InMemoryArtifactStore()
+    runtime = AgentRuntime(
+        policy=NewsRuleBasedPolicy(),
+        executor=NewsActionExecutor(
+            store=store,
+            retrieval_provider=CrossSearchDuplicateRetrievalProvider(),
+            document_reader=FakeDocumentReader(),
+            evidence_extractor=FakeEvidenceExtractor(),
+            synthesizer=FakeSynthesizer(),
+            search_query_planner=TwoQueryPlanner(),
+        ),
+    )
+
+    output = await runtime.run(
+        AgentState(
+            query=UserQuery(text="latest AI news"),
+            budget=ExecutionBudget(max_searches=2, max_documents_to_read=8),
+        )
+    )
+    state = output.result.state
+    search_observations = [
+        entry.observation
+        for entry in state.action_history
+        if entry.action_type == AgentActionType.SEARCH
+    ]
+    stored_results = store.list(SearchResult)
+    stored_documents = store.list(Document)
+
+    assert len(search_observations) == 2
+    assert search_observations[0].data["search_result_ids"] == [
+        state.search_result_ids[0]
+    ]
+    assert search_observations[1].data["search_result_ids"] == [
+        state.search_result_ids[0],
+        state.search_result_ids[1],
+    ]
+    assert search_observations[0].data["search_result_merge_report"] == {
+        "candidate_count": 1,
+        "new_result_count": 1,
+        "reused_result_count": 0,
+    }
+    assert search_observations[1].data["search_result_merge_report"] == {
+        "candidate_count": 2,
+        "new_result_count": 1,
+        "reused_result_count": 1,
+    }
+    assert len(state.search_result_ids) == 2
+    assert state.search_result_index == {
+        "https://example.com/news?a=1": state.search_result_ids[0],
+        "https://example.com/new": state.search_result_ids[1],
+    }
+    assert len(stored_results) == 2
+    assert stored_results[0].title == "First search title"
+    assert stored_results[0].snippet == "First search snippet"
+    assert all(result.snippet != "Second search snippet" for result in stored_results)
+    assert len(state.document_ids) == 2
+    assert len(stored_documents) == 2
+
+
 async def _run_news_runtime_skips_unreadable_document(status_code: int) -> None:
     store = InMemoryArtifactStore()
     runtime = AgentRuntime(
@@ -366,6 +453,10 @@ def test_news_runtime_respects_document_read_budget() -> None:
 
 def test_news_runtime_preserves_search_order_when_reading() -> None:
     asyncio.run(_run_news_runtime_preserves_search_order_when_reading())
+
+
+def test_news_runtime_deduplicates_across_searches() -> None:
+    asyncio.run(_run_news_runtime_deduplicates_across_searches())
 
 
 @pytest.mark.parametrize("status_code", [401, 403, 404, 410, 500, 521])

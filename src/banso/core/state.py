@@ -56,6 +56,7 @@ class AgentState(BaseModel):
     search_plan: SearchPlan | None = None
     action_history: list[ActionHistoryEntry] = Field(default_factory=list)
     search_result_ids: list[str] = Field(default_factory=list)
+    search_result_index: dict[str, str] = Field(default_factory=dict)
     document_ids: list[str] = Field(default_factory=list)
     evidence_ids: list[str] = Field(default_factory=list)
     final_answer: str | None = None

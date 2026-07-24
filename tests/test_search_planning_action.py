@@ -2,6 +2,8 @@
 
 import asyncio
 
+import pytest
+
 from banso.artifacts import InMemoryArtifactStore
 from banso.core import (
     AgentAction,
@@ -141,12 +143,20 @@ def test_reducer_stores_independent_action_history_snapshot() -> None:
         params={"filters": {"domains": ["example.com"]}},
     )
     observation = Observation(
-        data={"search_result_ids": ["result-1"]},
+        data={
+            "search_result_ids": ["result-1"],
+            "search_result_index_updates": {
+                "https://example.com/result-1": "result-1"
+            },
+        },
     )
 
     next_state = DefaultStateReducer().apply(state, action, observation)
     action.params["filters"]["domains"].append("other.example")
     observation.data["search_result_ids"].append("result-2")
+    observation.data["search_result_index_updates"][
+        "https://example.com/result-2"
+    ] = "result-2"
 
     history_entry = next_state.action_history[0]
     assert history_entry.params == {
@@ -154,7 +164,73 @@ def test_reducer_stores_independent_action_history_snapshot() -> None:
     }
     assert history_entry.observation.data == {
         "search_result_ids": ["result-1"],
+        "search_result_index_updates": {
+            "https://example.com/result-1": "result-1"
+        },
     }
+
+
+def test_reducer_merges_artifact_ids_without_duplicates() -> None:
+    state = AgentState(
+        query=UserQuery(text="latest AI news"),
+        search_result_ids=["result-1"],
+        search_result_index={"https://example.com/first": "result-1"},
+        document_ids=["document-1"],
+        evidence_ids=["evidence-1"],
+    )
+    observation = Observation(
+        data={
+            "search_result_ids": ["result-1", "result-2"],
+            "search_result_index_updates": {
+                "https://example.com/second": "result-2"
+            },
+            "document_ids": ["document-1", "document-2"],
+            "evidence_ids": ["evidence-1", "evidence-2"],
+        },
+    )
+
+    next_state = DefaultStateReducer().apply(
+        state,
+        AgentAction(type=AgentActionType.SEARCH),
+        observation,
+    )
+
+    assert next_state.search_result_ids == ["result-1", "result-2"]
+    assert next_state.search_result_index == {
+        "https://example.com/first": "result-1",
+        "https://example.com/second": "result-2",
+    }
+    assert next_state.document_ids == ["document-1", "document-2"]
+    assert next_state.evidence_ids == ["evidence-1", "evidence-2"]
+
+
+@pytest.mark.parametrize("updated_result_id", ["result-1", "result-2"])
+def test_reducer_rejects_existing_search_result_index_key(
+    updated_result_id: str,
+) -> None:
+    state = AgentState(
+        query=UserQuery(text="latest AI news"),
+        search_result_ids=["result-1"],
+        search_result_index={"https://example.com/news": "result-1"},
+    )
+    observed_ids = ["result-1"]
+    if updated_result_id != "result-1":
+        observed_ids.append(updated_result_id)
+    observation = Observation(
+        data={
+            "search_result_ids": observed_ids,
+            "search_result_index_updates": {
+                "https://example.com/news": updated_result_id
+            },
+        },
+    )
+
+    with pytest.raises(ValueError, match="contains an existing URL"):
+        DefaultStateReducer().apply(
+            state,
+            AgentAction(type=AgentActionType.SEARCH),
+            observation,
+        )
 
 
 def test_reducer_writes_final_answer_without_mutating_input_state() -> None:
