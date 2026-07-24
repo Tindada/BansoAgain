@@ -27,7 +27,6 @@ SYSTEM_PROMPT = (
 )
 
 ACTION_INSTRUCTIONS = {
-    AgentActionType.PLAN_SEARCH: "Create a search plan. Use an empty params object.",
     AgentActionType.SEARCH: (
         "Run one search. params must contain a non-empty query and may contain a "
         "non-empty intent."
@@ -135,7 +134,12 @@ class LLMNewsPolicy:
 
         try:
             output = self._parse_output(response.content)
-            return self._validate_action(output, state, search_count)
+            return self._validate_action(
+                output,
+                state,
+                search_count,
+                available_actions,
+            )
         except LLMPolicyError as error:
             error.raw_output = response.content
             raise
@@ -190,12 +194,19 @@ class LLMNewsPolicy:
         output: _LLMActionOutput,
         state: AgentState,
         search_count: int,
+        available_actions: list[AgentActionType],
     ) -> AgentAction:
         rationale = output.rationale.strip()
         if not rationale:
             raise LLMPolicyError(
                 "LLM policy response has an empty rationale",
                 reason="invalid_params",
+            )
+
+        if output.type not in available_actions:
+            raise LLMPolicyError(
+                f"{output.type.value} action is not currently available",
+                reason="invalid_action",
             )
 
         if output.type == AgentActionType.SEARCH:
@@ -208,7 +219,6 @@ class LLMNewsPolicy:
                 )
             params = {}
 
-        self._validate_action_preconditions(output.type, state)
         return AgentAction(type=output.type, params=params, rationale=rationale)
 
     def _validate_search_params(
@@ -263,40 +273,6 @@ class LLMNewsPolicy:
 
         return normalized_params
 
-    def _validate_action_preconditions(
-        self,
-        action_type: AgentActionType,
-        state: AgentState,
-    ) -> None:
-        invalid_reason: str | None = None
-        if (
-            action_type == AgentActionType.PLAN_SEARCH
-            and state.search_plan is not None
-        ):
-            invalid_reason = "a search plan already exists"
-        elif (
-            action_type == AgentActionType.READ_DOCUMENT
-            and not state.search_result_ids
-        ):
-            invalid_reason = "no search results are available"
-        elif (
-            action_type == AgentActionType.EXTRACT_EVIDENCE
-            and not state.document_ids
-        ):
-            invalid_reason = "no documents are available"
-        elif (
-            action_type == AgentActionType.FINISH
-            and not state.document_ids
-            and not state.evidence_ids
-        ):
-            invalid_reason = "no documents or evidence are available"
-
-        if invalid_reason is not None:
-            raise LLMPolicyError(
-                f"{action_type.value} action is not allowed: {invalid_reason}",
-                reason="invalid_action",
-            )
-
     @staticmethod
     def _search_count(state: AgentState) -> int:
         return sum(
@@ -310,8 +286,6 @@ class LLMNewsPolicy:
         remaining_searches: int,
     ) -> list[AgentActionType]:
         actions: list[AgentActionType] = []
-        if state.search_plan is None:
-            actions.append(AgentActionType.PLAN_SEARCH)
         if remaining_searches > 0:
             actions.append(AgentActionType.SEARCH)
         if state.search_result_ids:

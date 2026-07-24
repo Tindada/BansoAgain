@@ -145,13 +145,12 @@ tracer 记录运行边界 Span
 
 ## 阶段 5：LLM Agent Policy
 
-目标：在保持 runtime、action space 和 executor 边界不变的前提下，让 LLM 根据
-当前 state、已有 observation 和剩余预算动态选择下一步 action。
+目标：在保持 runtime 和 executor 边界不变的前提下，让 LLM 根据当前 state、
+已有 observation 和剩余预算，从受约束的动作空间中动态选择下一步 action。
 
-第一版使用受约束的已有动作空间：
+LLM policy 第一版使用受约束的动作空间：
 
 ```text
-PLAN_SEARCH
 SEARCH
 READ_DOCUMENT
 EXTRACT_EVIDENCE
@@ -161,6 +160,9 @@ STOP
 
 核心要求：
 
+- rule-based policy 继续使用 `PLAN_SEARCH` 和持久化在 State 中的可选
+  `SearchPlan`；LLM policy 不依赖 SearchPlan，直接根据 query 和当前 context
+  生成 `SEARCH(query, intent)`。
 - `FINISH` 生成最终答案并终止运行；`STOP` 不生成新答案，直接终止运行。
 - 输出可校验的结构化 `AgentAction`，不允许生成任意工具调用。
 - `LLMNewsPolicy` 内部使用 `NewsPolicyStateViewBuilder`，根据 State 和 ArtifactStore

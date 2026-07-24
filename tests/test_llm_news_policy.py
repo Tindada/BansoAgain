@@ -13,7 +13,6 @@ from banso.core import (
     AgentState,
     ExecutionBudget,
     Observation,
-    SearchPlan,
     UserQuery,
 )
 from banso.documents import Document, EvidenceItem
@@ -79,7 +78,6 @@ def _select_action(
 @pytest.mark.parametrize(
     ("action_type", "params", "expected_params"),
     [
-        (AgentActionType.PLAN_SEARCH, {}, {}),
         (
             AgentActionType.SEARCH,
             {"query": " AI news ", "intent": " latest updates "},
@@ -159,7 +157,6 @@ def test_builds_request_from_bounded_policy_view_and_remaining_budget() -> None:
         "remaining_search_count": 2,
     }
     assert payload["available_actions"] == [
-        "plan_search",
         "search",
         "read_document",
         "extract_evidence",
@@ -172,6 +169,46 @@ def test_builds_request_from_bounded_policy_view_and_remaining_budget() -> None:
     assert "hidden_document_tail" not in prompt
     assert "hidden_supporting_text" not in prompt
     assert "hidden_evidence_metadata" not in prompt
+
+
+def test_selects_search_without_a_search_plan() -> None:
+    store = InMemoryArtifactStore()
+    state = AgentState(query=UserQuery(text="What happened?"))
+
+    action, client = _select_action(
+        '{"type":"search","params":{"query":"latest verified reports",'
+        '"intent":"find current reporting"},"rationale":"Start researching."}',
+        state,
+        store,
+    )
+
+    assert state.search_plan is None
+    assert action == AgentAction(
+        type=AgentActionType.SEARCH,
+        params={
+            "query": "latest verified reports",
+            "intent": "find current reporting",
+        },
+        rationale="Start researching.",
+    )
+    payload = json.loads(client.requests[0].messages[1].content)
+    assert payload["available_actions"] == ["search", "stop"]
+    assert "plan_search" not in payload["action_instructions"]
+
+
+def test_rejects_plan_search_as_unavailable_to_llm_policy() -> None:
+    store = InMemoryArtifactStore()
+    state = AgentState(query=UserQuery(text="What happened?"))
+
+    with pytest.raises(LLMPolicyError) as exc_info:
+        _select_action(
+            '{"type":"plan_search","params":{},'
+            '"rationale":"Create a search plan."}',
+            state,
+            store,
+        )
+
+    assert exc_info.value.reason == "invalid_action"
 
 
 @pytest.mark.parametrize(
@@ -291,7 +328,6 @@ def test_rejects_repeated_search_query() -> None:
 @pytest.mark.parametrize(
     ("action_type", "state_update"),
     [
-        (AgentActionType.PLAN_SEARCH, "existing_plan"),
         (AgentActionType.READ_DOCUMENT, "no_results"),
         (AgentActionType.EXTRACT_EVIDENCE, "no_documents"),
         (AgentActionType.FINISH, "no_sources"),
@@ -302,9 +338,7 @@ def test_rejects_action_without_required_state(
     state_update: str,
 ) -> None:
     store, state = _populated_state()
-    if state_update == "existing_plan":
-        state.search_plan = SearchPlan()
-    elif state_update == "no_results":
+    if state_update == "no_results":
         state.search_result_ids = []
     elif state_update == "no_documents":
         state.document_ids = []
