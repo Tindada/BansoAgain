@@ -39,7 +39,7 @@ class SearchPlan(BaseModel):
 
 
 class ActionHistoryEntry(BaseModel):
-    """One completed action and its policy-visible observation."""
+    """One completed action and its recorded runtime observation."""
 
     step_index: int
     action_type: AgentActionType
@@ -48,7 +48,7 @@ class ActionHistoryEntry(BaseModel):
 
 
 class AgentState(BaseModel):
-    """Mutable state observed by the policy at each step."""
+    """Authoritative mutable record of runtime progress and artifact references."""
 
     query: UserQuery
     current_step: int = 0

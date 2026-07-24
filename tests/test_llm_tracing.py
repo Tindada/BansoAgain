@@ -19,7 +19,7 @@ from banso.llm import (
     ThinkingTagStrippingLLMClient,
     TracingLLMClient,
 )
-from banso.policies import LLMNewsPolicy, NewsPolicyStateViewBuilder
+from banso.policies import LLMNewsPolicy, NewsPolicyContextBuilder
 from banso.retrieval import (
     LLMSearchQueryPlanner,
     SearchPlanningError,
@@ -71,7 +71,7 @@ async def _run_successful_calls() -> list[SpanRecord]:
                 '{"type":"stop","params":{},"rationale":"Done."}',
                 "policy-call",
             ),
-            NewsPolicyStateViewBuilder(InMemoryArtifactStore()),
+            NewsPolicyContextBuilder(InMemoryArtifactStore()),
         )
         action = await policy.select_action(
             AgentState(query=UserQuery(text="What happened?"))

@@ -23,7 +23,7 @@ from banso.llm import (
     LLMRequest,
     LLMResponse,
 )
-from banso.policies import LLMNewsPolicy, LLMPolicyError, NewsPolicyStateViewBuilder
+from banso.policies import LLMNewsPolicy, LLMPolicyError, NewsPolicyContextBuilder
 from banso.retrieval import SearchResult
 
 
@@ -71,7 +71,7 @@ def _select_action(
     store: InMemoryArtifactStore,
 ) -> tuple[AgentAction, FakeLLMClient]:
     client = FakeLLMClient(content=content)
-    policy = LLMNewsPolicy(client, NewsPolicyStateViewBuilder(store))
+    policy = LLMNewsPolicy(client, NewsPolicyContextBuilder(store))
     return asyncio.run(policy.select_action(state)), client
 
 
@@ -113,7 +113,7 @@ def test_selects_each_supported_action(
     assert len(client.requests) == 1
 
 
-def test_builds_request_from_bounded_policy_view_and_remaining_budget() -> None:
+def test_builds_request_from_bounded_decision_context() -> None:
     store, state = _populated_state()
     state.current_step = 2
     state.budget = ExecutionBudget(max_steps=7, max_searches=3)
@@ -122,7 +122,15 @@ def test_builds_request_from_bounded_policy_view_and_remaining_budget() -> None:
             step_index=0,
             action_type=AgentActionType.SEARCH,
             params={"query": "first query"},
-            observation=Observation(data={"search_result_ids": ["result-1"]}),
+            observation=Observation(
+                data={
+                    "search_result_ids": ["result-1"],
+                    "search_result_merge_report": {
+                        "new_result_count": 1,
+                        "reused_result_count": 0,
+                    },
+                }
+            ),
         )
     )
     state_before = state.model_copy(deep=True)
@@ -131,7 +139,7 @@ def test_builds_request_from_bounded_policy_view_and_remaining_budget() -> None:
     )
     policy = LLMNewsPolicy(
         client,
-        NewsPolicyStateViewBuilder(store, max_document_preview_chars=7),
+        NewsPolicyContextBuilder(store, max_document_preview_chars=7),
         model="policy-model",
         temperature=0.2,
         max_tokens=128,
@@ -149,13 +157,27 @@ def test_builds_request_from_bounded_policy_view_and_remaining_budget() -> None:
         LLMMessageRole.USER,
     ]
     payload = json.loads(request.messages[1].content)
-    assert payload["policy_state"]["state"]["query"]["text"] == "What happened?"
-    assert payload["policy_state"]["documents"][0]["text_preview"] == "visible"
-    assert payload["remaining_budget"] == {
-        "remaining_step_count": 5,
-        "executed_search_count": 1,
-        "remaining_search_count": 2,
-    }
+    context = payload["context"]
+    assert context["user_query"]["text"] == "What happened?"
+    assert "query" not in context
+    assert context["documents"][0]["text_preview"] == "visible"
+    assert context["current_step"] == 2
+    assert context["max_steps"] == 7
+    assert context["remaining_step_count"] == 5
+    assert context["executed_search_count"] == 1
+    assert context["max_searches"] == 3
+    assert context["remaining_search_count"] == 2
+    assert context["max_documents_to_read"] == 8
+    assert context["search_result_count"] == 1
+    assert context["omitted_search_result_count"] == 0
+    assert context["document_count"] == 1
+    assert context["omitted_document_count"] == 0
+    assert context["evidence_count"] == 1
+    assert context["omitted_evidence_count"] == 0
+    assert context["attempts"][0]["query"] == "first query"
+    assert "intent" not in context["attempts"][0]
+    assert "published_at" not in context["search_results"][0]
+    assert "remaining_budget" not in payload
     assert payload["available_actions"] == [
         "search",
         "read_document",
@@ -169,6 +191,8 @@ def test_builds_request_from_bounded_policy_view_and_remaining_budget() -> None:
     assert "hidden_document_tail" not in prompt
     assert "hidden_supporting_text" not in prompt
     assert "hidden_evidence_metadata" not in prompt
+    assert "search_result_index" not in prompt
+    assert "search_plan" not in prompt
 
 
 def test_selects_search_without_a_search_plan() -> None:
@@ -230,7 +254,7 @@ def test_rejects_plan_search_as_unavailable_to_llm_policy() -> None:
 def test_rejects_invalid_llm_output(content: str, reason: str) -> None:
     store, state = _populated_state()
     client = FakeLLMClient(content=content)
-    policy = LLMNewsPolicy(client, NewsPolicyStateViewBuilder(store))
+    policy = LLMNewsPolicy(client, NewsPolicyContextBuilder(store))
     state_before = state.model_copy(deep=True)
 
     with pytest.raises(LLMPolicyError) as exc_info:
@@ -371,7 +395,7 @@ class _FailingLLMClient:
 def test_wraps_known_llm_error_without_retrying() -> None:
     store, state = _populated_state()
     client = _FailingLLMClient()
-    policy = LLMNewsPolicy(client, NewsPolicyStateViewBuilder(store))
+    policy = LLMNewsPolicy(client, NewsPolicyContextBuilder(store))
 
     with pytest.raises(LLMPolicyError) as exc_info:
         asyncio.run(policy.select_action(state))

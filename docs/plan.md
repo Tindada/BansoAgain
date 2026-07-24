@@ -50,8 +50,8 @@ LLM Policy 接入真实运行入口。下一步补充独立的 LLM tracing。
 - `AgentState` 已保存有界的 Action/Observation 历史、artifact ID、最终答案和
   citations；完整 artifact 继续由 `ArtifactStore` 作为权威数据源保存。
 - 内存 ArtifactStore 已保证同 ID 不可覆盖，并在写入、读取和列举时提供隔离快照。
-- 已实现新闻专用的 `NewsPolicyStateViewBuilder`，按 State 中的 ID 顺序构造有界的
-  SearchResult、Document 和 Evidence Policy View。
+- 已实现新闻专用的 `NewsPolicyContextBuilder`，从 State 和 ArtifactStore
+  确定性构造有界的查询、预算、语义化执行历史和 artifact 决策上下文。
 - Runtime 已分别使用 Policy、Executor 和 Reducer 子 Span 记录耗时；失败 Span
   记录异常类型和信息，Trace 自身失败不会改变业务执行结果。
 - 已补充覆盖核心 runtime、新闻执行器、retrieval、document reader、LLM 配置和 LLM 组件的测试。
@@ -165,10 +165,10 @@ STOP
   生成 `SEARCH(query, intent)`。
 - `FINISH` 生成最终答案并终止运行；`STOP` 不生成新答案，直接终止运行。
 - 输出可校验的结构化 `AgentAction`，不允许生成任意工具调用。
-- `LLMNewsPolicy` 内部使用 `NewsPolicyStateViewBuilder`，根据 State 和 ArtifactStore
-  构造模型可见输入；通用 `Policy` 接口继续只返回 `AgentAction`。
-- 向模型提供当前 state、已完成步骤、有界 artifact view、可用 action 和剩余预算，
-  不在 State 中重复保存 artifact summary。
+- `LLMNewsPolicy` 内部使用 `NewsPolicyContextBuilder`，根据 State 和 ArtifactStore
+  构造模型可见的决策事实；通用 `Policy` 接口继续只返回 `AgentAction`。
+- 向模型提供 query、预算、语义化执行历史、有界 artifact context 和可用 action，
+  不直接暴露完整 State，也不在 State 中重复保存 artifact summary。
 - 对非法 action、无效参数、重复动作和 LLM 调用失败提供校验、重试或安全回退。
 - 记录 action 选择所需的简短 decision metadata，保证行为可审计。
 - 继续使用固定流程 policy 作为 baseline，而不是直接替换或删除。

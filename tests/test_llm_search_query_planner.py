@@ -236,7 +236,7 @@ def test_real_news_runtime_builds_llm_policy_with_shared_store_and_client(
     assert policy.client is executor.evidence_extractor.client
     assert isinstance(policy.client, TracingLLMClient)
     assert policy.client.client.client is local_client
-    assert policy.view_builder.store is bundle.store
+    assert policy.context_builder.store is bundle.store
     assert executor.store is bundle.store
     assert isinstance(executor.synthesizer.client, TracingLLMClient)
     assert executor.synthesizer.client.client is external_client

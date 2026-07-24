@@ -15,7 +15,7 @@ from banso.llm import (
 )
 from banso.policies import (
     LLMNewsPolicy,
-    NewsPolicyStateViewBuilder,
+    NewsPolicyContextBuilder,
     NewsRuleBasedPolicy,
 )
 from banso.retrieval import LLMSearchQueryPlanner, TavilyRetrievalProvider
@@ -64,7 +64,7 @@ def build_real_news_runtime() -> RealNewsRuntimeBundle:
     policy = (
         LLMNewsPolicy(
             client=local_llm_client,
-            view_builder=NewsPolicyStateViewBuilder(store),
+            context_builder=NewsPolicyContextBuilder(store),
         )
         if policy_name == "llm"
         else NewsRuleBasedPolicy()

@@ -14,7 +14,11 @@ from banso.llm import (
     LLMMessageRole,
     LLMRequest,
 )
-from banso.policies.news_policy_view import NewsPolicyStateViewBuilder
+from banso.policies.news_policy_context import (
+    NewsPolicyContext,
+    NewsPolicyContextBuilder,
+    SearchAttempt,
+)
 
 
 SYSTEM_PROMPT = (
@@ -82,24 +86,22 @@ class LLMNewsPolicy:
     def __init__(
         self,
         client: LLMClient,
-        view_builder: NewsPolicyStateViewBuilder,
+        context_builder: NewsPolicyContextBuilder,
         *,
         model: str | None = None,
         temperature: float | None = 0.0,
         max_tokens: int | None = None,
     ) -> None:
         self.client = client
-        self.view_builder = view_builder
+        self.context_builder = context_builder
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
 
     async def select_action(self, state: AgentState) -> AgentAction:
-        """Build the policy view and return one validated action."""
-        view = self.view_builder.build(state)
-        search_count = self._search_count(state)
-        remaining_searches = max(state.budget.max_searches - search_count, 0)
-        available_actions = self._available_actions(state, remaining_searches)
+        """Build the decision context and return one validated action."""
+        context = self.context_builder.build(state)
+        available_actions = self._available_actions(context)
 
         try:
             response = await self.client.generate(
@@ -112,10 +114,7 @@ class LLMNewsPolicy:
                         LLMMessage(
                             role=LLMMessageRole.USER,
                             content=self._build_user_prompt(
-                                view.model_dump(mode="json"),
-                                state,
-                                search_count,
-                                remaining_searches,
+                                context.model_dump(mode="json", exclude_none=True),
                                 available_actions,
                             ),
                         ),
@@ -136,8 +135,7 @@ class LLMNewsPolicy:
             output = self._parse_output(response.content)
             return self._validate_action(
                 output,
-                state,
-                search_count,
+                context,
                 available_actions,
             )
         except LLMPolicyError as error:
@@ -146,19 +144,11 @@ class LLMNewsPolicy:
 
     def _build_user_prompt(
         self,
-        policy_state: dict[str, Any],
-        state: AgentState,
-        search_count: int,
-        remaining_searches: int,
+        context: dict[str, Any],
         available_actions: list[AgentActionType],
     ) -> str:
         payload = {
-            "policy_state": policy_state,
-            "remaining_budget": {
-                "remaining_step_count": max(state.budget.max_steps - state.current_step, 0),
-                "executed_search_count": search_count,
-                "remaining_search_count": remaining_searches,
-            },
+            "context": context,
             "available_actions": [action.value for action in available_actions],
             "action_instructions": {
                 action.value: ACTION_INSTRUCTIONS[action]
@@ -192,8 +182,7 @@ class LLMNewsPolicy:
     def _validate_action(
         self,
         output: _LLMActionOutput,
-        state: AgentState,
-        search_count: int,
+        context: NewsPolicyContext,
         available_actions: list[AgentActionType],
     ) -> AgentAction:
         rationale = output.rationale.strip()
@@ -210,7 +199,7 @@ class LLMNewsPolicy:
             )
 
         if output.type == AgentActionType.SEARCH:
-            params = self._validate_search_params(output.params, state, search_count)
+            params = self._validate_search_params(output.params, context)
         else:
             if output.params:
                 raise LLMPolicyError(
@@ -224,8 +213,7 @@ class LLMNewsPolicy:
     def _validate_search_params(
         self,
         params: dict[str, Any],
-        state: AgentState,
-        search_count: int,
+        context: NewsPolicyContext,
     ) -> dict[str, str]:
         if set(params) - {"query", "intent"}:
             raise LLMPolicyError(
@@ -252,19 +240,17 @@ class LLMNewsPolicy:
                 )
             normalized_params["intent"] = intent
 
-        if search_count >= state.budget.max_searches:
+        if context.remaining_search_count == 0:
             raise LLMPolicyError(
                 "search action exceeds the search budget",
                 reason="invalid_action",
             )
 
         normalized_query = query.casefold()
-        for entry in state.action_history:
-            previous_query = entry.params.get("query")
+        for attempt in context.attempts:
             if (
-                entry.action_type == AgentActionType.SEARCH
-                and isinstance(previous_query, str)
-                and previous_query.strip().casefold() == normalized_query
+                isinstance(attempt, SearchAttempt)
+                and attempt.query.strip().casefold() == normalized_query
             ):
                 raise LLMPolicyError(
                     "search action repeats an executed query",
@@ -274,25 +260,17 @@ class LLMNewsPolicy:
         return normalized_params
 
     @staticmethod
-    def _search_count(state: AgentState) -> int:
-        return sum(
-            entry.action_type == AgentActionType.SEARCH
-            for entry in state.action_history
-        )
-
-    @staticmethod
     def _available_actions(
-        state: AgentState,
-        remaining_searches: int,
+        context: NewsPolicyContext,
     ) -> list[AgentActionType]:
         actions: list[AgentActionType] = []
-        if remaining_searches > 0:
+        if context.remaining_search_count > 0:
             actions.append(AgentActionType.SEARCH)
-        if state.search_result_ids:
+        if context.search_result_count > 0:
             actions.append(AgentActionType.READ_DOCUMENT)
-        if state.document_ids:
+        if context.document_count > 0:
             actions.append(AgentActionType.EXTRACT_EVIDENCE)
-        if state.document_ids or state.evidence_ids:
+        if context.document_count > 0 or context.evidence_count > 0:
             actions.append(AgentActionType.FINISH)
         actions.append(AgentActionType.STOP)
         return actions
