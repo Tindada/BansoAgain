@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import Awaitable
+from datetime import datetime, timezone
 from typing import Any
 
 from banso.artifacts import InMemoryArtifactStore
@@ -27,6 +28,8 @@ from banso.retrieval import (
 )
 from banso.synthesis import LLMSynthesizer, SynthesisRequest
 from banso.tracing import InMemoryTraceSink, SpanRecord, Tracer
+
+REFERENCE_TIME = datetime(2026, 7, 24, 8, 30, tzinfo=timezone.utc)
 
 
 class StaticResponseClient:
@@ -87,6 +90,7 @@ async def _run_successful_calls() -> list[SpanRecord]:
         plan = await planner.plan(
             SearchPlanningRequest(
                 query=UserQuery(text="Latest AI news"),
+                reference_time=REFERENCE_TIME,
                 max_searches=1,
             )
         )
@@ -230,6 +234,7 @@ def test_parse_failure_keeps_successful_llm_call_separate() -> None:
             planner.plan(
                 SearchPlanningRequest(
                     query=UserQuery(text="Latest AI news"),
+                    reference_time=REFERENCE_TIME,
                     max_searches=1,
                 )
             )
@@ -253,6 +258,7 @@ def test_provider_failure_marks_llm_call_as_error_and_keeps_prompt() -> None:
             planner.plan(
                 SearchPlanningRequest(
                     query=UserQuery(text="Latest AI news"),
+                    reference_time=REFERENCE_TIME,
                     max_searches=1,
                 )
             )

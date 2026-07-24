@@ -1,6 +1,7 @@
 """Tests for the LLM-backed search query planner."""
 
 import asyncio
+from datetime import datetime, timezone
 
 import pytest
 
@@ -27,6 +28,8 @@ from banso.retrieval import (
 )
 from banso.synthesis import FakeSynthesizer
 
+REFERENCE_TIME = datetime(2026, 7, 24, 8, 30, tzinfo=timezone.utc)
+
 
 def test_llm_search_query_planner_builds_bounded_distinct_plan() -> None:
     client = FakeLLMClient(
@@ -47,6 +50,7 @@ def test_llm_search_query_planner_builds_bounded_distinct_plan() -> None:
             region="US",
             time_range="past week",
         ),
+        reference_time=REFERENCE_TIME,
         max_searches=2,
     )
 
@@ -70,6 +74,7 @@ def test_llm_search_query_planner_builds_bounded_distinct_plan() -> None:
     ]
     user_prompt = llm_request.messages[1].content
     assert "What happened in AI this week?" in user_prompt
+    assert "Reference time: 2026-07-24T08:30:00+00:00" in user_prompt
     assert "Language: en" in user_prompt
     assert "Region: US" in user_prompt
     assert "Time range: past week" in user_prompt
@@ -85,6 +90,7 @@ def test_llm_search_query_planner_skips_llm_for_zero_budget() -> None:
         planner.plan(
             SearchPlanningRequest(
                 query=UserQuery(text="latest AI news"),
+                reference_time=REFERENCE_TIME,
                 max_searches=0,
             )
         )
@@ -114,6 +120,7 @@ def test_llm_search_query_planner_rejects_invalid_responses(
             planner.plan(
                 SearchPlanningRequest(
                     query=UserQuery(text="latest AI news"),
+                    reference_time=REFERENCE_TIME,
                     max_searches=2,
                 )
             )

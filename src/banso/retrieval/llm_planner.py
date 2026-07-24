@@ -12,8 +12,9 @@ from banso.retrieval.planner import SearchPlanningError, SearchPlanningRequest
 SYSTEM_PROMPT = (
     "You are a news search planning assistant. Produce an ordered set of "
     "distinct, complementary search queries that together address the user's "
-    "information need. Respect the supplied language, region, time range, and "
-    "search limit. Return only valid JSON, with no markdown or explanation."
+    "information need. Interpret relative dates using the supplied reference "
+    "time. Respect the supplied language, region, time range, and search limit. "
+    "Return only valid JSON, with no markdown or explanation."
 )
 
 SEARCH_PLAN_OUTPUT_FORMAT = (
@@ -69,6 +70,7 @@ class LLMSearchQueryPlanner:
         query = request.query
         return (
             f"User query:\n{query.text}\n\n"
+            f"Reference time: {request.reference_time.isoformat()}\n"
             f"Language: {query.language or 'not specified'}\n"
             f"Region: {query.region or 'not specified'}\n"
             f"Time range: {query.time_range or 'not specified'}\n"

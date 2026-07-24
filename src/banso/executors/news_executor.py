@@ -64,6 +64,7 @@ class NewsActionExecutor:
             plan = await self.search_query_planner.plan(
                 SearchPlanningRequest(
                     query=state.query,
+                    reference_time=state.reference_time,
                     max_searches=state.budget.max_searches,
                 )
             )

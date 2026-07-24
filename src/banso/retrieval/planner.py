@@ -1,5 +1,6 @@
 """Search query planning interface."""
 
+from datetime import datetime
 from typing import Protocol
 
 from pydantic import BaseModel
@@ -11,6 +12,7 @@ class SearchPlanningRequest(BaseModel):
     """Input for producing a bounded search plan."""
 
     query: UserQuery
+    reference_time: datetime
     max_searches: int
 
 

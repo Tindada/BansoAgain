@@ -1,6 +1,7 @@
 """Tests for search planning as an independently executable action."""
 
 import asyncio
+from datetime import datetime, timezone
 
 import pytest
 
@@ -28,6 +29,8 @@ from banso.retrieval import (
 )
 from banso.synthesis import FakeSynthesizer
 from banso.tracing import InMemoryTraceSink, SpanRecord, Tracer
+
+REFERENCE_TIME = datetime(2026, 7, 24, 8, 30, tzinfo=timezone.utc)
 
 
 class RecordingSearchQueryPlanner:
@@ -68,10 +71,22 @@ def test_original_query_planner_respects_search_budget() -> None:
     query = UserQuery(text="latest AI news", language="en")
 
     plan = asyncio.run(
-        planner.plan(SearchPlanningRequest(query=query, max_searches=1))
+        planner.plan(
+            SearchPlanningRequest(
+                query=query,
+                reference_time=REFERENCE_TIME,
+                max_searches=1,
+            )
+        )
     )
     empty_plan = asyncio.run(
-        planner.plan(SearchPlanningRequest(query=query, max_searches=0))
+        planner.plan(
+            SearchPlanningRequest(
+                query=query,
+                reference_time=REFERENCE_TIME,
+                max_searches=0,
+            )
+        )
     )
 
     assert plan == SearchPlan(
@@ -88,6 +103,7 @@ def test_news_executor_executes_plan_search() -> None:
     executor = _news_executor(planner)
     state = AgentState(
         query=UserQuery(text="latest AI news", region="US"),
+        reference_time=REFERENCE_TIME,
         budget=ExecutionBudget(max_searches=2),
     )
 
@@ -99,7 +115,11 @@ def test_news_executor_executes_plan_search() -> None:
     )
 
     assert planner.requests == [
-        SearchPlanningRequest(query=state.query, max_searches=2)
+        SearchPlanningRequest(
+            query=state.query,
+            reference_time=REFERENCE_TIME,
+            max_searches=2,
+        )
     ]
     assert observation == Observation(
         data={"search_plan": plan.model_dump(mode="json")},
