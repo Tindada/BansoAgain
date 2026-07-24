@@ -93,8 +93,7 @@ def test_extract_evaluation_result() -> None:
         "search",
         "read_document",
         "extract_evidence",
-        "synthesize",
-        "stop",
+        "finish",
     }
 
 

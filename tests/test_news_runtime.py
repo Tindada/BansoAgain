@@ -178,8 +178,7 @@ async def _run_news_runtime() -> None:
         AgentActionType.SEARCH,
         AgentActionType.READ_DOCUMENT,
         AgentActionType.EXTRACT_EVIDENCE,
-        AgentActionType.SYNTHESIZE,
-        AgentActionType.STOP,
+        AgentActionType.FINISH,
     ]
     assert state.search_plan is not None
     assert state.search_plan.model_dump() == {
@@ -196,8 +195,8 @@ async def _run_news_runtime() -> None:
     assert len(state.evidence_ids) == 1
     assert state.final_answer is not None
     assert "Fake summary for 'latest AI news'" in state.final_answer
-    synthesis_observation = state.action_history[4].observation
-    assert state.citations == synthesis_observation.data["citations"]
+    finish_observation = state.action_history[4].observation
+    assert state.citations == finish_observation.data["citations"]
     assert "final_answer" not in output.result.model_dump()
     run_span = next(span for span in spans if span.name == "agent.run")
     assert run_span.output == {

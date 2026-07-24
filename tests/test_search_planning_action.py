@@ -159,7 +159,7 @@ def test_reducer_stores_independent_action_history_snapshot() -> None:
 
 def test_reducer_writes_final_answer_without_mutating_input_state() -> None:
     state = AgentState(query=UserQuery(text="latest AI news"))
-    action = AgentAction(type=AgentActionType.SYNTHESIZE)
+    action = AgentAction(type=AgentActionType.FINISH)
     observation = Observation(
         data={
             "final_answer": "Synthesized answer.",
@@ -173,6 +173,7 @@ def test_reducer_writes_final_answer_without_mutating_input_state() -> None:
     assert state.citations == []
     assert next_state.final_answer == "Synthesized answer."
     assert next_state.citations == ["https://example.com/source"]
+    assert next_state.done is True
 
 
 def test_reducer_replaces_citations_with_new_final_answer() -> None:
@@ -181,7 +182,7 @@ def test_reducer_replaces_citations_with_new_final_answer() -> None:
         final_answer="Old answer.",
         citations=["https://example.com/old"],
     )
-    action = AgentAction(type=AgentActionType.SYNTHESIZE)
+    action = AgentAction(type=AgentActionType.FINISH)
     observation = Observation(
         data={
             "final_answer": "New answer.",
@@ -250,8 +251,7 @@ def test_runtime_executes_bounded_search_plan_in_order() -> None:
         AgentActionType.SEARCH,
         AgentActionType.READ_DOCUMENT,
         AgentActionType.EXTRACT_EVIDENCE,
-        AgentActionType.SYNTHESIZE,
-        AgentActionType.STOP,
+        AgentActionType.FINISH,
     ]
     assert [
         entry.observation.data["search_queries"][0]
@@ -264,7 +264,7 @@ def test_runtime_executes_bounded_search_plan_in_order() -> None:
     assert "search_queries" not in output.result.state.model_dump()
     assert [
         entry.step_index for entry in output.result.state.action_history
-    ] == list(range(7))
+    ] == list(range(6))
     assert [
         entry.action_type for entry in output.result.state.action_history
     ] == [
@@ -272,7 +272,7 @@ def test_runtime_executes_bounded_search_plan_in_order() -> None:
         for span in spans
         if span.name == "agent.step" and span.status == "ok"
     ]
-    assert output.result.state.action_history[-1].action_type == AgentActionType.STOP
+    assert output.result.state.action_history[-1].action_type == AgentActionType.FINISH
     assert output.result.state.current_step == len(
         output.result.state.action_history
     )
@@ -280,7 +280,7 @@ def test_runtime_executes_bounded_search_plan_in_order() -> None:
         span for span in spans if span.name == "agent.step" and span.status == "ok"
     ]
     assert [len(span.input["state"]["action_history"]) for span in step_spans] == list(
-        range(7)
+        range(6)
     )
     assert step_spans[0].output["observation"]["data"]["search_plan"][
         "searches"

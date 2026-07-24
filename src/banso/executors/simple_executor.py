@@ -15,7 +15,7 @@ class SimpleActionExecutor:
                 data={"search_queries": [query]},
             )
 
-        if action.type == AgentActionType.SYNTHESIZE:
+        if action.type == AgentActionType.FINISH:
             return Observation(
                 data={"final_answer": "TODO: synthesize answer"},
             )

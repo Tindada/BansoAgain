@@ -123,7 +123,7 @@ policy 选择 action
 executor 执行动作
 reducer 更新 state
 tracer 记录运行边界 Span
-循环直到 STOP
+循环直到 FINISH 或 STOP
 ```
 
 第一版不追求复杂智能，先保证主循环清晰、可测试、可扩展。
@@ -155,12 +155,13 @@ PLAN_SEARCH
 SEARCH
 READ_DOCUMENT
 EXTRACT_EVIDENCE
-SYNTHESIZE
+FINISH
 STOP
 ```
 
 核心要求：
 
+- `FINISH` 生成最终答案并终止运行；`STOP` 不生成新答案，直接终止运行。
 - 输出可校验的结构化 `AgentAction`，不允许生成任意工具调用。
 - `LLMNewsPolicy` 内部使用 `NewsPolicyStateViewBuilder`，根据 State 和 ArtifactStore
   构造模型可见输入；通用 `Policy` 接口继续只返回 `AgentAction`。

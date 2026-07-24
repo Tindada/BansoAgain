@@ -51,8 +51,7 @@ async def _run_news_runtime_with_llm() -> None:
         AgentActionType.SEARCH,
         AgentActionType.READ_DOCUMENT,
         AgentActionType.EXTRACT_EVIDENCE,
-        AgentActionType.SYNTHESIZE,
-        AgentActionType.STOP,
+        AgentActionType.FINISH,
     ]
     assert len(state.search_result_ids) == 1
     assert len(state.document_ids) == 1

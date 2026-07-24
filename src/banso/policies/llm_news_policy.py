@@ -38,11 +38,13 @@ ACTION_INSTRUCTIONS = {
     AgentActionType.EXTRACT_EVIDENCE: (
         "Extract evidence from collected documents. Use an empty params object."
     ),
-    AgentActionType.SYNTHESIZE: (
-        "Synthesize the answer from collected documents and evidence. Use an empty "
-        "params object."
+    AgentActionType.FINISH: (
+        "Synthesize the final answer from collected documents and evidence, then "
+        "finish the agent. Use an empty params object."
     ),
-    AgentActionType.STOP: "Stop the agent. Use an empty params object.",
+    AgentActionType.STOP: (
+        "Stop without generating a new final answer. Use an empty params object."
+    ),
 }
 
 
@@ -283,7 +285,7 @@ class LLMNewsPolicy:
         ):
             invalid_reason = "no documents are available"
         elif (
-            action_type == AgentActionType.SYNTHESIZE
+            action_type == AgentActionType.FINISH
             and not state.document_ids
             and not state.evidence_ids
         ):
@@ -317,6 +319,6 @@ class LLMNewsPolicy:
         if state.document_ids:
             actions.append(AgentActionType.EXTRACT_EVIDENCE)
         if state.document_ids or state.evidence_ids:
-            actions.append(AgentActionType.SYNTHESIZE)
+            actions.append(AgentActionType.FINISH)
         actions.append(AgentActionType.STOP)
         return actions

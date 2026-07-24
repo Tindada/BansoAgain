@@ -65,7 +65,7 @@ class DefaultStateReducer:
             observation.data.get("evidence_ids"),
         )
 
-        if action.type == AgentActionType.SYNTHESIZE:
+        if action.type == AgentActionType.FINISH:
             final_answer = observation.data.get("final_answer")
             if isinstance(final_answer, str):
                 next_state.final_answer = final_answer
@@ -76,7 +76,7 @@ class DefaultStateReducer:
                     else []
                 )
 
-        if action.type == AgentActionType.STOP:
+        if action.type in {AgentActionType.FINISH, AgentActionType.STOP}:
             next_state.done = True
 
         return next_state

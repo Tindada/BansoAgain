@@ -5,7 +5,7 @@ from banso.core.state import AgentState
 
 
 class RuleBasedPolicy:
-    """Selects a fixed search-synthesize-stop action sequence."""
+    """Selects a fixed search-finish action sequence."""
 
     async def select_action(self, state: AgentState) -> AgentAction:
         if state.current_step == 0:
@@ -17,8 +17,8 @@ class RuleBasedPolicy:
 
         if state.current_step == 1:
             return AgentAction(
-                type=AgentActionType.SYNTHESIZE,
-                rationale="Synthesize after the initial search step.",
+                type=AgentActionType.FINISH,
+                rationale="Synthesize the final answer after the initial search step.",
             )
 
         return AgentAction(

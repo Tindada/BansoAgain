@@ -14,7 +14,7 @@ class AgentActionType(StrEnum):
     READ_DOCUMENT = "read_document"
     # RANK_DOCUMENTS = "rank_documents"
     EXTRACT_EVIDENCE = "extract_evidence"
-    SYNTHESIZE = "synthesize"
+    FINISH = "finish"
     # ASK_CLARIFICATION = "ask_clarification"
     STOP = "stop"
 

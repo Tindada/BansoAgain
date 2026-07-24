@@ -47,11 +47,11 @@ class NewsRuleBasedPolicy:
 
         if state.last_action == AgentActionType.EXTRACT_EVIDENCE:
             return AgentAction(
-                type=AgentActionType.SYNTHESIZE,
-                rationale="Synthesize an answer from the collected evidence.",
+                type=AgentActionType.FINISH,
+                rationale="Synthesize the final answer and finish the workflow.",
             )
 
         return AgentAction(
             type=AgentActionType.STOP,
-            rationale="Stop after completing the fixed news workflow.",
+            rationale="Stop because the fixed workflow cannot make further progress.",
         )

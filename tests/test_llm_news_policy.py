@@ -87,7 +87,7 @@ def _select_action(
         ),
         (AgentActionType.READ_DOCUMENT, {}, {}),
         (AgentActionType.EXTRACT_EVIDENCE, {}, {}),
-        (AgentActionType.SYNTHESIZE, {}, {}),
+        (AgentActionType.FINISH, {}, {}),
         (AgentActionType.STOP, {}, {}),
     ],
 )
@@ -163,7 +163,7 @@ def test_builds_request_from_bounded_policy_view_and_remaining_budget() -> None:
         "search",
         "read_document",
         "extract_evidence",
-        "synthesize",
+        "finish",
         "stop",
     ]
     prompt = request.messages[1].content
@@ -294,7 +294,7 @@ def test_rejects_repeated_search_query() -> None:
         (AgentActionType.PLAN_SEARCH, "existing_plan"),
         (AgentActionType.READ_DOCUMENT, "no_results"),
         (AgentActionType.EXTRACT_EVIDENCE, "no_documents"),
-        (AgentActionType.SYNTHESIZE, "no_sources"),
+        (AgentActionType.FINISH, "no_sources"),
     ],
 )
 def test_rejects_action_without_required_state(

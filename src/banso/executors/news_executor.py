@@ -79,7 +79,7 @@ class NewsActionExecutor:
         if action.type == AgentActionType.EXTRACT_EVIDENCE:
             return await self._extract_evidence(state)
 
-        if action.type == AgentActionType.SYNTHESIZE:
+        if action.type == AgentActionType.FINISH:
             return await self._synthesize(state)
 
         return Observation()
