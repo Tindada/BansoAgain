@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from datetime import datetime
 
 import pytest
 
@@ -159,6 +160,7 @@ def test_builds_request_from_bounded_decision_context() -> None:
     payload = json.loads(request.messages[1].content)
     context = payload["context"]
     assert context["user_query"]["text"] == "What happened?"
+    assert datetime.fromisoformat(context["reference_time"]) == state.reference_time
     assert "query" not in context
     assert context["documents"][0]["text_preview"] == "visible"
     assert context["current_step"] == 2

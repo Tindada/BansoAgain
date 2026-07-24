@@ -99,6 +99,7 @@ class NewsPolicyContext(BaseModel):
     """Bounded decision facts visible to the LLM-backed news policy."""
 
     user_query: UserQuery
+    reference_time: datetime
     current_step: int
     max_steps: int
     remaining_step_count: int
@@ -164,6 +165,7 @@ class NewsPolicyContextBuilder:
 
         return NewsPolicyContext(
             user_query=state.query.model_copy(deep=True),
+            reference_time=state.reference_time,
             current_step=state.current_step,
             max_steps=state.budget.max_steps,
             remaining_step_count=max(

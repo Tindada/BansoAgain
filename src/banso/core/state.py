@@ -1,5 +1,6 @@
 """Agent state models."""
 
+from datetime import datetime, timezone
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -51,6 +52,9 @@ class AgentState(BaseModel):
     """Authoritative mutable record of runtime progress and artifact references."""
 
     query: UserQuery
+    reference_time: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc).replace(microsecond=0)
+    )
     current_step: int = 0
     budget: ExecutionBudget = Field(default_factory=ExecutionBudget)
     search_plan: SearchPlan | None = None

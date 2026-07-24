@@ -73,8 +73,16 @@ def _state() -> AgentState:
     )
 
 
+def test_state_initializes_reference_time_in_utc() -> None:
+    state = AgentState(query=UserQuery(text="What happened?"))
+
+    assert state.reference_time.tzinfo is timezone.utc
+    assert state.reference_time.microsecond == 0
+
+
 def test_builds_context_with_budget_and_selected_artifact_fields() -> None:
     state = _state()
+    state.reference_time = datetime(2026, 7, 24, 8, 30, tzinfo=timezone.utc)
     state.current_step = 4
     state.budget = ExecutionBudget(
         max_steps=10,
@@ -85,6 +93,7 @@ def test_builds_context_with_budget_and_selected_artifact_fields() -> None:
     context = NewsPolicyContextBuilder(_populated_store()).build(state)
 
     assert context.user_query == UserQuery(text="What happened?")
+    assert context.reference_time == datetime(2026, 7, 24, 8, 30, tzinfo=timezone.utc)
     assert context.current_step == 4
     assert context.max_steps == 10
     assert context.remaining_step_count == 6
