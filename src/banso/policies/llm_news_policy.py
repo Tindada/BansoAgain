@@ -6,6 +6,10 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from banso.core.action import AgentAction, AgentActionType
+from banso.core.lifecycle import (
+    eligible_extraction_document_ids,
+    eligible_read_result_ids,
+)
 from banso.core.state import AgentState
 from banso.llm import (
     LLMClient,
@@ -17,7 +21,6 @@ from banso.llm import (
 from banso.policies.news_policy_context import (
     NewsPolicyContext,
     NewsPolicyContextBuilder,
-    SearchAttempt,
 )
 
 
@@ -101,7 +104,7 @@ class LLMNewsPolicy:
     async def select_action(self, state: AgentState) -> AgentAction:
         """Build the decision context and return one validated action."""
         context = self.context_builder.build(state)
-        available_actions = self._available_actions(context)
+        available_actions = self._available_actions(state)
 
         try:
             response = await self.client.generate(
@@ -247,11 +250,8 @@ class LLMNewsPolicy:
             )
 
         normalized_query = query.casefold()
-        for attempt in context.attempts:
-            if (
-                isinstance(attempt, SearchAttempt)
-                and attempt.query.strip().casefold() == normalized_query
-            ):
+        for search in context.searches:
+            if search.query.strip().casefold() == normalized_query:
                 raise LLMPolicyError(
                     "search action repeats an executed query",
                     reason="invalid_action",
@@ -261,16 +261,29 @@ class LLMNewsPolicy:
 
     @staticmethod
     def _available_actions(
-        context: NewsPolicyContext,
+        state: AgentState,
     ) -> list[AgentActionType]:
+        remaining_steps = max(state.budget.max_steps - state.current_step, 0)
+        has_sources = bool(state.document_ids or state.evidence_ids)
+        if remaining_steps <= 1:
+            return (
+                [AgentActionType.FINISH, AgentActionType.STOP]
+                if has_sources
+                else [AgentActionType.STOP]
+            )
+
         actions: list[AgentActionType] = []
-        if context.remaining_search_count > 0:
+        executed_search_count = sum(
+            entry.action_type == AgentActionType.SEARCH
+            for entry in state.action_history
+        )
+        if executed_search_count < state.budget.max_searches:
             actions.append(AgentActionType.SEARCH)
-        if context.search_result_count > 0:
+        if eligible_read_result_ids(state):
             actions.append(AgentActionType.READ_DOCUMENT)
-        if context.document_count > 0:
+        if eligible_extraction_document_ids(state):
             actions.append(AgentActionType.EXTRACT_EVIDENCE)
-        if context.document_count > 0 or context.evidence_count > 0:
+        if has_sources:
             actions.append(AgentActionType.FINISH)
         actions.append(AgentActionType.STOP)
         return actions

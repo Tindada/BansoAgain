@@ -10,7 +10,10 @@ from banso.core import (
     AgentActionType,
     AgentState,
     ExecutionBudget,
+    ExtractProgress,
+    Failure,
     Observation,
+    ReadProgress,
     UserQuery,
 )
 from banso.documents import Document, EvidenceItem
@@ -70,6 +73,15 @@ def _state() -> AgentState:
         search_result_ids=["result-1"],
         document_ids=["document-1"],
         evidence_ids=["evidence-1"],
+        read_progress={
+            "result-1": ReadProgress(
+                attempt_count=1,
+                document_id="document-1",
+            )
+        },
+        extract_progress={
+            "document-1": ExtractProgress(attempt_count=1),
+        },
     )
 
 
@@ -101,8 +113,13 @@ def test_builds_context_with_budget_and_selected_artifact_fields() -> None:
     assert context.max_searches == 3
     assert context.remaining_search_count == 3
     assert context.max_documents_to_read == 6
+    assert context.remaining_document_count == 5
+    assert context.searches == []
     assert context.search_result_count == 1
     assert context.omitted_search_result_count == 0
+    assert context.pending_read_count == 0
+    assert context.retryable_read_count == 0
+    assert context.failed_read_count == 0
     assert len(context.search_results) == 1
     assert context.search_results[0].model_dump() == {
         "id": "result-1",
@@ -115,14 +132,23 @@ def test_builds_context_with_budget_and_selected_artifact_fields() -> None:
             "type": SourceType.NEWS,
         },
         "published_at": datetime(2026, 7, 17, tzinfo=timezone.utc),
+        "read_status": "succeeded",
+        "document_id": "document-1",
+        "read_failure_reason": None,
     }
+    assert context.pending_extraction_count == 0
+    assert context.retryable_extraction_count == 0
+    assert context.failed_extraction_count == 0
+    assert context.documents_without_evidence_count == 0
     assert context.documents[0].text_preview == "document body"
+    assert context.documents[0].extraction_status == "succeeded"
+    assert context.documents[0].evidence_count == 1
     assert "text" not in context.documents[0].model_dump()
     assert context.evidence[0].claim_preview == "evidence claim"
     assert "supporting_text" not in context.evidence[0].model_dump()
 
 
-def test_builds_typed_attempts_without_raw_observation_details() -> None:
+def test_builds_search_history_without_raw_action_details() -> None:
     state = _state()
     state.current_step = 3
     state.action_history = [
@@ -147,16 +173,17 @@ def test_builds_typed_attempts_without_raw_observation_details() -> None:
             action_type=AgentActionType.READ_DOCUMENT,
             observation=Observation(
                 data={
-                    "document_ids": ["document-1"],
-                    "document_read_failures": [
+                    "read_outcomes": [
                         {
-                            "search_result_id": "result-2",
-                            "url": "https://example.com/failed",
-                            "status_code": 503,
-                            "reason": "http_status",
-                            "message": "hidden failure detail",
-                            "source_error_type": "HTTPStatusError",
-                        }
+                            "search_result_id": "ignored-result",
+                            "failure": {
+                                "url": "https://example.com/ignored",
+                                "reason": "timeout",
+                                "retryable": True,
+                                "message": "hidden failure detail",
+                                "source_error_type": "ReadTimeout",
+                            },
+                        },
                     ],
                 }
             ),
@@ -166,16 +193,16 @@ def test_builds_typed_attempts_without_raw_observation_details() -> None:
             action_type=AgentActionType.EXTRACT_EVIDENCE,
             observation=Observation(
                 data={
-                    "evidence_ids": ["evidence-1"],
-                    "successful_document_count": 1,
-                    "documents_without_evidence": ["document-2"],
-                    "evidence_extraction_failures": [
+                    "extraction_outcomes": [
                         {
-                            "document_id": "document-3",
-                            "url": "https://example.com/failed-extraction",
-                            "reason": "invalid_json",
-                            "message": "hidden parser response",
-                        }
+                            "document_id": "ignored-document",
+                            "failure": {
+                                "url": "https://example.com/ignored",
+                                "reason": "invalid_json",
+                                "retryable": False,
+                                "message": "hidden parser response",
+                            },
+                        },
                     ],
                 }
             ),
@@ -186,45 +213,18 @@ def test_builds_typed_attempts_without_raw_observation_details() -> None:
 
     assert context.executed_search_count == 1
     assert context.remaining_search_count == 2
-    assert [attempt.model_dump(mode="json") for attempt in context.attempts] == [
+    assert [search.model_dump(mode="json") for search in context.searches] == [
         {
-            "type": "search",
             "step_index": 0,
             "query": "AI launches",
             "intent": "find announcements",
-            "result_ids": ["result-1"],
+            "result_count": 1,
             "new_result_count": 1,
             "reused_result_count": 1,
-        },
-        {
-            "type": "read_document",
-            "step_index": 1,
-            "document_ids": ["document-1"],
-            "failures": [
-                {
-                    "resource_id": "result-2",
-                    "url": "https://example.com/failed",
-                    "reason": "http_status",
-                    "status_code": 503,
-                }
-            ],
-        },
-        {
-            "type": "extract_evidence",
-            "step_index": 2,
-            "evidence_ids": ["evidence-1"],
-            "successful_document_count": 1,
-            "documents_without_evidence": ["document-2"],
-            "failures": [
-                {
-                    "resource_id": "document-3",
-                    "url": "https://example.com/failed-extraction",
-                    "reason": "invalid_json",
-                    "status_code": None,
-                }
-            ],
-        },
+        }
     ]
+    assert context.search_results[0].read_status == "succeeded"
+    assert context.documents[0].extraction_status == "succeeded"
     serialized = context.model_dump_json()
     assert "retrieval_filter_report" not in serialized
     assert "hidden failure detail" not in serialized
@@ -248,7 +248,92 @@ def test_ignores_actions_that_do_not_inform_a_future_llm_decision() -> None:
 
     context = NewsPolicyContextBuilder(_populated_store()).build(state)
 
-    assert context.attempts == []
+    assert context.searches == []
+
+
+def test_prioritizes_actionable_resources_and_reports_lifecycle_counts() -> None:
+    store = InMemoryArtifactStore()
+    result_ids = ["result-pending", "result-succeeded", "result-retry", "result-failed"]
+    document_ids = [
+        "document-pending",
+        "document-empty",
+        "document-retry",
+        "document-failed",
+    ]
+    for result_id in result_ids:
+        store.put(
+            SearchResult(
+                id=result_id,
+                title=result_id,
+                url=f"https://example.com/{result_id}",
+            )
+        )
+    for document_id in document_ids:
+        store.put(
+            Document(
+                id=document_id,
+                title=document_id,
+                url=f"https://example.com/{document_id}",
+                text=document_id,
+            )
+        )
+
+    state = AgentState(
+        query=UserQuery(text="query"),
+        search_result_ids=result_ids,
+        document_ids=document_ids,
+        read_progress={
+            "result-succeeded": ReadProgress(
+                attempt_count=1,
+                document_id="document-empty",
+            ),
+            "result-retry": ReadProgress(
+                attempt_count=1,
+                failure=Failure(reason="timeout", retryable=True),
+            ),
+            "result-failed": ReadProgress(
+                attempt_count=2,
+                failure=Failure(reason="timeout", retryable=True),
+            ),
+        },
+        extract_progress={
+            "document-empty": ExtractProgress(attempt_count=1),
+            "document-retry": ExtractProgress(
+                attempt_count=1,
+                failure=Failure(reason="llm_error", retryable=True),
+            ),
+            "document-failed": ExtractProgress(
+                attempt_count=1,
+                failure=Failure(reason="invalid_json", retryable=False),
+            ),
+        },
+    )
+
+    context = NewsPolicyContextBuilder(
+        store,
+        max_search_results=2,
+        max_documents=2,
+    ).build(state)
+
+    assert context.pending_read_count == 1
+    assert context.retryable_read_count == 1
+    assert context.failed_read_count == 1
+    assert context.omitted_search_result_count == 2
+    assert [result.id for result in context.search_results] == [
+        "result-pending",
+        "result-retry",
+    ]
+    assert context.search_results[1].read_failure_reason == "timeout"
+    assert context.pending_extraction_count == 1
+    assert context.retryable_extraction_count == 1
+    assert context.failed_extraction_count == 1
+    assert context.documents_without_evidence_count == 1
+    assert context.omitted_document_count == 2
+    assert [document.id for document in context.documents] == [
+        "document-pending",
+        "document-retry",
+    ]
+    assert context.documents[1].extraction_failure_reason == "llm_error"
 
 
 def test_preserves_state_order_and_reports_item_limits() -> None:

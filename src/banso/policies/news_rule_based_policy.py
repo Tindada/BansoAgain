@@ -1,6 +1,10 @@
 """Rule-based policy for the basic news workflow."""
 
 from banso.core.action import AgentAction, AgentActionType
+from banso.core.lifecycle import (
+    eligible_extraction_document_ids,
+    eligible_read_result_ids,
+)
 from banso.core.state import AgentState
 
 
@@ -8,6 +12,20 @@ class NewsRuleBasedPolicy:
     """Selects a fixed news workflow action sequence."""
 
     async def select_action(self, state: AgentState) -> AgentAction:
+        has_sources = bool(state.document_ids or state.evidence_ids)
+        if state.budget.max_steps - state.current_step <= 1:
+            return (
+                AgentAction(
+                    type=AgentActionType.FINISH,
+                    rationale="Synthesize the available research before the run ends.",
+                )
+                if has_sources
+                else AgentAction(
+                    type=AgentActionType.STOP,
+                    rationale="Stop because no step remains to collect usable sources.",
+                )
+            )
+
         if state.search_plan is None:
             return AgentAction(
                 type=AgentActionType.PLAN_SEARCH,
@@ -29,23 +47,19 @@ class NewsRuleBasedPolicy:
                 rationale="Run the next planned search.",
             )
 
-        if state.last_action in {
-            None,
-            AgentActionType.PLAN_SEARCH,
-            AgentActionType.SEARCH,
-        }:
+        if eligible_read_result_ids(state):
             return AgentAction(
                 type=AgentActionType.READ_DOCUMENT,
-                rationale="Read documents from the collected search results.",
+                rationale="Read the remaining eligible search results.",
             )
 
-        if state.last_action == AgentActionType.READ_DOCUMENT:
+        if eligible_extraction_document_ids(state):
             return AgentAction(
                 type=AgentActionType.EXTRACT_EVIDENCE,
-                rationale="Extract evidence from the collected documents.",
+                rationale="Extract evidence from the remaining eligible documents.",
             )
 
-        if state.last_action == AgentActionType.EXTRACT_EVIDENCE:
+        if has_sources:
             return AgentAction(
                 type=AgentActionType.FINISH,
                 rationale="Synthesize the final answer and finish the workflow.",

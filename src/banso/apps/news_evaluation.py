@@ -85,13 +85,26 @@ def extract_evaluation_result(
 
     state = output.result.state
     steps = _completed_steps(spans)
-    observations = {
-        action.type: observation
+    document_read_failures = [
+        {
+            "search_result_id": outcome["search_result_id"],
+            **failure,
+        }
         for action, observation in steps
-        if action.type != AgentActionType.SEARCH
-    }
-    read_document = observations.get(AgentActionType.READ_DOCUMENT)
-    extract_evidence = observations.get(AgentActionType.EXTRACT_EVIDENCE)
+        if action.type == AgentActionType.READ_DOCUMENT
+        for outcome in observation.data.get("read_outcomes", [])
+        if (failure := outcome.get("failure")) is not None
+    ]
+    evidence_extraction_failures = [
+        {
+            "document_id": outcome["document_id"],
+            **failure,
+        }
+        for action, observation in steps
+        if action.type == AgentActionType.EXTRACT_EVIDENCE
+        for outcome in observation.data.get("extraction_outcomes", [])
+        if (failure := outcome.get("failure")) is not None
+    ]
 
     sources = [
         result.source
@@ -181,16 +194,8 @@ def extract_evaluation_result(
         source_types=source_types,
         preferred_source_types=case.preferred_source_types,
         preferred_source_type_match=preferred_source_type_match,
-        document_read_failures=(
-            read_document.data.get("document_read_failures", [])
-            if read_document
-            else []
-        ),
-        evidence_extraction_failures=(
-            extract_evidence.data.get("evidence_extraction_failures", [])
-            if extract_evidence
-            else []
-        ),
+        document_read_failures=document_read_failures,
+        evidence_extraction_failures=evidence_extraction_failures,
         step_durations=step_durations,
         total_action_seconds=total_action_seconds,
     )

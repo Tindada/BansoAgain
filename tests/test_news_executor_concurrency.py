@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 from banso.artifacts import InMemoryArtifactStore
-from banso.core import AgentState, UserQuery
+from banso.core import AgentState, DefaultStateReducer, UserQuery
 from banso.core.action import AgentAction, AgentActionType
 from banso.documents import (
     Document,
@@ -96,19 +96,22 @@ async def _run_extraction_respects_concurrency_and_document_order() -> None:
         state,
     )
 
-    evidence = [
-        store.get(evidence_id, EvidenceItem)
-        for evidence_id in observation.data["evidence_ids"]
+    evidence_ids = [
+        evidence_id
+        for outcome in observation.data["extraction_outcomes"]
+        for evidence_id in outcome["evidence_ids"]
     ]
+    evidence = [store.get(evidence_id, EvidenceItem) for evidence_id in evidence_ids]
     assert extractor.max_active_count == 2
     assert [item.claim for item in evidence if item is not None] == [
         "First",
         "Second",
         "Third",
     ]
-    assert observation.data["successful_document_count"] == 3
-    assert observation.data["failed_document_count"] == 0
-    assert observation.data["evidence_count"] == 3
+    assert [
+        outcome["document_id"]
+        for outcome in observation.data["extraction_outcomes"]
+    ] == [document.id for document in documents]
 
 
 def test_extraction_respects_concurrency_and_document_order() -> None:
@@ -151,19 +154,44 @@ async def _run_extraction_isolates_known_failures() -> None:
         state,
     )
 
-    assert len(observation.data["evidence_ids"]) == 1
-    assert observation.data["evidence_extraction_failures"] == [
+    outcomes = observation.data["extraction_outcomes"]
+    evidence_ids = outcomes[0]["evidence_ids"]
+    assert len(evidence_ids) == 1
+    assert outcomes == [
+        {
+            "document_id": documents[0].id,
+            "evidence_ids": evidence_ids,
+        },
         {
             "document_id": documents[1].id,
-            "url": documents[1].url,
-            "reason": "invalid_json",
-            "message": "invalid response",
-        }
+            "failure": {
+                "url": documents[1].url,
+                "reason": "invalid_json",
+                "retryable": False,
+                "message": "invalid response",
+            },
+        },
+        {
+            "document_id": documents[2].id,
+            "evidence_ids": [],
+        },
     ]
-    assert observation.data["documents_without_evidence"] == [documents[2].id]
-    assert observation.data["successful_document_count"] == 2
-    assert observation.data["failed_document_count"] == 1
-    assert observation.data["evidence_count"] == 1
+
+    state = DefaultStateReducer().apply(
+        state,
+        AgentAction(type=AgentActionType.EXTRACT_EVIDENCE),
+        observation,
+    )
+    assert state.evidence_ids == evidence_ids
+    assert state.extract_progress[documents[0].id].failure is None
+    assert state.extract_progress[documents[1].id].failure is not None
+    assert state.extract_progress[documents[2].id].failure is None
+
+    next_observation = await executor.execute(
+        AgentAction(type=AgentActionType.EXTRACT_EVIDENCE),
+        state,
+    )
+    assert next_observation.data["extraction_outcomes"] == []
 
 
 def test_extraction_isolates_known_failures() -> None:
@@ -193,10 +221,31 @@ async def _run_extraction_reports_failed_when_all_documents_fail() -> None:
         state,
     )
 
-    assert observation.data["successful_document_count"] == 0
-    assert observation.data["failed_document_count"] == 2
-    assert observation.data["evidence_count"] == 0
-    assert observation.data["evidence_ids"] == []
+    assert observation.data["extraction_outcomes"] == [
+        {
+            "document_id": document.id,
+            "failure": {
+                "url": document.url,
+                "reason": "llm_error",
+                "retryable": True,
+                "message": "provider failed",
+            },
+        }
+        for document in documents
+    ]
+
+    action = AgentAction(type=AgentActionType.EXTRACT_EVIDENCE)
+    reducer = DefaultStateReducer()
+    state = reducer.apply(state, action, observation)
+    second = await executor.execute(action, state)
+    state = reducer.apply(state, action, second)
+    third = await executor.execute(action, state)
+
+    assert all(
+        state.extract_progress[document.id].attempt_count == 2
+        for document in documents
+    )
+    assert third.data["extraction_outcomes"] == []
 
 
 def test_extraction_reports_failed_when_all_documents_fail() -> None:

@@ -14,8 +14,11 @@ from banso.core import (
     ActionHistoryEntry,
     DefaultStateReducer,
     ExecutionBudget,
+    ExtractProgress,
+    Failure,
     Observation,
     PlannedSearch,
+    ReadProgress,
     SearchPlan,
     UserQuery,
 )
@@ -190,13 +193,11 @@ def test_reducer_stores_independent_action_history_snapshot() -> None:
     }
 
 
-def test_reducer_merges_artifact_ids_without_duplicates() -> None:
+def test_reducer_merges_search_results_without_duplicates() -> None:
     state = AgentState(
         query=UserQuery(text="latest AI news"),
         search_result_ids=["result-1"],
         search_result_index={"https://example.com/first": "result-1"},
-        document_ids=["document-1"],
-        evidence_ids=["evidence-1"],
     )
     observation = Observation(
         data={
@@ -204,8 +205,6 @@ def test_reducer_merges_artifact_ids_without_duplicates() -> None:
             "search_result_index_updates": {
                 "https://example.com/second": "result-2"
             },
-            "document_ids": ["document-1", "document-2"],
-            "evidence_ids": ["evidence-1", "evidence-2"],
         },
     )
 
@@ -220,8 +219,6 @@ def test_reducer_merges_artifact_ids_without_duplicates() -> None:
         "https://example.com/first": "result-1",
         "https://example.com/second": "result-2",
     }
-    assert next_state.document_ids == ["document-1", "document-2"]
-    assert next_state.evidence_ids == ["evidence-1", "evidence-2"]
 
 
 @pytest.mark.parametrize("updated_result_id", ["result-1", "result-2"])
@@ -292,6 +289,70 @@ def test_reducer_replaces_citations_with_new_final_answer() -> None:
     assert state.citations == ["https://example.com/old"]
     assert next_state.final_answer == "New answer."
     assert next_state.citations == ["https://example.com/new"]
+
+
+def test_rule_policy_uses_resource_lifecycle_after_searching() -> None:
+    policy = NewsRuleBasedPolicy()
+    state = AgentState(
+        query=UserQuery(text="latest AI news"),
+        search_plan=SearchPlan(),
+        search_result_ids=["result-1"],
+        document_ids=["document-1"],
+    )
+
+    action = asyncio.run(policy.select_action(state))
+    assert action.type == AgentActionType.READ_DOCUMENT
+
+    state.read_progress["result-1"] = ReadProgress(
+        attempt_count=1,
+        document_id="document-1",
+    )
+    action = asyncio.run(policy.select_action(state))
+    assert action.type == AgentActionType.EXTRACT_EVIDENCE
+
+    state.extract_progress["document-1"] = ExtractProgress(attempt_count=1)
+    action = asyncio.run(policy.select_action(state))
+    assert action.type == AgentActionType.FINISH
+
+
+def test_rule_policy_retries_eligible_failure() -> None:
+    state = AgentState(
+        query=UserQuery(text="latest AI news"),
+        search_plan=SearchPlan(),
+        search_result_ids=["result-1"],
+        read_progress={
+            "result-1": ReadProgress(
+                attempt_count=1,
+                failure=Failure(reason="timeout", retryable=True),
+            )
+        },
+    )
+
+    action = asyncio.run(NewsRuleBasedPolicy().select_action(state))
+
+    assert action.type == AgentActionType.READ_DOCUMENT
+
+
+@pytest.mark.parametrize(
+    ("document_ids", "expected"),
+    [
+        (["document-1"], AgentActionType.FINISH),
+        ([], AgentActionType.STOP),
+    ],
+)
+def test_rule_policy_uses_last_step_to_end(
+    document_ids: list[str],
+    expected: AgentActionType,
+) -> None:
+    state = AgentState(
+        query=UserQuery(text="latest AI news"),
+        current_step=11,
+        document_ids=document_ids,
+    )
+
+    action = asyncio.run(NewsRuleBasedPolicy().select_action(state))
+
+    assert action.type == expected
 
 
 def test_reducer_ignores_final_answer_from_other_actions() -> None:

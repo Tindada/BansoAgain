@@ -13,7 +13,10 @@ from banso.core import (
     AgentActionType,
     AgentState,
     ExecutionBudget,
+    ExtractProgress,
+    Failure,
     Observation,
+    ReadProgress,
     UserQuery,
 )
 from banso.documents import Document, EvidenceItem
@@ -170,14 +173,26 @@ def test_builds_request_from_bounded_decision_context() -> None:
     assert context["max_searches"] == 3
     assert context["remaining_search_count"] == 2
     assert context["max_documents_to_read"] == 8
+    assert context["remaining_document_count"] == 7
     assert context["search_result_count"] == 1
     assert context["omitted_search_result_count"] == 0
+    assert context["pending_read_count"] == 1
+    assert context["retryable_read_count"] == 0
+    assert context["failed_read_count"] == 0
     assert context["document_count"] == 1
     assert context["omitted_document_count"] == 0
+    assert context["pending_extraction_count"] == 1
+    assert context["retryable_extraction_count"] == 0
+    assert context["failed_extraction_count"] == 0
+    assert context["documents_without_evidence_count"] == 0
     assert context["evidence_count"] == 1
     assert context["omitted_evidence_count"] == 0
-    assert context["attempts"][0]["query"] == "first query"
-    assert "intent" not in context["attempts"][0]
+    assert context["searches"][0]["query"] == "first query"
+    assert context["searches"][0]["result_count"] == 1
+    assert "intent" not in context["searches"][0]
+    assert "attempts" not in context
+    assert context["search_results"][0]["read_status"] == "pending"
+    assert context["documents"][0]["extraction_status"] == "pending"
     assert "published_at" not in context["search_results"][0]
     assert "remaining_budget" not in payload
     assert payload["available_actions"] == [
@@ -383,6 +398,89 @@ def test_rejects_action_without_required_state(
         _select_action(content, state, store)
 
     assert exc_info.value.reason == "invalid_action"
+
+
+def test_hides_completed_read_and_extraction_actions() -> None:
+    store, state = _populated_state()
+    state.read_progress["result-1"] = ReadProgress(
+        attempt_count=1,
+        document_id="document-1",
+    )
+    state.extract_progress["document-1"] = ExtractProgress(attempt_count=1)
+
+    _, client = _select_action(
+        '{"type":"finish","params":{},"rationale":"Research is complete."}',
+        state,
+        store,
+    )
+
+    payload = json.loads(client.requests[0].messages[1].content)
+    assert payload["available_actions"] == ["search", "finish", "stop"]
+
+
+def test_keeps_retryable_resource_actions_available_until_exhausted() -> None:
+    store, state = _populated_state()
+    state.read_progress["result-1"] = ReadProgress(
+        attempt_count=1,
+        failure=Failure(reason="timeout", retryable=True),
+    )
+    state.extract_progress["document-1"] = ExtractProgress(
+        attempt_count=1,
+        failure=Failure(reason="llm_error", retryable=True),
+    )
+
+    _, retry_client = _select_action(
+        '{"type":"stop","params":{},"rationale":"Stop now."}',
+        state,
+        store,
+    )
+    retry_payload = json.loads(retry_client.requests[0].messages[1].content)
+    assert "read_document" in retry_payload["available_actions"]
+    assert "extract_evidence" in retry_payload["available_actions"]
+
+    state.read_progress["result-1"].attempt_count = 2
+    state.extract_progress["document-1"].attempt_count = 2
+    _, exhausted_client = _select_action(
+        '{"type":"stop","params":{},"rationale":"Stop now."}',
+        state,
+        store,
+    )
+    exhausted_payload = json.loads(
+        exhausted_client.requests[0].messages[1].content
+    )
+    assert "read_document" not in exhausted_payload["available_actions"]
+    assert "extract_evidence" not in exhausted_payload["available_actions"]
+
+
+def test_last_step_only_allows_finishing_or_stopping() -> None:
+    store, state = _populated_state()
+    state.current_step = state.budget.max_steps - 1
+
+    _, client = _select_action(
+        '{"type":"finish","params":{},"rationale":"Use the final step."}',
+        state,
+        store,
+    )
+
+    payload = json.loads(client.requests[0].messages[1].content)
+    assert payload["available_actions"] == ["finish", "stop"]
+
+
+def test_last_step_without_sources_only_allows_stopping() -> None:
+    store = InMemoryArtifactStore()
+    state = AgentState(
+        query=UserQuery(text="What happened?"),
+        current_step=11,
+    )
+
+    _, client = _select_action(
+        '{"type":"stop","params":{},"rationale":"No sources are available."}',
+        state,
+        store,
+    )
+
+    payload = json.loads(client.requests[0].messages[1].content)
+    assert payload["available_actions"] == ["stop"]
 
 
 class _FailingLLMClient:

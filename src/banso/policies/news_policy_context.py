@@ -1,17 +1,30 @@
 """Decision context exposed to the LLM-backed news policy."""
 
+from collections import Counter
 from datetime import datetime
-from typing import Annotated, Literal, TypeVar
+from typing import TypeVar
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from banso.artifacts import ArtifactStore
 from banso.core.action import AgentActionType
+from banso.core.lifecycle import (
+    LifecycleStatus,
+    extraction_status,
+    read_status,
+    remaining_document_count,
+)
 from banso.core.state import ActionHistoryEntry, AgentState, UserQuery
 from banso.documents import Document, EvidenceItem
 from banso.retrieval import SearchResult, Source
 
 TArtifact = TypeVar("TArtifact", SearchResult, Document, EvidenceItem)
+_STATUS_PRIORITY: dict[LifecycleStatus, int] = {
+    "pending": 0,
+    "retryable": 1,
+    "succeeded": 2,
+    "failed": 3,
+}
 
 
 class SearchResultView(BaseModel):
@@ -23,6 +36,9 @@ class SearchResultView(BaseModel):
     snippet: str | None = None
     source: Source | None = None
     published_at: datetime | None = None
+    read_status: LifecycleStatus
+    document_id: str | None = None
+    read_failure_reason: str | None = None
 
 
 class DocumentView(BaseModel):
@@ -35,6 +51,9 @@ class DocumentView(BaseModel):
     source: Source | None = None
     published_at: datetime | None = None
     author: str | None = None
+    extraction_status: LifecycleStatus
+    evidence_count: int
+    extraction_failure_reason: str | None = None
 
 
 class EvidenceView(BaseModel):
@@ -48,51 +67,15 @@ class EvidenceView(BaseModel):
     confidence: float | None = None
 
 
-class ResourceFailure(BaseModel):
-    """A recoverable failure while processing one resource."""
-
-    resource_id: str
-    url: str
-    reason: str
-    status_code: int | None = None
-
-
 class SearchAttempt(BaseModel):
-    """One completed search and its result association."""
+    """One completed search relevant to future decisions."""
 
-    type: Literal[AgentActionType.SEARCH] = AgentActionType.SEARCH
     step_index: int
     query: str
     intent: str | None = None
-    result_ids: list[str]
+    result_count: int
     new_result_count: int
     reused_result_count: int
-
-
-class ReadAttempt(BaseModel):
-    """One completed document reading attempt."""
-
-    type: Literal[AgentActionType.READ_DOCUMENT] = AgentActionType.READ_DOCUMENT
-    step_index: int
-    document_ids: list[str]
-    failures: list[ResourceFailure]
-
-
-class ExtractAttempt(BaseModel):
-    """One completed evidence extraction attempt."""
-
-    type: Literal[AgentActionType.EXTRACT_EVIDENCE] = AgentActionType.EXTRACT_EVIDENCE
-    step_index: int
-    evidence_ids: list[str]
-    successful_document_count: int
-    documents_without_evidence: list[str]
-    failures: list[ResourceFailure]
-
-
-Attempt = Annotated[
-    SearchAttempt | ReadAttempt | ExtractAttempt,
-    Field(discriminator="type"),
-]
 
 
 class NewsPolicyContext(BaseModel):
@@ -107,12 +90,20 @@ class NewsPolicyContext(BaseModel):
     max_searches: int
     remaining_search_count: int
     max_documents_to_read: int
-    attempts: list[Attempt]
+    remaining_document_count: int
+    searches: list[SearchAttempt]
     search_result_count: int
     omitted_search_result_count: int
+    pending_read_count: int
+    retryable_read_count: int
+    failed_read_count: int
     search_results: list[SearchResultView]
     document_count: int
     omitted_document_count: int
+    pending_extraction_count: int
+    retryable_extraction_count: int
+    failed_extraction_count: int
+    documents_without_evidence_count: int
     documents: list[DocumentView]
     evidence_count: int
     omitted_evidence_count: int
@@ -158,10 +149,23 @@ class NewsPolicyContextBuilder:
         search_results = self._load_all(state.search_result_ids, SearchResult)
         documents = self._load_all(state.document_ids, Document)
         evidence = self._load_all(state.evidence_ids, EvidenceItem)
-        executed_search_count = sum(
-            entry.action_type == AgentActionType.SEARCH
+        searches = [
+            self._build_search(entry)
             for entry in state.action_history
-        )
+            if entry.action_type == AgentActionType.SEARCH
+        ]
+        read_statuses = {
+            result_id: read_status(state, result_id)
+            for result_id in state.search_result_ids
+        }
+        extraction_statuses = {
+            document_id: extraction_status(state, document_id)
+            for document_id in state.document_ids
+        }
+        read_counts = Counter(read_statuses.values())
+        extraction_counts = Counter(extraction_statuses.values())
+        evidence_counts = Counter(item.document_id for item in evidence)
+        executed_search_count = len(searches)
 
         return NewsPolicyContext(
             user_query=state.query.model_copy(deep=True),
@@ -179,17 +183,33 @@ class NewsPolicyContextBuilder:
                 0,
             ),
             max_documents_to_read=state.budget.max_documents_to_read,
-            attempts=[
-                attempt
-                for entry in state.action_history
-                if (attempt := self._build_attempt(entry)) is not None
-            ],
+            remaining_document_count=remaining_document_count(state),
+            searches=searches,
             search_result_count=len(search_results),
             omitted_search_result_count=max(len(search_results) - self.max_search_results, 0),
-            search_results=self._build_search_results(search_results),
+            pending_read_count=read_counts["pending"],
+            retryable_read_count=read_counts["retryable"],
+            failed_read_count=read_counts["failed"],
+            search_results=self._build_search_results(
+                search_results,
+                state,
+                read_statuses,
+            ),
             document_count=len(documents),
             omitted_document_count=max(len(documents) - self.max_documents, 0),
-            documents=self._build_documents(documents),
+            pending_extraction_count=extraction_counts["pending"],
+            retryable_extraction_count=extraction_counts["retryable"],
+            failed_extraction_count=extraction_counts["failed"],
+            documents_without_evidence_count=sum(
+                status == "succeeded" and evidence_counts[document_id] == 0
+                for document_id, status in extraction_statuses.items()
+            ),
+            documents=self._build_documents(
+                documents,
+                state,
+                extraction_statuses,
+                evidence_counts,
+            ),
             evidence_count=len(evidence),
             omitted_evidence_count=max(len(evidence) - self.max_evidence, 0),
             evidence=self._build_evidence(evidence),
@@ -198,7 +218,13 @@ class NewsPolicyContextBuilder:
     def _build_search_results(
         self,
         results: list[SearchResult],
+        state: AgentState,
+        statuses: dict[str, LifecycleStatus],
     ) -> list[SearchResultView]:
+        visible_results = sorted(
+            results,
+            key=lambda result: _STATUS_PRIORITY[statuses[result.id]],
+        )[: self.max_search_results]
         return [
             SearchResultView(
                 id=result.id,
@@ -211,14 +237,32 @@ class NewsPolicyContextBuilder:
                 ),
                 source=result.source,
                 published_at=result.published_at,
+                read_status=statuses[result.id],
+                document_id=(
+                    progress.document_id
+                    if (progress := state.read_progress.get(result.id)) is not None
+                    else None
+                ),
+                read_failure_reason=(
+                    progress.failure.reason
+                    if progress is not None and progress.failure is not None
+                    else None
+                ),
             )
-            for result in results[: self.max_search_results]
+            for result in visible_results
         ]
 
     def _build_documents(
         self,
         documents: list[Document],
+        state: AgentState,
+        statuses: dict[str, LifecycleStatus],
+        evidence_counts: Counter[str],
     ) -> list[DocumentView]:
+        visible_documents = sorted(
+            documents,
+            key=lambda document: _STATUS_PRIORITY[statuses[document.id]],
+        )[: self.max_documents]
         return [
             DocumentView(
                 id=document.id,
@@ -228,8 +272,18 @@ class NewsPolicyContextBuilder:
                 source=document.source,
                 published_at=document.published_at,
                 author=document.author,
+                extraction_status=statuses[document.id],
+                evidence_count=evidence_counts[document.id],
+                extraction_failure_reason=(
+                    progress.failure.reason
+                    if (
+                        progress := state.extract_progress.get(document.id)
+                    ) is not None
+                    and progress.failure is not None
+                    else None
+                ),
             )
-            for document in documents[: self.max_documents]
+            for document in visible_documents
         ]
 
     def _build_evidence(
@@ -249,55 +303,19 @@ class NewsPolicyContextBuilder:
         ]
 
     @staticmethod
-    def _build_attempt(
+    def _build_search(
         entry: ActionHistoryEntry,
-    ) -> Attempt | None:
+    ) -> SearchAttempt:
         data = entry.observation.data
-        if entry.action_type == AgentActionType.SEARCH:
-            merge_report = data.get("search_result_merge_report", {})
-            return SearchAttempt(
-                step_index=entry.step_index,
-                query=entry.params["query"],
-                intent=entry.params.get("intent"),
-                result_ids=data.get("search_result_ids", []),
-                new_result_count=merge_report.get("new_result_count", 0),
-                reused_result_count=merge_report.get("reused_result_count", 0),
-            )
-
-        if entry.action_type == AgentActionType.READ_DOCUMENT:
-            failures = data.get("document_read_failures", [])
-            return ReadAttempt(
-                step_index=entry.step_index,
-                document_ids=data.get("document_ids", []),
-                failures=[
-                    ResourceFailure(
-                        resource_id=failure["search_result_id"],
-                        url=failure["url"],
-                        reason=failure["reason"],
-                        status_code=failure.get("status_code"),
-                    )
-                    for failure in failures
-                ],
-            )
-
-        if entry.action_type == AgentActionType.EXTRACT_EVIDENCE:
-            failures = data.get("evidence_extraction_failures", [])
-            return ExtractAttempt(
-                step_index=entry.step_index,
-                evidence_ids=data.get("evidence_ids", []),
-                successful_document_count=data.get("successful_document_count", 0),
-                documents_without_evidence=data.get("documents_without_evidence", []),
-                failures=[
-                    ResourceFailure(
-                        resource_id=failure["document_id"],
-                        url=failure["url"],
-                        reason=failure["reason"],
-                    )
-                    for failure in failures
-                ],
-            )
-
-        return None
+        merge_report = data.get("search_result_merge_report", {})
+        return SearchAttempt(
+            step_index=entry.step_index,
+            query=entry.params["query"],
+            intent=entry.params.get("intent"),
+            result_count=len(data.get("search_result_ids", [])),
+            new_result_count=merge_report.get("new_result_count", 0),
+            reused_result_count=merge_report.get("reused_result_count", 0),
+        )
 
     def _load_all(
         self,

@@ -8,6 +8,7 @@ from banso.artifacts import InMemoryArtifactStore
 from banso.core import (
     AgentRuntime,
     AgentState,
+    DefaultStateReducer,
     ExecutionBudget,
     PlannedSearch,
     RuntimeExecutionError,
@@ -422,21 +423,36 @@ async def _run_news_runtime_skips_unreadable_document(status_code: int) -> None:
 
     output = await runtime.run(AgentState(query=UserQuery(text="latest AI news")))
     read_observation = output.result.state.action_history[2].observation
+    failed_result_id = output.result.state.search_result_ids[0]
+    document_id = output.result.state.document_ids[0]
 
     assert output.result.state.done is True
     assert len(output.result.state.document_ids) == 1
-    assert read_observation.data["document_read_failures"] == [
+    assert read_observation.data["read_outcomes"] == [
         {
-            "search_result_id": output.result.state.search_result_ids[0],
-            "url": "https://example.com/blocked",
-            "status_code": status_code,
-            "reason": "http_status",
-            "message": f"HTTP {status_code} while reading document",
-            "source_error_type": "HTTPStatusError",
-        }
+            "search_result_id": failed_result_id,
+            "failure": {
+                "url": "https://example.com/blocked",
+                "status_code": status_code,
+                "reason": "http_status",
+                "retryable": 500 <= status_code < 600,
+                "message": f"HTTP {status_code} while reading document",
+                "source_error_type": "HTTPStatusError",
+            },
+        },
+        {
+            "search_result_id": output.result.state.search_result_ids[1],
+            "document_id": document_id,
+        },
     ]
-    assert read_observation.data["successfully_read_document_count"] == 1
-    assert read_observation.data["failed_document_count"] == 1
+    assert output.result.state.read_progress[failed_result_id].failure is not None
+    assert (
+        output.result.state.read_progress[failed_result_id].failure.retryable
+        is (status_code == 503)
+    )
+    assert output.result.state.read_progress[failed_result_id].attempt_count == (
+        2 if status_code == 503 else 1
+    )
 
 
 def test_news_runtime() -> None:
@@ -459,7 +475,7 @@ def test_news_runtime_deduplicates_across_searches() -> None:
     asyncio.run(_run_news_runtime_deduplicates_across_searches())
 
 
-@pytest.mark.parametrize("status_code", [401, 403, 404, 410, 500, 521])
+@pytest.mark.parametrize("status_code", [404, 503])
 def test_news_runtime_skips_unreadable_document(status_code: int) -> None:
     asyncio.run(_run_news_runtime_skips_unreadable_document(status_code))
 
@@ -487,9 +503,20 @@ async def _run_document_read_reports_failed_when_all_documents_fail() -> None:
         state,
     )
 
-    assert observation.data["successfully_read_document_count"] == 0
-    assert observation.data["failed_document_count"] == 1
-    assert observation.data["document_ids"] == []
+    assert observation.data["read_outcomes"] == [
+        {
+            "search_result_id": search_result.id,
+            "failure": {
+                "url": search_result.url,
+                "status_code": 503,
+                "reason": "http_status",
+                "retryable": True,
+                "message": "HTTP 503 while reading document",
+                "source_error_type": "HTTPStatusError",
+            },
+        }
+    ]
+    assert observation.data["document_index_updates"] == {}
 
 
 def test_document_read_reports_failed_when_all_documents_fail() -> None:
@@ -532,3 +559,120 @@ def test_news_runtime_does_not_hide_unknown_reader_errors() -> None:
     assert len(
         [span for span in spans if span.name == "agent.step" and span.status == "ok"]
     ) == 2
+
+
+class TransientDocumentReader(FakeDocumentReader):
+    def __init__(self) -> None:
+        self.call_count = 0
+
+    async def read(self, request):
+        self.call_count += 1
+        if self.call_count == 1:
+            raise DocumentReadError(
+                url=request.url,
+                reason="timeout",
+                message="temporary timeout",
+                source_error_type="ReadTimeout",
+            )
+        return await super().read(request)
+
+
+class RedirectingDocumentReader(FakeDocumentReader):
+    def __init__(self) -> None:
+        self.call_count = 0
+
+    async def read(self, request):
+        self.call_count += 1
+        document = await super().read(request)
+        document.url = "https://official.example/article?utm_source=redirect"
+        return document
+
+
+def _read_executor(
+    store: InMemoryArtifactStore,
+    document_reader,
+) -> NewsActionExecutor:
+    return NewsActionExecutor(
+        store=store,
+        retrieval_provider=FakeRetrievalProvider(),
+        document_reader=document_reader,
+        evidence_extractor=FakeEvidenceExtractor(),
+        synthesizer=FakeSynthesizer(),
+    )
+
+
+async def _run_document_read_retries_then_stops_after_success() -> None:
+    store = InMemoryArtifactStore()
+    result = SearchResult(
+        title="Article",
+        url="https://example.com/article",
+    )
+    state = AgentState(
+        query=UserQuery(text="latest AI news"),
+        search_result_ids=[store.put(result)],
+    )
+    reader = TransientDocumentReader()
+    executor = _read_executor(store, reader)
+    reducer = DefaultStateReducer()
+    action = AgentAction(type=AgentActionType.READ_DOCUMENT)
+
+    first = await executor.execute(action, state)
+    state = reducer.apply(state, action, first)
+    assert state.read_progress[result.id].attempt_count == 1
+    assert state.read_progress[result.id].failure is not None
+    assert state.read_progress[result.id].failure.retryable is True
+
+    second = await executor.execute(action, state)
+    state = reducer.apply(state, action, second)
+    assert state.read_progress[result.id].attempt_count == 2
+    assert state.read_progress[result.id].failure is None
+    assert len(state.document_ids) == 1
+
+    third = await executor.execute(action, state)
+    assert third.data == {
+        "read_outcomes": [],
+        "document_index_updates": {},
+    }
+    assert reader.call_count == 2
+
+
+def test_document_read_retries_then_stops_after_success() -> None:
+    asyncio.run(_run_document_read_retries_then_stops_after_success())
+
+
+async def _run_document_read_reuses_redirect_target() -> None:
+    store = InMemoryArtifactStore()
+    results = [
+        SearchResult(
+            title="Redirect",
+            url="https://short.example/article",
+        ),
+        SearchResult(
+            title="Canonical",
+            url="https://official.example/article",
+        ),
+    ]
+    state = AgentState(
+        query=UserQuery(text="latest AI news"),
+        search_result_ids=[store.put(result) for result in results],
+    )
+    reader = RedirectingDocumentReader()
+    executor = _read_executor(store, reader)
+    action = AgentAction(type=AgentActionType.READ_DOCUMENT)
+
+    observation = await executor.execute(action, state)
+    state = DefaultStateReducer().apply(state, action, observation)
+
+    assert reader.call_count == 1
+    assert len(store.list(Document)) == 1
+    assert len(state.document_ids) == 1
+    document_id = state.document_ids[0]
+    assert state.read_progress[results[0].id].document_id == document_id
+    assert state.read_progress[results[1].id].document_id == document_id
+    assert state.document_index == {
+        "https://official.example/article": document_id,
+    }
+
+
+def test_document_read_reuses_redirect_target() -> None:
+    asyncio.run(_run_document_read_reuses_redirect_target())

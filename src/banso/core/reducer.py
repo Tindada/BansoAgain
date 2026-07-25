@@ -5,7 +5,14 @@ from typing import Protocol
 
 from banso.core.action import AgentAction, AgentActionType
 from banso.core.observation import Observation
-from banso.core.state import ActionHistoryEntry, AgentState, SearchPlan
+from banso.core.state import (
+    ActionHistoryEntry,
+    AgentState,
+    ExtractProgress,
+    Failure,
+    ReadProgress,
+    SearchPlan,
+)
 
 
 def _extend_unique_string_list(target: list[str], values: object) -> None:
@@ -17,15 +24,77 @@ def _extend_unique_string_list(target: list[str], values: object) -> None:
                 seen.add(value)
 
 
-def _update_search_result_index(
+def _update_index(
     target_index: dict[str, str],
     index_updates: object,
+    label: str,
 ) -> None:
     if not isinstance(index_updates, dict):
-        raise ValueError("search result index updates must be a mapping")
+        raise ValueError(f"{label} updates must be a mapping")
     if target_index.keys() & index_updates.keys():
-        raise ValueError("search result index update contains an existing URL")
+        raise ValueError(f"{label} update contains an existing URL")
     target_index.update(index_updates)
+
+
+def _apply_read_outcomes(state: AgentState, outcomes: object) -> None:
+    if not isinstance(outcomes, list):
+        raise ValueError("read outcomes must be a list")
+
+    for outcome in outcomes:
+        if not isinstance(outcome, dict):
+            raise ValueError("read outcome must be a mapping")
+        result_id = outcome["search_result_id"]
+        if not isinstance(result_id, str):
+            raise ValueError("read outcome search_result_id must be a string")
+
+        previous = state.read_progress.get(result_id)
+        attempt_count = previous.attempt_count + 1 if previous is not None else 1
+        document_id = outcome.get("document_id")
+        failure = outcome.get("failure")
+        if isinstance(document_id, str) and failure is None:
+            _extend_unique_string_list(state.document_ids, [document_id])
+            state.read_progress[result_id] = ReadProgress(
+                attempt_count=attempt_count,
+                document_id=document_id,
+            )
+            continue
+        if document_id is None and isinstance(failure, dict):
+            state.read_progress[result_id] = ReadProgress(
+                attempt_count=attempt_count,
+                failure=Failure.model_validate(failure),
+            )
+            continue
+        raise ValueError("read outcome must contain exactly one outcome")
+
+
+def _apply_extraction_outcomes(state: AgentState, outcomes: object) -> None:
+    if not isinstance(outcomes, list):
+        raise ValueError("extraction outcomes must be a list")
+
+    for outcome in outcomes:
+        if not isinstance(outcome, dict):
+            raise ValueError("extraction outcome must be a mapping")
+        document_id = outcome["document_id"]
+        if not isinstance(document_id, str):
+            raise ValueError("extraction outcome document_id must be a string")
+
+        previous = state.extract_progress.get(document_id)
+        attempt_count = previous.attempt_count + 1 if previous is not None else 1
+        evidence_ids = outcome.get("evidence_ids")
+        failure = outcome.get("failure")
+        if isinstance(evidence_ids, list) and failure is None:
+            _extend_unique_string_list(state.evidence_ids, evidence_ids)
+            state.extract_progress[document_id] = ExtractProgress(
+                attempt_count=attempt_count,
+            )
+            continue
+        if evidence_ids is None and isinstance(failure, dict):
+            state.extract_progress[document_id] = ExtractProgress(
+                attempt_count=attempt_count,
+                failure=Failure.model_validate(failure),
+            )
+            continue
+        raise ValueError("extraction outcome must contain exactly one outcome")
 
 
 class StateReducer(Protocol):
@@ -72,18 +141,28 @@ class DefaultStateReducer:
                 next_state.search_result_ids,
                 observation.data.get("search_result_ids"),
             )
-            _update_search_result_index(
+            _update_index(
                 next_state.search_result_index,
                 observation.data.get("search_result_index_updates", {}),
+                "search result index",
             )
-        _extend_unique_string_list(
-            next_state.document_ids,
-            observation.data.get("document_ids"),
-        )
-        _extend_unique_string_list(
-            next_state.evidence_ids,
-            observation.data.get("evidence_ids"),
-        )
+
+        if action.type == AgentActionType.READ_DOCUMENT:
+            _apply_read_outcomes(
+                next_state,
+                observation.data.get("read_outcomes"),
+            )
+            _update_index(
+                next_state.document_index,
+                observation.data.get("document_index_updates", {}),
+                "document index",
+            )
+
+        if action.type == AgentActionType.EXTRACT_EVIDENCE:
+            _apply_extraction_outcomes(
+                next_state,
+                observation.data.get("extraction_outcomes"),
+            )
 
         if action.type == AgentActionType.FINISH:
             final_answer = observation.data.get("final_answer")

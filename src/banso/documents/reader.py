@@ -38,6 +38,17 @@ class DocumentReadError(Exception):
         self.status_code = status_code
         super().__init__(message)
 
+    @property
+    def retryable(self) -> bool:
+        """Return whether repeating the same read may recover."""
+        if self.reason in {"timeout", "transport"}:
+            return True
+        if self.reason != "http_status" or self.status_code is None:
+            return False
+        return self.status_code in {408, 425, 429} or (
+            500 <= self.status_code < 600
+        )
+
 
 class DocumentReadRequest(BaseModel):
     """Structured request for reading a document."""

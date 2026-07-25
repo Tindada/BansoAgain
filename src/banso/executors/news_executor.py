@@ -4,6 +4,11 @@ import asyncio
 
 from banso.artifacts import ArtifactStore
 from banso.core.action import AgentAction, AgentActionType
+from banso.core.lifecycle import (
+    eligible_extraction_document_ids,
+    eligible_read_result_ids,
+    remaining_document_count,
+)
 from banso.core.observation import Observation
 from banso.core.state import AgentState
 from banso.documents import (
@@ -139,14 +144,32 @@ class NewsActionExecutor:
         )
 
     async def _read_document(self, state: AgentState) -> Observation:
-        document_ids: list[str] = []
-        failures: list[dict[str, str | int | None]] = []
-
-        result_ids = state.search_result_ids[: state.budget.max_documents_to_read]
+        read_outcomes: list[dict[str, object]] = []
+        document_index = dict(state.document_index)
+        document_index_updates: dict[str, str] = {}
+        result_ids = eligible_read_result_ids(state)[: remaining_document_count(state)]
         for result_id in result_ids:
             result = self.store.get(result_id, SearchResult)
             if result is None:
+                raise ValueError(
+                    "SearchResult artifact is missing or has the wrong type: "
+                    f"{result_id}"
+                )
+
+            normalized_result_url = normalize_url(
+                result.url,
+                ignored_query_params=self.retrieval_filter.config.ignored_query_params,
+            )
+            document_id = document_index.get(normalized_result_url)
+            if document_id is not None:
+                read_outcomes.append(
+                    {
+                        "search_result_id": result_id,
+                        "document_id": document_id,
+                    }
+                )
                 continue
+
             try:
                 document = await self.document_reader.read(
                     DocumentReadRequest(
@@ -157,34 +180,56 @@ class NewsActionExecutor:
                     )
                 )
             except DocumentReadError as error:
-                failures.append(
+                read_outcomes.append(
                     {
-                        "search_result_id": result.id,
-                        "url": error.url,
-                        "status_code": error.status_code,
-                        "reason": error.reason,
-                        "message": error.message,
-                        "source_error_type": error.source_error_type,
+                        "search_result_id": result_id,
+                        "failure": {
+                            "url": error.url,
+                            "status_code": error.status_code,
+                            "reason": error.reason,
+                            "retryable": error.retryable,
+                            "message": error.message,
+                            "source_error_type": error.source_error_type,
+                        },
                     }
                 )
                 continue
-            document_ids.append(self.store.put(document))
+
+            normalized_document_url = normalize_url(
+                document.url,
+                ignored_query_params=self.retrieval_filter.config.ignored_query_params,
+            )
+            document_id = document_index.get(normalized_document_url)
+            if document_id is None:
+                document_id = self.store.put(document)
+                document_index[normalized_document_url] = document_id
+                document_index_updates[normalized_document_url] = document_id
+
+            read_outcomes.append(
+                {
+                    "search_result_id": result_id,
+                    "document_id": document_id,
+                }
+            )
 
         return Observation(
             data={
-                "successfully_read_document_count": len(document_ids),
-                "failed_document_count": len(failures),
-                "document_ids": document_ids,
-                "document_read_failures": failures,
+                "read_outcomes": read_outcomes,
+                "document_index_updates": document_index_updates,
             },
         )
 
     async def _extract_evidence(self, state: AgentState) -> Observation:
-        documents = [
-            document
-            for document_id in state.document_ids
-            if (document := self.store.get(document_id, Document)) is not None
-        ]
+        documents: list[Document] = []
+        for document_id in eligible_extraction_document_ids(state):
+            document = self.store.get(document_id, Document)
+            if document is None:
+                raise ValueError(
+                    "Document artifact is missing or has the wrong type: "
+                    f"{document_id}"
+                )
+            documents.append(document)
+
         semaphore = asyncio.Semaphore(self.max_extraction_concurrency)
 
         async def extract(
@@ -205,40 +250,29 @@ class NewsActionExecutor:
         extraction_results = await asyncio.gather(
             *(extract(document) for document in documents)
         )
-        evidence_ids = [
-            self.store.put(item)
-            for _, evidence_items, _ in extraction_results
-            for item in evidence_items
-        ]
-        failures = [
-            {
-                "document_id": document.id,
-                "url": document.url,
-                "reason": error.reason,
-                "message": str(error),
-            }
-            for document, _, error in extraction_results
-            if error is not None
-        ]
-        documents_without_evidence = [
-            document.id
-            for document, evidence_items, error in extraction_results
-            if error is None and not evidence_items
-        ]
+        extraction_outcomes: list[dict[str, object]] = []
+        for document, evidence, error in extraction_results:
+            if error is not None:
+                extraction_outcomes.append(
+                    {
+                        "document_id": document.id,
+                        "failure": {
+                            "url": document.url,
+                            "reason": error.reason,
+                            "retryable": error.retryable,
+                            "message": str(error),
+                        },
+                    }
+                )
+                continue
+            extraction_outcomes.append(
+                {
+                    "document_id": document.id,
+                    "evidence_ids": [self.store.put(item) for item in evidence],
+                }
+            )
 
-        successful_extractions = sum(
-            error is None for _, _, error in extraction_results
-        )
-        return Observation(
-            data={
-                "successful_document_count": successful_extractions,
-                "failed_document_count": len(failures),
-                "evidence_count": len(evidence_ids),
-                "evidence_ids": evidence_ids,
-                "evidence_extraction_failures": failures,
-                "documents_without_evidence": documents_without_evidence,
-            },
-        )
+        return Observation(data={"extraction_outcomes": extraction_outcomes})
 
     async def _synthesize(self, state: AgentState) -> Observation:
         evidence = [

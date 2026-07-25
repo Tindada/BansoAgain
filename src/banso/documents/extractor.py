@@ -24,6 +24,11 @@ class EvidenceExtractionError(Exception):
         super().__init__(message)
         self.reason = reason
 
+    @property
+    def retryable(self) -> bool:
+        """Return whether repeating the same extraction may recover."""
+        return self.reason == "llm_error"
+
 
 class EvidenceExtractor(Protocol):
     """Extracts evidence items from documents."""
