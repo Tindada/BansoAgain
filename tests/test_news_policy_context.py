@@ -540,9 +540,9 @@ def test_preserves_existing_default_limits() -> None:
     assert builder.max_search_results == 30
     assert builder.max_documents == 8
     assert builder.max_evidence_per_document == 10
-    assert builder.max_snippet_chars == 500
-    assert builder.max_document_preview_chars == 1000
-    assert builder.max_claim_chars == 1000
+    assert builder.max_snippet_chars == 300
+    assert builder.max_document_preview_chars == 750
+    assert builder.max_claim_chars == 300
 
 
 @pytest.mark.parametrize(

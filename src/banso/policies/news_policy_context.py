@@ -137,9 +137,9 @@ class NewsPolicyContextBuilder:
         max_search_results: int = 30,
         max_documents: int = 8,
         max_evidence_per_document: int = 10,
-        max_snippet_chars: int = 500,
-        max_document_preview_chars: int = 1000,
-        max_claim_chars: int = 1000,
+        max_snippet_chars: int = 300,
+        max_document_preview_chars: int = 750,
+        max_claim_chars: int = 300,
     ) -> None:
         limits = {
             "max_search_results": max_search_results,
