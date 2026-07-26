@@ -9,6 +9,7 @@ from banso.core.action import AgentAction, AgentActionType
 from banso.core.lifecycle import (
     eligible_extraction_document_ids,
     eligible_read_result_ids,
+    remaining_document_count,
 )
 from banso.core.state import AgentState
 from banso.llm import (
@@ -290,7 +291,10 @@ class LLMNewsPolicy:
             entry.action_type == AgentActionType.SEARCH
             for entry in state.action_history
         )
-        if executed_search_count < state.budget.max_searches:
+        if (
+            executed_search_count < state.budget.max_searches
+            and remaining_document_count(state) > 0
+        ):
             actions.append(AgentActionType.SEARCH)
         if eligible_read_result_ids(state):
             actions.append(AgentActionType.READ_DOCUMENT)

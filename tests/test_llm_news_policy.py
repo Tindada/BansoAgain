@@ -466,6 +466,24 @@ def test_hides_completed_read_and_extraction_actions() -> None:
     assert payload["available_actions"] == ["search", "finish", "stop"]
 
 
+def test_hides_search_when_document_budget_is_exhausted() -> None:
+    store, state = _populated_state()
+    state.budget.max_documents_to_read = 1
+
+    _, client = _select_action(
+        '{"type":"finish","params":{},"rationale":"Use collected sources."}',
+        state,
+        store,
+    )
+
+    payload = json.loads(client.requests[0].messages[1].content)
+    assert payload["available_actions"] == [
+        "extract_evidence",
+        "finish",
+        "stop",
+    ]
+
+
 def test_keeps_retryable_resource_actions_available_until_exhausted() -> None:
     store, state = _populated_state()
     state.read_progress["result-1"] = ReadProgress(
