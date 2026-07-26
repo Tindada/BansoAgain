@@ -101,7 +101,7 @@ class WorkSummary(BaseModel):
 
     read: ResourceWorkSummary
     extraction: ResourceWorkSummary
-    documents_without_evidence: int
+    extracted_without_evidence: int
 
 
 class ArtifactSummary(BaseModel):
@@ -225,7 +225,7 @@ class NewsPolicyContextBuilder:
                     actionable=len(actionable_extraction_ids),
                     failure_reasons=self._failure_reasons(state.extract_progress.values()),
                 ),
-                documents_without_evidence=sum(
+                extracted_without_evidence=sum(
                     status == "succeeded" and evidence_counts[document_id] == 0
                     for document_id, status in extraction_statuses.items()
                 ),

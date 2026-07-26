@@ -134,7 +134,7 @@ def test_builds_compact_context_from_completed_work() -> None:
             "actionable": 0,
             "failure_reasons": {},
         },
-        "documents_without_evidence": 0,
+        "extracted_without_evidence": 0,
     }
     assert context.artifacts.model_dump() == {
         "search_results": 1,
@@ -295,7 +295,7 @@ def test_exposes_only_actionable_resources_and_aggregates_failures() -> None:
             "llm_error": 1,
         },
     }
-    assert context.work.documents_without_evidence == 1
+    assert context.work.extracted_without_evidence == 1
     assert [
         (result.title, result.read_status)
         for result in context.candidate_results
