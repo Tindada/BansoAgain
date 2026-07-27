@@ -28,11 +28,13 @@
 - 已实现最小 `AgentRuntime` 主循环，支持 policy 决策、executor 执行、reducer 更新状态和 trace 收集。
 - 已实现新闻场景的固定流程 policy：搜索、读取文档、抽取 evidence、生成总结。
 - 已实现最小 `LLMNewsPolicy`，由 LLM 根据有界 Policy Context、可用 action 和剩余
-  预算选择结构化 `AgentAction`，并校验动作参数、搜索预算和重复 query。
+  预算选择结构化 `AgentAction`，并校验动作参数、搜索预算和重复 query；Action
+  availability 由资源生命周期和剩余额度决定，文档额度耗尽后不再提供 `SEARCH`。
 - `LLMNewsPolicy` 的非法输出和已知 LLM 调用失败会作为带 reason 的 policy error
   向上抛出，由 Runtime Span 保存失败信息；第一版不重试或自动回退。
 - 真实新闻运行入口支持通过 `BANSO_NEWS_POLICY` 选择规则 Policy 或 LLM Policy，
-  默认继续使用规则 Policy；LLM Policy 当前复用本地 vLLM client。
+  默认继续使用规则 Policy；规则 Policy 默认使用外部 LLM 生成 SearchPlan，
+  LLM Policy 当前复用本地 vLLM client。
 - 已通过 provider-independent 的 `TracingLLMClient` 统一记录 LLM 实际输入、原始
   provider 响应、completion 和 token usage；业务解析结果继续保存在对应
   Observation、Artifact 或外层 Span 中。
@@ -45,19 +47,22 @@
   将该文档记录为 `document_too_large`，避免异常文档无上限占用执行时间。
 - 已实现 retrieval filter、仅补充元数据而不做准入的 search result source
   classifier，以及基础 artifact store。
-- Search 结果已通过 State 中的标准化 URL 索引实现跨多次 Search 去重，同一 URL
-  复用首次保存的 artifact；单次 Search 内部的重复结果继续由 retrieval filter 过滤。
+- Search 结果和文档已通过 State 中的标准化 URL 索引实现去重，同一 URL 复用首次
+  保存的 artifact；单次 Search 内部的重复结果继续由 retrieval filter 过滤。
 - Retrieval filter 仅允许可由当前文档读取链路直接消费的绝对 HTTP(S) URL，非法
   URL 会在保存 artifact 前被丢弃并记录分类计数。
 - 已实现与业务模型解耦的 `SpanRecord`、`Tracer` 和 `InMemoryTraceSink`，通过
   `ContextVar` 传播当前 Span，并以 `trace_id` 关联运行结果和执行轨迹。
-- `AgentState` 已保存有界的 Action/Observation 历史、artifact ID、最终答案和
-  citations，并在初始化时固定本次运行使用的 UTC `reference_time`；完整 artifact
-  继续由 `ArtifactStore` 作为权威数据源保存。
+- `AgentState` 是运行进度的权威记录，保存 Action/Observation 历史、artifact ID、
+  URL 索引、最终答案和 citations，并在初始化时固定本次运行使用的 UTC
+  `reference_time`；完整 artifact 继续由 `ArtifactStore` 保存。
+- State 分别记录每个 Search Result 的读取进度和每个 Document 的证据提取进度，
+  包含尝试次数、成功产物或失败原因；Policy 和 Executor 据此选择 pending、
+  retryable 或已完成的资源。
 - 内存 ArtifactStore 已保证同 ID 不可覆盖，并在写入、读取和列举时提供隔离快照。
 - 已实现新闻专用的 `NewsPolicyContextBuilder`，从 State 和 ArtifactStore
-  确定性构造有界的用户查询、参考时间、预算、语义化执行历史和 artifact 决策上下文，
-  并显式标记因数量限制而省略的 artifact 数量。
+  确定性构造用户查询、参考时间、剩余预算、搜索历史、资源生命周期摘要以及有界的
+  Search Result、Document 和分组 Evidence 预览，并显式标记省略数量。
 - Rule-based Policy 使用的 Search Planner 会从 State 接收同一个 `reference_time`；
   LLM Search Planner 将其加入 prompt，作为解释“最近”“本周”等相对时间的统一基准。
 - Runtime 已分别使用 Policy、Executor 和 Reducer 子 Span 记录耗时；失败 Span
@@ -177,13 +182,15 @@ STOP
   构造模型可见的决策事实；通用 `Policy` 接口继续只返回 `AgentAction`。
 - 向模型提供 query、预算、语义化执行历史、有界 artifact context 和可用 action，
   不直接暴露完整 State，也不在 State 中重复保存 artifact summary。
-- 对非法 action、无效参数、重复动作和 LLM 调用失败提供校验、重试或安全回退。
+- 对非法 action、无效参数、重复搜索 query 和 LLM 调用失败提供确定性校验和明确错误；
+  是否增加纠正重试由 evaluation 结果决定。
 - 记录 action 选择所需的简短 decision metadata，保证行为可审计。
 - 继续使用固定流程 policy 作为 baseline，而不是直接替换或删除。
 - 通过最大步骤数、搜索数、文档数和 token/cost 预算约束 agent 行为。
 
-当前已完成最小 Policy、确定性输出校验、显式 Policy Context、独立 LLM tracing 和
-真实运行入口接入；token/cost 预算和基于评估结果的重试策略仍属于后续工作。
+当前已完成最小 Policy、资源生命周期约束、精简的显式 Policy Context、确定性输出
+校验、独立 LLM tracing 和真实运行入口接入；token/cost 预算和基于评估结果的重试
+策略仍属于后续工作。
 
 评估重点：
 
@@ -316,10 +323,8 @@ Rollout 必须保存 LLM 实际接收的 prompt/messages、原始 completion、�
 
 - HTTP 429、可恢复的 5xx、超时和连接错误尚未实现有上限的重试，也缺少按
   失败类别聚合的指标和持久化日志。
-- PDF 是政策、安全和研究类官方来源的重要载体。HTTP document reader 已支持按
-  `application/pdf` 分流，并使用 `pypdf` 提取有文本层 PDF 的正文；第一版不做 OCR，
-  缺少文本层的扫描 PDF 会记录为可审计的提取失败。复杂版面、表格结构和公式恢复仍
-  需要后续基于真实语料评估更强的解析方案。
+- PDF 目前仅支持通过 `pypdf` 提取文本层；扫描件 OCR、复杂版面、表格和公式恢复仍
+  需要结合真实语料评估更强的解析方案。
 - HTML 正文抽取仍是启发式的，缺少质量判定和低质量结果的回退策略。
 
 ### 证据提取
