@@ -36,35 +36,46 @@ def test_vllm_llm_config_uses_vllm_defaults(monkeypatch) -> None:
     }
 
 
-def test_external_llm_config_reads_external_vars(monkeypatch) -> None:
-    monkeypatch.setenv("EXTERNAL_LLM_BASE_URL", "https://external.example.test/v1")
-    monkeypatch.setenv("EXTERNAL_LLM_API_KEY", "external-key")
-    monkeypatch.setenv("EXTERNAL_LLM_MODEL", "external-model")
-    monkeypatch.setenv("EXTERNAL_LLM_TIMEOUT_SECONDS", "45")
+@pytest.mark.parametrize(
+    ("prefix", "builder", "values"),
+    [
+        (
+            "EXTERNAL_LLM",
+            config.build_external_llm_client_from_env,
+            (
+                "https://external.example.test/v1",
+                "external-key",
+                "external-model",
+                "45",
+            ),
+        ),
+        (
+            "VLLM",
+            config.build_vllm_llm_client_from_env,
+            ("http://127.0.0.1:8001/v1", "vllm-key", "local-model", "30"),
+        ),
+    ],
+    ids=["external", "vllm"],
+)
+def test_llm_config_reads_explicit_environment(
+    monkeypatch,
+    prefix,
+    builder,
+    values,
+) -> None:
+    base_url, api_key, model, timeout = values
+    monkeypatch.setenv(f"{prefix}_BASE_URL", base_url)
+    monkeypatch.setenv(f"{prefix}_API_KEY", api_key)
+    monkeypatch.setenv(f"{prefix}_MODEL", model)
+    monkeypatch.setenv(f"{prefix}_TIMEOUT_SECONDS", timeout)
 
-    client = config.build_external_llm_client_from_env()
+    client = builder()
 
     assert client.kwargs == {
-        "base_url": "https://external.example.test/v1",
-        "api_key": "external-key",
-        "model": "external-model",
-        "timeout": 45.0,
-    }
-
-
-def test_vllm_llm_config_reads_vllm_vars(monkeypatch) -> None:
-    monkeypatch.setenv("VLLM_BASE_URL", "http://127.0.0.1:8001/v1")
-    monkeypatch.setenv("VLLM_API_KEY", "vllm-key")
-    monkeypatch.setenv("VLLM_MODEL", "local-model")
-    monkeypatch.setenv("VLLM_TIMEOUT_SECONDS", "30")
-
-    client = config.build_vllm_llm_client_from_env()
-
-    assert client.kwargs == {
-        "base_url": "http://127.0.0.1:8001/v1",
-        "api_key": "vllm-key",
-        "model": "local-model",
-        "timeout": 30.0,
+        "base_url": base_url,
+        "api_key": api_key,
+        "model": model,
+        "timeout": float(timeout),
     }
 
 

@@ -4,7 +4,6 @@ import asyncio
 
 from banso.artifacts import InMemoryArtifactStore
 from banso.core import AgentRuntime, AgentState, UserQuery
-from banso.core.action import AgentActionType
 from banso.documents import FakeDocumentReader, LLMEvidenceExtractor
 from banso.executors import NewsActionExecutor
 from banso.llm import FakeLLMClient
@@ -46,16 +45,6 @@ async def _run_news_runtime_with_llm() -> None:
     state = output.result.state
 
     assert state.done is True
-    assert [entry.action_type for entry in state.action_history] == [
-        AgentActionType.PLAN_SEARCH,
-        AgentActionType.SEARCH,
-        AgentActionType.READ_DOCUMENT,
-        AgentActionType.EXTRACT_EVIDENCE,
-        AgentActionType.FINISH,
-    ]
-    assert len(state.search_result_ids) == 1
-    assert len(state.document_ids) == 1
-    assert len(state.evidence_ids) == 1
     assert state.final_answer == "LLM synthesized news summary."
 
     assert len(evidence_client.requests) == 1

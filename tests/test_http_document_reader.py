@@ -4,6 +4,7 @@ import asyncio
 from io import BytesIO
 
 import httpx
+import pytest
 from pypdf import PdfReader, PdfWriter
 
 from banso.documents import (
@@ -232,22 +233,23 @@ async def _run_http_document_reader_exposes_transport_failure(
         await client.aclose()
 
 
-def test_http_document_reader_exposes_timeout() -> None:
-    asyncio.run(
-        _run_http_document_reader_exposes_transport_failure(
-            httpx.ReadTimeout("read timed out"),
-            "timeout",
-        )
+@pytest.mark.parametrize(
+    ("source_error", "expected_reason"),
+    (
+        (httpx.ReadTimeout("read timed out"), "timeout"),
+        (httpx.ConnectError("connection failed"), "transport"),
+    ),
+    ids=["timeout", "transport"],
+)
+def test_http_document_reader_exposes_transport_failure(
+    source_error: httpx.TransportError,
+    expected_reason: str,
+) -> None:
+    case = _run_http_document_reader_exposes_transport_failure(
+        source_error,
+        expected_reason,
     )
-
-
-def test_http_document_reader_exposes_other_transport_error() -> None:
-    asyncio.run(
-        _run_http_document_reader_exposes_transport_failure(
-            httpx.ConnectError("connection failed"),
-            "transport",
-        )
-    )
+    asyncio.run(case)
 
 
 async def _run_http_document_reader_rejects_unsupported_content_type(
@@ -280,14 +282,17 @@ async def _run_http_document_reader_rejects_unsupported_content_type(
         await client.aclose()
 
 
-def test_http_document_reader_rejects_other_content_types() -> None:
+@pytest.mark.parametrize(
+    "content_type",
+    ["image/png", None],
+    ids=["unsupported", "missing"],
+)
+def test_http_document_reader_rejects_unsupported_content_type(
+    content_type: str | None,
+) -> None:
     asyncio.run(
-        _run_http_document_reader_rejects_unsupported_content_type("image/png")
+        _run_http_document_reader_rejects_unsupported_content_type(content_type)
     )
-
-
-def test_http_document_reader_rejects_missing_content_type() -> None:
-    asyncio.run(_run_http_document_reader_rejects_unsupported_content_type(None))
 
 
 def test_html_extraction_prefers_longest_article_and_removes_noise() -> None:

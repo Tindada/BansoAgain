@@ -18,6 +18,7 @@ from banso.core import (
 from banso.core.action import AgentAction, AgentActionType
 from banso.documents import (
     Document,
+    DocumentReader,
     DocumentReadError,
     FakeDocumentReader,
     FakeEvidenceExtractor,
@@ -26,7 +27,9 @@ from banso.executors import NewsActionExecutor
 from banso.policies import NewsRuleBasedPolicy
 from banso.retrieval import (
     FakeRetrievalProvider,
+    RetrievalProvider,
     SearchPlanningRequest,
+    SearchQueryPlanner,
     SearchRequest,
     SearchResult,
     Source,
@@ -181,18 +184,56 @@ class MixedTrustRetrievalProvider:
         ]
 
 
+def _news_executor(
+    store: InMemoryArtifactStore,
+    *,
+    retrieval_provider: RetrievalProvider | None = None,
+    document_reader: DocumentReader | None = None,
+    search_query_planner: SearchQueryPlanner | None = None,
+) -> NewsActionExecutor:
+    return NewsActionExecutor(
+        store=store,
+        retrieval_provider=(
+            retrieval_provider
+            if retrieval_provider is not None
+            else FakeRetrievalProvider()
+        ),
+        document_reader=(
+            document_reader
+            if document_reader is not None
+            else FakeDocumentReader()
+        ),
+        evidence_extractor=FakeEvidenceExtractor(),
+        synthesizer=FakeSynthesizer(),
+        search_query_planner=search_query_planner,
+    )
+
+
+def _news_runtime(
+    store: InMemoryArtifactStore,
+    *,
+    retrieval_provider: RetrievalProvider | None = None,
+    document_reader: DocumentReader | None = None,
+    search_query_planner: SearchQueryPlanner | None = None,
+    tracer: Tracer | None = None,
+) -> AgentRuntime:
+    return AgentRuntime(
+        policy=NewsRuleBasedPolicy(),
+        executor=_news_executor(
+            store,
+            retrieval_provider=retrieval_provider,
+            document_reader=document_reader,
+            search_query_planner=search_query_planner,
+        ),
+        tracer=tracer,
+    )
+
+
 async def _run_news_runtime() -> None:
     store = InMemoryArtifactStore()
     trace_sink = InMemoryTraceSink()
-    runtime = AgentRuntime(
-        policy=NewsRuleBasedPolicy(),
-        executor=NewsActionExecutor(
-            store=store,
-            retrieval_provider=FakeRetrievalProvider(),
-            document_reader=FakeDocumentReader(),
-            evidence_extractor=FakeEvidenceExtractor(),
-            synthesizer=FakeSynthesizer(),
-        ),
+    runtime = _news_runtime(
+        store,
         tracer=Tracer(trace_sink),
     )
 
@@ -245,15 +286,9 @@ async def _run_news_runtime() -> None:
 
 async def _run_news_runtime_filters_search_results() -> None:
     store = InMemoryArtifactStore()
-    runtime = AgentRuntime(
-        policy=NewsRuleBasedPolicy(),
-        executor=NewsActionExecutor(
-            store=store,
-            retrieval_provider=DuplicateRetrievalProvider(),
-            document_reader=FakeDocumentReader(),
-            evidence_extractor=FakeEvidenceExtractor(),
-            synthesizer=FakeSynthesizer(),
-        ),
+    runtime = _news_runtime(
+        store,
+        retrieval_provider=DuplicateRetrievalProvider(),
     )
 
     output = await runtime.run(AgentState(query=UserQuery(text="latest AI news")))
@@ -281,15 +316,9 @@ async def _run_news_runtime_filters_search_results() -> None:
 
 async def _run_news_runtime_respects_document_read_budget() -> None:
     store = InMemoryArtifactStore()
-    runtime = AgentRuntime(
-        policy=NewsRuleBasedPolicy(),
-        executor=NewsActionExecutor(
-            store=store,
-            retrieval_provider=DuplicateRetrievalProvider(),
-            document_reader=FakeDocumentReader(),
-            evidence_extractor=FakeEvidenceExtractor(),
-            synthesizer=FakeSynthesizer(),
-        ),
+    runtime = _news_runtime(
+        store,
+        retrieval_provider=DuplicateRetrievalProvider(),
     )
 
     output = await runtime.run(
@@ -305,16 +334,10 @@ async def _run_news_runtime_respects_document_read_budget() -> None:
 
 async def _run_news_runtime_preserves_search_order_when_reading() -> None:
     store = InMemoryArtifactStore()
-    runtime = AgentRuntime(
-        policy=NewsRuleBasedPolicy(),
-        executor=NewsActionExecutor(
-            store=store,
-            retrieval_provider=MixedTrustRetrievalProvider(),
-            document_reader=FakeDocumentReader(),
-            evidence_extractor=FakeEvidenceExtractor(),
-            synthesizer=FakeSynthesizer(),
-            search_query_planner=TwoQueryPlanner(),
-        ),
+    runtime = _news_runtime(
+        store,
+        retrieval_provider=MixedTrustRetrievalProvider(),
+        search_query_planner=TwoQueryPlanner(),
     )
 
     output = await runtime.run(
@@ -350,16 +373,10 @@ async def _run_news_runtime_preserves_search_order_when_reading() -> None:
 
 async def _run_news_runtime_deduplicates_across_searches() -> None:
     store = InMemoryArtifactStore()
-    runtime = AgentRuntime(
-        policy=NewsRuleBasedPolicy(),
-        executor=NewsActionExecutor(
-            store=store,
-            retrieval_provider=CrossSearchDuplicateRetrievalProvider(),
-            document_reader=FakeDocumentReader(),
-            evidence_extractor=FakeEvidenceExtractor(),
-            synthesizer=FakeSynthesizer(),
-            search_query_planner=TwoQueryPlanner(),
-        ),
+    runtime = _news_runtime(
+        store,
+        retrieval_provider=CrossSearchDuplicateRetrievalProvider(),
+        search_query_planner=TwoQueryPlanner(),
     )
 
     output = await runtime.run(
@@ -410,15 +427,10 @@ async def _run_news_runtime_deduplicates_across_searches() -> None:
 
 async def _run_news_runtime_skips_unreadable_document(status_code: int) -> None:
     store = InMemoryArtifactStore()
-    runtime = AgentRuntime(
-        policy=NewsRuleBasedPolicy(),
-        executor=NewsActionExecutor(
-            store=store,
-            retrieval_provider=PartiallyBlockedRetrievalProvider(),
-            document_reader=PartiallyBlockedDocumentReader(status_code),
-            evidence_extractor=FakeEvidenceExtractor(),
-            synthesizer=FakeSynthesizer(),
-        ),
+    runtime = _news_runtime(
+        store,
+        retrieval_provider=PartiallyBlockedRetrievalProvider(),
+        document_reader=PartiallyBlockedDocumentReader(status_code),
     )
 
     output = await runtime.run(AgentState(query=UserQuery(text="latest AI news")))
@@ -490,12 +502,9 @@ async def _run_document_read_reports_failed_when_all_documents_fail() -> None:
         query=UserQuery(text="latest AI news"),
         search_result_ids=[store.put(search_result)],
     )
-    executor = NewsActionExecutor(
-        store=store,
-        retrieval_provider=FakeRetrievalProvider(),
+    executor = _news_executor(
+        store,
         document_reader=BlockedDocumentReader(),
-        evidence_extractor=FakeEvidenceExtractor(),
-        synthesizer=FakeSynthesizer(),
     )
 
     observation = await executor.execute(
@@ -531,15 +540,9 @@ class BrokenDocumentReader(FakeDocumentReader):
 def test_news_runtime_does_not_hide_unknown_reader_errors() -> None:
     store = InMemoryArtifactStore()
     trace_sink = InMemoryTraceSink()
-    runtime = AgentRuntime(
-        policy=NewsRuleBasedPolicy(),
-        executor=NewsActionExecutor(
-            store=store,
-            retrieval_provider=FakeRetrievalProvider(),
-            document_reader=BrokenDocumentReader(),
-            evidence_extractor=FakeEvidenceExtractor(),
-            synthesizer=FakeSynthesizer(),
-        ),
+    runtime = _news_runtime(
+        store,
+        document_reader=BrokenDocumentReader(),
         tracer=Tracer(trace_sink),
     )
 
@@ -588,19 +591,6 @@ class RedirectingDocumentReader(FakeDocumentReader):
         return document
 
 
-def _read_executor(
-    store: InMemoryArtifactStore,
-    document_reader,
-) -> NewsActionExecutor:
-    return NewsActionExecutor(
-        store=store,
-        retrieval_provider=FakeRetrievalProvider(),
-        document_reader=document_reader,
-        evidence_extractor=FakeEvidenceExtractor(),
-        synthesizer=FakeSynthesizer(),
-    )
-
-
 async def _run_document_read_retries_then_stops_after_success() -> None:
     store = InMemoryArtifactStore()
     result = SearchResult(
@@ -612,7 +602,7 @@ async def _run_document_read_retries_then_stops_after_success() -> None:
         search_result_ids=[store.put(result)],
     )
     reader = TransientDocumentReader()
-    executor = _read_executor(store, reader)
+    executor = _news_executor(store, document_reader=reader)
     reducer = DefaultStateReducer()
     action = AgentAction(type=AgentActionType.READ_DOCUMENT)
 
@@ -657,7 +647,7 @@ async def _run_document_read_reuses_redirect_target() -> None:
         search_result_ids=[store.put(result) for result in results],
     )
     reader = RedirectingDocumentReader()
-    executor = _read_executor(store, reader)
+    executor = _news_executor(store, document_reader=reader)
     action = AgentAction(type=AgentActionType.READ_DOCUMENT)
 
     observation = await executor.execute(action, state)
