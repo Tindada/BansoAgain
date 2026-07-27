@@ -77,11 +77,16 @@ async def main() -> None:
     print("done:", state.done)
     print("trace steps:", len(state.action_history))
     print("actions:", [entry.action_type.value for entry in state.action_history])
-    print("search result ids:", state.search_result_ids)
-    print("document ids:", state.document_ids)
-    print("evidence ids:", state.evidence_ids)
+    print("search result ids:", list(state.search_results))
+    print("document ids:", list(state.documents))
+    evidence_ids = [
+        evidence_id
+        for document in state.documents.values()
+        for evidence_id in document.evidence_ids
+    ]
+    print("evidence ids:", evidence_ids)
     print("evidence:")
-    for index, evidence_id in enumerate(state.evidence_ids, start=1):
+    for index, evidence_id in enumerate(evidence_ids, start=1):
         evidence = store.get(evidence_id, EvidenceItem)
         if evidence is None:
             print(f"{index}. missing evidence artifact: {evidence_id}")

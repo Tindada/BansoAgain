@@ -13,13 +13,14 @@ from banso.core import (
     AgentState,
     ActionHistoryEntry,
     DefaultStateReducer,
+    DocumentState,
     ExecutionBudget,
     ExtractProgress,
     Failure,
     Observation,
     PlannedSearch,
-    ReadProgress,
     SearchPlan,
+    SearchResultState,
     UserQuery,
 )
 from banso.documents import FakeDocumentReader, FakeEvidenceExtractor
@@ -196,7 +197,7 @@ def test_reducer_stores_independent_action_history_snapshot() -> None:
 def test_reducer_merges_search_results_without_duplicates() -> None:
     state = AgentState(
         query=UserQuery(text="latest AI news"),
-        search_result_ids=["result-1"],
+        search_results={"result-1": SearchResultState()},
         search_result_index={"https://example.com/first": "result-1"},
     )
     observation = Observation(
@@ -214,7 +215,7 @@ def test_reducer_merges_search_results_without_duplicates() -> None:
         observation,
     )
 
-    assert next_state.search_result_ids == ["result-1", "result-2"]
+    assert list(next_state.search_results) == ["result-1", "result-2"]
     assert next_state.search_result_index == {
         "https://example.com/first": "result-1",
         "https://example.com/second": "result-2",
@@ -227,7 +228,7 @@ def test_reducer_rejects_existing_search_result_index_key(
 ) -> None:
     state = AgentState(
         query=UserQuery(text="latest AI news"),
-        search_result_ids=["result-1"],
+        search_results={"result-1": SearchResultState()},
         search_result_index={"https://example.com/news": "result-1"},
     )
     observed_ids = ["result-1"]
@@ -296,21 +297,21 @@ def test_rule_policy_uses_resource_lifecycle_after_searching() -> None:
     state = AgentState(
         query=UserQuery(text="latest AI news"),
         search_plan=SearchPlan(),
-        search_result_ids=["result-1"],
-        document_ids=["document-1"],
+        search_results={"result-1": SearchResultState()},
+        documents={"document-1": DocumentState()},
     )
 
     action = asyncio.run(policy.select_action(state))
     assert action.type == AgentActionType.READ_DOCUMENT
 
-    state.read_progress["result-1"] = ReadProgress(
+    state.search_results["result-1"] = SearchResultState(
         attempt_count=1,
         document_id="document-1",
     )
     action = asyncio.run(policy.select_action(state))
     assert action.type == AgentActionType.EXTRACT_EVIDENCE
 
-    state.extract_progress["document-1"] = ExtractProgress(attempt_count=1)
+    state.documents["document-1"].extraction = ExtractProgress(attempt_count=1)
     action = asyncio.run(policy.select_action(state))
     assert action.type == AgentActionType.FINISH
 
@@ -319,9 +320,8 @@ def test_rule_policy_retries_eligible_failure() -> None:
     state = AgentState(
         query=UserQuery(text="latest AI news"),
         search_plan=SearchPlan(),
-        search_result_ids=["result-1"],
-        read_progress={
-            "result-1": ReadProgress(
+        search_results={
+            "result-1": SearchResultState(
                 attempt_count=1,
                 failure=Failure(reason="timeout", retryable=True),
             )
@@ -347,7 +347,10 @@ def test_rule_policy_uses_last_step_to_end(
     state = AgentState(
         query=UserQuery(text="latest AI news"),
         current_step=11,
-        document_ids=document_ids,
+        documents={
+            document_id: DocumentState()
+            for document_id in document_ids
+        },
     )
 
     action = asyncio.run(NewsRuleBasedPolicy().select_action(state))

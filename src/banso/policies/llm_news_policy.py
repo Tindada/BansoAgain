@@ -278,7 +278,7 @@ class LLMNewsPolicy:
         state: AgentState,
     ) -> list[AgentActionType]:
         remaining_steps = max(state.budget.max_steps - state.current_step, 0)
-        has_sources = bool(state.document_ids or state.evidence_ids)
+        has_sources = bool(state.documents)
         if remaining_steps <= 1:
             return (
                 [AgentActionType.FINISH, AgentActionType.STOP]

@@ -13,6 +13,7 @@ from banso.core import (
     PlannedSearch,
     RuntimeExecutionError,
     SearchPlan,
+    SearchResultState,
     UserQuery,
 )
 from banso.core.action import AgentAction, AgentActionType
@@ -259,9 +260,11 @@ async def _run_news_runtime() -> None:
     assert state.action_history[1].observation.data["search_queries"] == [
         "latest AI news"
     ]
-    assert len(state.search_result_ids) == 1
-    assert len(state.document_ids) == 1
-    assert len(state.evidence_ids) == 1
+    assert len(state.search_results) == 1
+    assert len(state.documents) == 1
+    assert sum(
+        len(document.evidence_ids) for document in state.documents.values()
+    ) == 1
     assert state.final_answer is not None
     assert "Fake summary for 'latest AI news'" in state.final_answer
     finish_observation = state.action_history[4].observation
@@ -295,8 +298,8 @@ async def _run_news_runtime_filters_search_results() -> None:
     state = output.result.state
     search_observation = output.result.state.action_history[1].observation
 
-    assert len(state.search_result_ids) == 2
-    assert len(state.document_ids) == 2
+    assert len(state.search_results) == 2
+    assert len(state.documents) == 2
     assert search_observation.data["retrieval_filter_report"] == {
         "input_count": 3,
         "output_count": 2,
@@ -328,8 +331,8 @@ async def _run_news_runtime_respects_document_read_budget() -> None:
         )
     )
 
-    assert len(output.result.state.search_result_ids) == 2
-    assert len(output.result.state.document_ids) == 1
+    assert len(output.result.state.search_results) == 2
+    assert len(output.result.state.documents) == 1
 
 
 async def _run_news_runtime_preserves_search_order_when_reading() -> None:
@@ -348,15 +351,15 @@ async def _run_news_runtime_preserves_search_order_when_reading() -> None:
     )
     results = [
         store.get(result_id, SearchResult)
-        for result_id in output.result.state.search_result_ids
+        for result_id in output.result.state.search_results
     ]
     documents = [
         store.get(document_id, Document)
-        for document_id in output.result.state.document_ids
+        for document_id in output.result.state.documents
     ]
 
-    assert len(output.result.state.search_result_ids) == 8
-    assert len(output.result.state.document_ids) == 8
+    assert len(output.result.state.search_results) == 8
+    assert len(output.result.state.documents) == 8
     assert [result.title for result in results if result][:4] == [
         "Early unknown 1",
         "Early unknown 2",
@@ -393,14 +396,15 @@ async def _run_news_runtime_deduplicates_across_searches() -> None:
     ]
     stored_results = store.list(SearchResult)
     stored_documents = store.list(Document)
+    result_ids = list(state.search_results)
 
     assert len(search_observations) == 2
     assert search_observations[0].data["search_result_ids"] == [
-        state.search_result_ids[0]
+        result_ids[0]
     ]
     assert search_observations[1].data["search_result_ids"] == [
-        state.search_result_ids[0],
-        state.search_result_ids[1],
+        result_ids[0],
+        result_ids[1],
     ]
     assert search_observations[0].data["search_result_merge_report"] == {
         "candidate_count": 1,
@@ -412,16 +416,16 @@ async def _run_news_runtime_deduplicates_across_searches() -> None:
         "new_result_count": 1,
         "reused_result_count": 1,
     }
-    assert len(state.search_result_ids) == 2
+    assert len(state.search_results) == 2
     assert state.search_result_index == {
-        "https://example.com/news?a=1": state.search_result_ids[0],
-        "https://example.com/new": state.search_result_ids[1],
+        "https://example.com/news?a=1": result_ids[0],
+        "https://example.com/new": result_ids[1],
     }
     assert len(stored_results) == 2
     assert stored_results[0].title == "First search title"
     assert stored_results[0].snippet == "First search snippet"
     assert all(result.snippet != "Second search snippet" for result in stored_results)
-    assert len(state.document_ids) == 2
+    assert len(state.documents) == 2
     assert len(stored_documents) == 2
 
 
@@ -435,11 +439,12 @@ async def _run_news_runtime_skips_unreadable_document(status_code: int) -> None:
 
     output = await runtime.run(AgentState(query=UserQuery(text="latest AI news")))
     read_observation = output.result.state.action_history[2].observation
-    failed_result_id = output.result.state.search_result_ids[0]
-    document_id = output.result.state.document_ids[0]
+    result_ids = list(output.result.state.search_results)
+    document_id = next(iter(output.result.state.documents))
+    failed_result_id = result_ids[0]
 
     assert output.result.state.done is True
-    assert len(output.result.state.document_ids) == 1
+    assert len(output.result.state.documents) == 1
     assert read_observation.data["read_outcomes"] == [
         {
             "search_result_id": failed_result_id,
@@ -453,16 +458,17 @@ async def _run_news_runtime_skips_unreadable_document(status_code: int) -> None:
             },
         },
         {
-            "search_result_id": output.result.state.search_result_ids[1],
+            "search_result_id": result_ids[1],
             "document_id": document_id,
         },
     ]
-    assert output.result.state.read_progress[failed_result_id].failure is not None
+    failed_read = output.result.state.search_results[failed_result_id]
+    assert failed_read.failure is not None
     assert (
-        output.result.state.read_progress[failed_result_id].failure.retryable
+        failed_read.failure.retryable
         is (status_code == 503)
     )
-    assert output.result.state.read_progress[failed_result_id].attempt_count == (
+    assert failed_read.attempt_count == (
         2 if status_code == 503 else 1
     )
 
@@ -500,7 +506,9 @@ async def _run_document_read_reports_failed_when_all_documents_fail() -> None:
     )
     state = AgentState(
         query=UserQuery(text="latest AI news"),
-        search_result_ids=[store.put(search_result)],
+        search_results={
+            store.put(search_result): SearchResultState()
+        },
     )
     executor = _news_executor(
         store,
@@ -599,7 +607,7 @@ async def _run_document_read_retries_then_stops_after_success() -> None:
     )
     state = AgentState(
         query=UserQuery(text="latest AI news"),
-        search_result_ids=[store.put(result)],
+        search_results={store.put(result): SearchResultState()},
     )
     reader = TransientDocumentReader()
     executor = _news_executor(store, document_reader=reader)
@@ -608,15 +616,15 @@ async def _run_document_read_retries_then_stops_after_success() -> None:
 
     first = await executor.execute(action, state)
     state = reducer.apply(state, action, first)
-    assert state.read_progress[result.id].attempt_count == 1
-    assert state.read_progress[result.id].failure is not None
-    assert state.read_progress[result.id].failure.retryable is True
+    assert state.search_results[result.id].attempt_count == 1
+    assert state.search_results[result.id].failure is not None
+    assert state.search_results[result.id].failure.retryable is True
 
     second = await executor.execute(action, state)
     state = reducer.apply(state, action, second)
-    assert state.read_progress[result.id].attempt_count == 2
-    assert state.read_progress[result.id].failure is None
-    assert len(state.document_ids) == 1
+    assert state.search_results[result.id].attempt_count == 2
+    assert state.search_results[result.id].failure is None
+    assert len(state.documents) == 1
 
     third = await executor.execute(action, state)
     assert third.data == {
@@ -644,7 +652,9 @@ async def _run_document_read_reuses_redirect_target() -> None:
     ]
     state = AgentState(
         query=UserQuery(text="latest AI news"),
-        search_result_ids=[store.put(result) for result in results],
+        search_results={
+            store.put(result): SearchResultState() for result in results
+        },
     )
     reader = RedirectingDocumentReader()
     executor = _news_executor(store, document_reader=reader)
@@ -655,10 +665,10 @@ async def _run_document_read_reuses_redirect_target() -> None:
 
     assert reader.call_count == 1
     assert len(store.list(Document)) == 1
-    assert len(state.document_ids) == 1
-    document_id = state.document_ids[0]
-    assert state.read_progress[results[0].id].document_id == document_id
-    assert state.read_progress[results[1].id].document_id == document_id
+    assert len(state.documents) == 1
+    document_id = next(iter(state.documents))
+    assert state.search_results[results[0].id].document_id == document_id
+    assert state.search_results[results[1].id].document_id == document_id
     assert state.document_index == {
         "https://official.example/article": document_id,
     }

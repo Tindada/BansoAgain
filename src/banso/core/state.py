@@ -58,27 +58,39 @@ class Failure(BaseModel):
     status_code: int | None = None
 
 
-class ReadProgress(BaseModel):
-    """Current read lifecycle for one search result."""
-
-    attempt_count: int = Field(ge=1)
-    document_id: str | None = None
-    failure: Failure | None = None
-
-    @model_validator(mode="after")
-    def validate_outcome(self) -> "ReadProgress":
-        if (self.document_id is None) == (self.failure is None):
-            raise ValueError(
-                "read progress must contain exactly one of document_id or failure"
-            )
-        return self
-
-
 class ExtractProgress(BaseModel):
     """Current extraction lifecycle for one document."""
 
     attempt_count: int = Field(ge=1)
     failure: Failure | None = None
+
+
+class SearchResultState(BaseModel):
+    """Run-scoped processing state for one search result artifact."""
+
+    attempt_count: int = Field(default=0, ge=0)
+    document_id: str | None = None
+    failure: Failure | None = None
+
+    @model_validator(mode="after")
+    def validate_read_state(self) -> "SearchResultState":
+        if self.attempt_count == 0:
+            if self.document_id is not None or self.failure is not None:
+                raise ValueError(
+                    "pending search result cannot contain a read outcome"
+                )
+        elif (self.document_id is None) == (self.failure is None):
+            raise ValueError(
+                "completed read must contain exactly one of document_id or failure"
+            )
+        return self
+
+
+class DocumentState(BaseModel):
+    """Run-scoped processing state and evidence references for one document."""
+
+    extraction: ExtractProgress | None = None
+    evidence_ids: list[str] = Field(default_factory=list)
 
 
 class AgentState(BaseModel):
@@ -92,13 +104,10 @@ class AgentState(BaseModel):
     budget: ExecutionBudget = Field(default_factory=ExecutionBudget)
     search_plan: SearchPlan | None = None
     action_history: list[ActionHistoryEntry] = Field(default_factory=list)
-    search_result_ids: list[str] = Field(default_factory=list)
+    search_results: dict[str, SearchResultState] = Field(default_factory=dict)
     search_result_index: dict[str, str] = Field(default_factory=dict)
-    document_ids: list[str] = Field(default_factory=list)
+    documents: dict[str, DocumentState] = Field(default_factory=dict)
     document_index: dict[str, str] = Field(default_factory=dict)
-    evidence_ids: list[str] = Field(default_factory=list)
-    read_progress: dict[str, ReadProgress] = Field(default_factory=dict)
-    extract_progress: dict[str, ExtractProgress] = Field(default_factory=dict)
     final_answer: str | None = None
     citations: list[str] = Field(default_factory=list)
     last_action: AgentActionType | None = None

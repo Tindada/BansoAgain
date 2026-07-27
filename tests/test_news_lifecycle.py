@@ -5,48 +5,89 @@ from pydantic import ValidationError
 
 from banso.core import (
     AgentState,
+    DocumentState,
     ExecutionBudget,
     ExtractProgress,
     Failure,
-    ReadProgress,
+    SearchResultState,
     UserQuery,
 )
 from banso.core.lifecycle import (
     eligible_extraction_document_ids,
     eligible_read_result_ids,
-    extraction_status,
-    read_status,
+    progress_status,
     remaining_document_count,
 )
 from banso.documents import DocumentReadError, EvidenceExtractionError
+
+
+@pytest.mark.parametrize(
+    ("progress", "max_attempts", "expected"),
+    [
+        (None, 2, "pending"),
+        (SearchResultState(), 2, "pending"),
+        (
+            SearchResultState(attempt_count=1, document_id="document"),
+            2,
+            "succeeded",
+        ),
+        (ExtractProgress(attempt_count=1), 2, "succeeded"),
+        (
+            SearchResultState(
+                attempt_count=1,
+                failure=Failure(reason="timeout", retryable=True),
+            ),
+            2,
+            "retryable",
+        ),
+        (
+            ExtractProgress(
+                attempt_count=2,
+                failure=Failure(reason="llm_error", retryable=True),
+            ),
+            2,
+            "failed",
+        ),
+        (
+            SearchResultState(
+                attempt_count=1,
+                failure=Failure(reason="http_status", retryable=False),
+            ),
+            2,
+            "failed",
+        ),
+    ],
+)
+def test_progress_status(
+    progress: SearchResultState | ExtractProgress | None,
+    max_attempts: int,
+    expected: str,
+) -> None:
+    assert progress_status(progress, max_attempts) == expected
 
 
 def test_read_lifecycle_prioritizes_pending_results_before_retries() -> None:
     state = AgentState(
         query=UserQuery(text="test"),
         budget=ExecutionBudget(max_documents_to_read=2, max_read_attempts=2),
-        search_result_ids=["pending", "succeeded", "retryable", "failed"],
-        document_ids=["document"],
-        read_progress={
-            "succeeded": ReadProgress(
+        search_results={
+            "pending": SearchResultState(),
+            "succeeded": SearchResultState(
                 attempt_count=1,
                 document_id="document",
             ),
-            "retryable": ReadProgress(
+            "retryable": SearchResultState(
                 attempt_count=1,
                 failure=Failure(reason="timeout", retryable=True),
             ),
-            "failed": ReadProgress(
+            "failed": SearchResultState(
                 attempt_count=1,
                 failure=Failure(reason="http_status", retryable=False),
             ),
         },
+        documents={"document": DocumentState()},
     )
 
-    assert read_status(state, "pending") == "pending"
-    assert read_status(state, "succeeded") == "succeeded"
-    assert read_status(state, "retryable") == "retryable"
-    assert read_status(state, "failed") == "failed"
     assert remaining_document_count(state) == 1
     assert eligible_read_result_ids(state) == ["pending", "retryable"]
 
@@ -55,19 +96,18 @@ def test_read_lifecycle_exhausts_retries_and_document_budget() -> None:
     state = AgentState(
         query=UserQuery(text="test"),
         budget=ExecutionBudget(max_documents_to_read=1, max_read_attempts=2),
-        search_result_ids=["exhausted"],
-        read_progress={
-            "exhausted": ReadProgress(
+        search_results={
+            "exhausted": SearchResultState(
                 attempt_count=2,
                 failure=Failure(reason="timeout", retryable=True),
-            )
+            ),
+            "pending": SearchResultState(),
         },
     )
 
-    assert read_status(state, "exhausted") == "failed"
-    assert eligible_read_result_ids(state) == []
+    assert eligible_read_result_ids(state) == ["pending"]
 
-    state.document_ids.append("document")
+    state.documents["document"] = DocumentState()
     assert remaining_document_count(state) == 0
     assert eligible_read_result_ids(state) == []
 
@@ -76,33 +116,40 @@ def test_extraction_lifecycle_distinguishes_empty_success_from_failures() -> Non
     state = AgentState(
         query=UserQuery(text="test"),
         budget=ExecutionBudget(max_extraction_attempts=2),
-        document_ids=["pending", "empty", "retryable", "exhausted"],
-        extract_progress={
-            "empty": ExtractProgress(attempt_count=1),
-            "retryable": ExtractProgress(
-                attempt_count=1,
-                failure=Failure(reason="llm_error", retryable=True),
+        documents={
+            "pending": DocumentState(),
+            "empty": DocumentState(
+                extraction=ExtractProgress(attempt_count=1)
             ),
-            "exhausted": ExtractProgress(
-                attempt_count=2,
-                failure=Failure(reason="llm_error", retryable=True),
+            "retryable": DocumentState(
+                extraction=ExtractProgress(
+                    attempt_count=1,
+                    failure=Failure(reason="llm_error", retryable=True),
+                )
+            ),
+            "exhausted": DocumentState(
+                extraction=ExtractProgress(
+                    attempt_count=2,
+                    failure=Failure(reason="llm_error", retryable=True),
+                )
             ),
         },
     )
 
-    assert extraction_status(state, "pending") == "pending"
-    assert extraction_status(state, "empty") == "succeeded"
-    assert extraction_status(state, "retryable") == "retryable"
-    assert extraction_status(state, "exhausted") == "failed"
     assert eligible_extraction_document_ids(state) == ["pending", "retryable"]
 
 
-def test_read_progress_requires_exactly_one_outcome() -> None:
-    with pytest.raises(ValidationError, match="exactly one"):
-        ReadProgress(attempt_count=1)
+def test_search_result_state_validates_pending_and_completed_outcomes() -> None:
+    with pytest.raises(ValidationError, match="pending"):
+        SearchResultState(
+            failure=Failure(reason="timeout", retryable=True),
+        )
 
     with pytest.raises(ValidationError, match="exactly one"):
-        ReadProgress(
+        SearchResultState(attempt_count=1)
+
+    with pytest.raises(ValidationError, match="exactly one"):
+        SearchResultState(
             attempt_count=1,
             document_id="document",
             failure=Failure(reason="timeout", retryable=True),

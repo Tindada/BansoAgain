@@ -12,7 +12,7 @@ class NewsRuleBasedPolicy:
     """Selects a fixed news workflow action sequence."""
 
     async def select_action(self, state: AgentState) -> AgentAction:
-        has_sources = bool(state.document_ids or state.evidence_ids)
+        has_sources = bool(state.documents)
         if state.budget.max_steps - state.current_step <= 1:
             return (
                 AgentAction(

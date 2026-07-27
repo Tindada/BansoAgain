@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 from banso.artifacts import InMemoryArtifactStore
-from banso.core import AgentState, DefaultStateReducer, UserQuery
+from banso.core import AgentState, DefaultStateReducer, DocumentState, UserQuery
 from banso.core.action import AgentAction, AgentActionType
 from banso.documents import (
     Document,
@@ -70,6 +70,20 @@ class FailingEvidenceExtractor:
         raise EvidenceExtractionError("provider failed", reason="llm_error")
 
 
+class MisassignedEvidenceExtractor:
+    async def extract(
+        self,
+        request: EvidenceExtractionRequest,
+    ) -> list[EvidenceItem]:
+        return [
+            EvidenceItem(
+                document_id="wrong-document",
+                claim="wrong source",
+                source_url=request.document.url,
+            )
+        ]
+
+
 async def _run_extraction_respects_concurrency_and_document_order() -> None:
     store = InMemoryArtifactStore()
     documents = [
@@ -79,7 +93,10 @@ async def _run_extraction_respects_concurrency_and_document_order() -> None:
     ]
     state = AgentState(
         query=UserQuery(text="test query"),
-        document_ids=[store.put(document) for document in documents],
+        documents={
+            store.put(document): DocumentState()
+            for document in documents
+        },
     )
     extractor = TrackingEvidenceExtractor()
     executor = NewsActionExecutor(
@@ -130,6 +147,36 @@ def test_extraction_concurrency_must_be_positive() -> None:
         )
 
 
+async def _run_extraction_rejects_misassigned_evidence() -> None:
+    store = InMemoryArtifactStore()
+    document = Document(
+        title="Document",
+        url="https://example.com/document",
+        text="Document",
+    )
+    state = AgentState(
+        query=UserQuery(text="test query"),
+        documents={store.put(document): DocumentState()},
+    )
+    executor = NewsActionExecutor(
+        store=store,
+        retrieval_provider=FakeRetrievalProvider(),
+        document_reader=FakeDocumentReader(),
+        evidence_extractor=MisassignedEvidenceExtractor(),
+        synthesizer=FakeSynthesizer(),
+    )
+
+    with pytest.raises(ValueError, match="wrong-document"):
+        await executor.execute(
+            AgentAction(type=AgentActionType.EXTRACT_EVIDENCE),
+            state,
+        )
+
+
+def test_extraction_rejects_misassigned_evidence() -> None:
+    asyncio.run(_run_extraction_rejects_misassigned_evidence())
+
+
 async def _run_extraction_isolates_known_failures() -> None:
     store = InMemoryArtifactStore()
     documents = [
@@ -139,7 +186,10 @@ async def _run_extraction_isolates_known_failures() -> None:
     ]
     state = AgentState(
         query=UserQuery(text="test query"),
-        document_ids=[store.put(document) for document in documents],
+        documents={
+            store.put(document): DocumentState()
+            for document in documents
+        },
     )
     executor = NewsActionExecutor(
         store=store,
@@ -182,10 +232,10 @@ async def _run_extraction_isolates_known_failures() -> None:
         AgentAction(type=AgentActionType.EXTRACT_EVIDENCE),
         observation,
     )
-    assert state.evidence_ids == evidence_ids
-    assert state.extract_progress[documents[0].id].failure is None
-    assert state.extract_progress[documents[1].id].failure is not None
-    assert state.extract_progress[documents[2].id].failure is None
+    assert state.documents[documents[0].id].evidence_ids == evidence_ids
+    assert state.documents[documents[0].id].extraction.failure is None
+    assert state.documents[documents[1].id].extraction.failure is not None
+    assert state.documents[documents[2].id].extraction.failure is None
 
     next_observation = await executor.execute(
         AgentAction(type=AgentActionType.EXTRACT_EVIDENCE),
@@ -206,7 +256,10 @@ async def _run_extraction_reports_failed_when_all_documents_fail() -> None:
     ]
     state = AgentState(
         query=UserQuery(text="test query"),
-        document_ids=[store.put(document) for document in documents],
+        documents={
+            store.put(document): DocumentState()
+            for document in documents
+        },
     )
     executor = NewsActionExecutor(
         store=store,
@@ -242,7 +295,7 @@ async def _run_extraction_reports_failed_when_all_documents_fail() -> None:
     third = await executor.execute(action, state)
 
     assert all(
-        state.extract_progress[document.id].attempt_count == 2
+        state.documents[document.id].extraction.attempt_count == 2
         for document in documents
     )
     assert third.data["extraction_outcomes"] == []

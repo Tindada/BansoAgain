@@ -84,6 +84,10 @@ def extract_evaluation_result(
     """Convert a runtime output into stable evaluation fields."""
 
     state = output.result.state
+    evidence_count = sum(
+        len(document.evidence_ids)
+        for document in state.documents.values()
+    )
     steps = _completed_steps(spans)
     document_read_failures = [
         {
@@ -108,7 +112,7 @@ def extract_evaluation_result(
 
     sources = [
         result.source
-        for result_id in state.search_result_ids
+        for result_id in state.search_results
         if (result := store.get(result_id, SearchResult)) is not None
         and result.source is not None
     ]
@@ -164,8 +168,8 @@ def extract_evaluation_result(
         total_action_seconds += duration
     passed_minimums = (
         state.done
-        and len(state.document_ids) >= case.min_documents
-        and len(state.evidence_ids) >= case.min_evidence
+        and len(state.documents) >= case.min_documents
+        and evidence_count >= case.min_evidence
         and len(state.citations) >= case.min_citations
         and bool(state.final_answer)
     )
@@ -187,8 +191,8 @@ def extract_evaluation_result(
             recognized_source_count, classified_result_count
         ),
         source_classifications=source_classifications,
-        document_count=len(state.document_ids),
-        evidence_count=len(state.evidence_ids),
+        document_count=len(state.documents),
+        evidence_count=evidence_count,
         citations=state.citations,
         source_domains=source_domains,
         source_types=source_types,

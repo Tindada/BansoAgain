@@ -8,20 +8,12 @@ from banso.core.observation import Observation
 from banso.core.state import (
     ActionHistoryEntry,
     AgentState,
+    DocumentState,
     ExtractProgress,
     Failure,
-    ReadProgress,
+    SearchResultState,
     SearchPlan,
 )
-
-
-def _extend_unique_string_list(target: list[str], values: object) -> None:
-    if isinstance(values, list):
-        seen = set(target)
-        for value in values:
-            if isinstance(value, str) and value not in seen:
-                target.append(value)
-                seen.add(value)
 
 
 def _update_index(
@@ -47,19 +39,23 @@ def _apply_read_outcomes(state: AgentState, outcomes: object) -> None:
         if not isinstance(result_id, str):
             raise ValueError("read outcome search_result_id must be a string")
 
-        previous = state.read_progress.get(result_id)
-        attempt_count = previous.attempt_count + 1 if previous is not None else 1
+        result = state.search_results.get(result_id)
+        if result is None:
+            raise ValueError(
+                f"read outcome contains an unknown search result: {result_id}"
+            )
+        attempt_count = result.attempt_count + 1
         document_id = outcome.get("document_id")
         failure = outcome.get("failure")
         if isinstance(document_id, str) and failure is None:
-            _extend_unique_string_list(state.document_ids, [document_id])
-            state.read_progress[result_id] = ReadProgress(
+            state.documents.setdefault(document_id, DocumentState())
+            state.search_results[result_id] = SearchResultState(
                 attempt_count=attempt_count,
                 document_id=document_id,
             )
             continue
         if document_id is None and isinstance(failure, dict):
-            state.read_progress[result_id] = ReadProgress(
+            state.search_results[result_id] = SearchResultState(
                 attempt_count=attempt_count,
                 failure=Failure.model_validate(failure),
             )
@@ -78,18 +74,27 @@ def _apply_extraction_outcomes(state: AgentState, outcomes: object) -> None:
         if not isinstance(document_id, str):
             raise ValueError("extraction outcome document_id must be a string")
 
-        previous = state.extract_progress.get(document_id)
+        document = state.documents.get(document_id)
+        if document is None:
+            raise ValueError(
+                f"extraction outcome contains an unknown document: {document_id}"
+            )
+        previous = document.extraction
         attempt_count = previous.attempt_count + 1 if previous is not None else 1
         evidence_ids = outcome.get("evidence_ids")
         failure = outcome.get("failure")
         if isinstance(evidence_ids, list) and failure is None:
-            _extend_unique_string_list(state.evidence_ids, evidence_ids)
-            state.extract_progress[document_id] = ExtractProgress(
+            if not all(isinstance(evidence_id, str) for evidence_id in evidence_ids):
+                raise ValueError("extraction evidence_ids must contain only strings")
+            if len(set(evidence_ids)) != len(evidence_ids):
+                raise ValueError("extraction evidence_ids must be unique")
+            document.evidence_ids = list(evidence_ids)
+            document.extraction = ExtractProgress(
                 attempt_count=attempt_count,
             )
             continue
         if evidence_ids is None and isinstance(failure, dict):
-            state.extract_progress[document_id] = ExtractProgress(
+            document.extraction = ExtractProgress(
                 attempt_count=attempt_count,
                 failure=Failure.model_validate(failure),
             )
@@ -137,10 +142,17 @@ class DefaultStateReducer:
                 next_state.search_plan = SearchPlan.model_validate(search_plan)
 
         if action.type == AgentActionType.SEARCH:
-            _extend_unique_string_list(
-                next_state.search_result_ids,
-                observation.data.get("search_result_ids"),
-            )
+            search_result_ids = observation.data.get("search_result_ids", [])
+            if not isinstance(search_result_ids, list) or not all(
+                isinstance(result_id, str)
+                for result_id in search_result_ids
+            ):
+                raise ValueError("search_result_ids must be a list of strings")
+            for result_id in search_result_ids:
+                next_state.search_results.setdefault(
+                    result_id,
+                    SearchResultState(),
+                )
             _update_index(
                 next_state.search_result_index,
                 observation.data.get("search_result_index_updates", {}),

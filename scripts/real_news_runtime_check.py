@@ -57,9 +57,12 @@ async def main(*, verbose: bool = False) -> None:
         if entry.action_type == AgentActionType.SEARCH
     ]
     print("search queries:", search_queries)
-    print("search results:", len(state.search_result_ids))
-    print("documents:", len(state.document_ids))
-    print("evidence items:", len(state.evidence_ids))
+    print("search results:", len(state.search_results))
+    print("documents:", len(state.documents))
+    print(
+        "evidence items:",
+        sum(len(document.evidence_ids) for document in state.documents.values()),
+    )
     print("final answer:", state.final_answer)
 
     if state.citations:
@@ -70,12 +73,19 @@ async def main(*, verbose: bool = False) -> None:
     if not verbose:
         return
 
-    print("search result ids:", state.search_result_ids)
-    print("document ids:", state.document_ids)
-    print("evidence ids:", state.evidence_ids)
+    print("search result ids:", list(state.search_results))
+    print("document ids:", list(state.documents))
+    print(
+        "evidence ids:",
+        [
+            evidence_id
+            for document in state.documents.values()
+            for evidence_id in document.evidence_ids
+        ],
+    )
 
     print("search results:")
-    for index, result_id in enumerate(state.search_result_ids, start=1):
+    for index, result_id in enumerate(state.search_results, start=1):
         result = store.get(result_id, SearchResult)
         if result is None:
             print(f"{index}. missing search result artifact: {result_id}")
@@ -87,7 +97,7 @@ async def main(*, verbose: bool = False) -> None:
         print(f"   snippet: {result.snippet}")
 
     print("documents:")
-    for index, document_id in enumerate(state.document_ids, start=1):
+    for index, document_id in enumerate(state.documents, start=1):
         document = store.get(document_id, Document)
         if document is None:
             print(f"{index}. missing document artifact: {document_id}")
@@ -100,7 +110,12 @@ async def main(*, verbose: bool = False) -> None:
         print(f"   preview: {document.text[:300]}")
 
     print("evidence:")
-    for index, evidence_id in enumerate(state.evidence_ids, start=1):
+    evidence_ids = [
+        evidence_id
+        for document in state.documents.values()
+        for evidence_id in document.evidence_ids
+    ]
+    for index, evidence_id in enumerate(evidence_ids, start=1):
         evidence = store.get(evidence_id, EvidenceItem)
         if evidence is None:
             print(f"{index}. missing evidence artifact: {evidence_id}")

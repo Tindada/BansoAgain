@@ -12,11 +12,12 @@ from banso.core import (
     AgentAction,
     AgentActionType,
     AgentState,
+    DocumentState,
     ExecutionBudget,
     ExtractProgress,
     Failure,
     Observation,
-    ReadProgress,
+    SearchResultState,
     UserQuery,
 )
 from banso.documents import Document, EvidenceItem
@@ -63,9 +64,10 @@ def _populated_state() -> tuple[InMemoryArtifactStore, AgentState]:
     )
     return store, AgentState(
         query=UserQuery(text="What happened?"),
-        search_result_ids=["result-1"],
-        document_ids=["document-1"],
-        evidence_ids=["evidence-1"],
+        search_results={"result-1": SearchResultState()},
+        documents={
+            "document-1": DocumentState(evidence_ids=["evidence-1"])
+        },
     )
 
 
@@ -414,26 +416,21 @@ def test_rejects_repeated_search_query() -> None:
 
 
 @pytest.mark.parametrize(
-    ("action_type", "state_update"),
+    "action_type",
     [
-        (AgentActionType.READ_DOCUMENT, "no_results"),
-        (AgentActionType.EXTRACT_EVIDENCE, "no_documents"),
-        (AgentActionType.FINISH, "no_sources"),
+        AgentActionType.READ_DOCUMENT,
+        AgentActionType.EXTRACT_EVIDENCE,
+        AgentActionType.FINISH,
     ],
 )
 def test_rejects_action_without_required_state(
     action_type: AgentActionType,
-    state_update: str,
 ) -> None:
     store, state = _populated_state()
-    if state_update == "no_results":
-        state.search_result_ids = []
-    elif state_update == "no_documents":
-        state.document_ids = []
-        state.evidence_ids = []
+    if action_type == AgentActionType.READ_DOCUMENT:
+        state.search_results = {}
     else:
-        state.document_ids = []
-        state.evidence_ids = []
+        state.documents = {}
     content = json.dumps(
         {
             "type": action_type.value,
@@ -450,11 +447,11 @@ def test_rejects_action_without_required_state(
 
 def test_hides_completed_read_and_extraction_actions() -> None:
     store, state = _populated_state()
-    state.read_progress["result-1"] = ReadProgress(
+    state.search_results["result-1"] = SearchResultState(
         attempt_count=1,
         document_id="document-1",
     )
-    state.extract_progress["document-1"] = ExtractProgress(attempt_count=1)
+    state.documents["document-1"].extraction = ExtractProgress(attempt_count=1)
 
     _, client = _select_action(
         '{"type":"finish","params":{},"rationale":"Research is complete."}',
@@ -486,11 +483,11 @@ def test_hides_search_when_document_budget_is_exhausted() -> None:
 
 def test_keeps_retryable_resource_actions_available_until_exhausted() -> None:
     store, state = _populated_state()
-    state.read_progress["result-1"] = ReadProgress(
+    state.search_results["result-1"] = SearchResultState(
         attempt_count=1,
         failure=Failure(reason="timeout", retryable=True),
     )
-    state.extract_progress["document-1"] = ExtractProgress(
+    state.documents["document-1"].extraction = ExtractProgress(
         attempt_count=1,
         failure=Failure(reason="llm_error", retryable=True),
     )
@@ -504,8 +501,8 @@ def test_keeps_retryable_resource_actions_available_until_exhausted() -> None:
     assert "read_document" in retry_payload["available_actions"]
     assert "extract_evidence" in retry_payload["available_actions"]
 
-    state.read_progress["result-1"].attempt_count = 2
-    state.extract_progress["document-1"].attempt_count = 2
+    state.search_results["result-1"].attempt_count = 2
+    state.documents["document-1"].extraction.attempt_count = 2
     _, exhausted_client = _select_action(
         '{"type":"stop","params":{},"rationale":"Stop now."}',
         state,

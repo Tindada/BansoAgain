@@ -265,6 +265,12 @@ class NewsActionExecutor:
                     }
                 )
                 continue
+            for item in evidence:
+                if item.document_id != document.id:
+                    raise ValueError(
+                        f"EvidenceItem {item.id} references document "
+                        f"{item.document_id}, expected {document.id}"
+                    )
             extraction_outcomes.append(
                 {
                     "document_id": document.id,
@@ -275,16 +281,17 @@ class NewsActionExecutor:
         return Observation(data={"extraction_outcomes": extraction_outcomes})
 
     async def _synthesize(self, state: AgentState) -> Observation:
-        evidence = [
-            item
-            for evidence_id in state.evidence_ids
-            if (item := self.store.get(evidence_id, EvidenceItem)) is not None
-        ]
-        documents = [
-            document
-            for document_id in state.document_ids
-            if (document := self.store.get(document_id, Document)) is not None
-        ]
+        documents: list[Document] = []
+        evidence: list[EvidenceItem] = []
+        for document_id, document_state in state.documents.items():
+            document = self.store.get(document_id, Document)
+            if document is not None:
+                documents.append(document)
+            for evidence_id in document_state.evidence_ids:
+                item = self.store.get(evidence_id, EvidenceItem)
+                if item is None:
+                    continue
+                evidence.append(item)
 
         result = await self.synthesizer.synthesize(
             SynthesisRequest(

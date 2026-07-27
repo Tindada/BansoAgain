@@ -9,11 +9,12 @@ from banso.core import (
     ActionHistoryEntry,
     AgentActionType,
     AgentState,
+    DocumentState,
     ExecutionBudget,
     ExtractProgress,
     Failure,
     Observation,
-    ReadProgress,
+    SearchResultState,
     UserQuery,
 )
 from banso.documents import Document, EvidenceItem
@@ -70,17 +71,17 @@ def _populated_store() -> InMemoryArtifactStore:
 def _completed_state() -> AgentState:
     return AgentState(
         query=UserQuery(text="What happened?"),
-        search_result_ids=["result-1"],
-        document_ids=["document-1"],
-        evidence_ids=["evidence-1"],
-        read_progress={
-            "result-1": ReadProgress(
+        search_results={
+            "result-1": SearchResultState(
                 attempt_count=1,
                 document_id="document-1",
             )
         },
-        extract_progress={
-            "document-1": ExtractProgress(attempt_count=1),
+        documents={
+            "document-1": DocumentState(
+                extraction=ExtractProgress(attempt_count=1),
+                evidence_ids=["evidence-1"],
+            ),
         },
     )
 
@@ -247,31 +248,37 @@ def test_exposes_only_actionable_resources_and_aggregates_failures() -> None:
 
     state = AgentState(
         query=UserQuery(text="query"),
-        search_result_ids=result_ids,
-        document_ids=document_ids,
-        read_progress={
-            "result-retry": ReadProgress(
+        search_results={
+            "result-retry": SearchResultState(
                 attempt_count=1,
                 failure=Failure(reason="timeout", retryable=True),
             ),
-            "result-succeeded": ReadProgress(
+            "result-succeeded": SearchResultState(
                 attempt_count=1,
                 document_id="document-empty",
             ),
-            "result-failed": ReadProgress(
+            "result-pending": SearchResultState(),
+            "result-failed": SearchResultState(
                 attempt_count=2,
                 failure=Failure(reason="timeout", retryable=True),
             ),
         },
-        extract_progress={
-            "document-retry": ExtractProgress(
-                attempt_count=1,
-                failure=Failure(reason="llm_error", retryable=True),
+        documents={
+            "document-retry": DocumentState(
+                extraction=ExtractProgress(
+                    attempt_count=1,
+                    failure=Failure(reason="llm_error", retryable=True),
+                )
             ),
-            "document-empty": ExtractProgress(attempt_count=1),
-            "document-failed": ExtractProgress(
-                attempt_count=1,
-                failure=Failure(reason="invalid_json", retryable=False),
+            "document-empty": DocumentState(
+                extraction=ExtractProgress(attempt_count=1)
+            ),
+            "document-pending": DocumentState(),
+            "document-failed": DocumentState(
+                extraction=ExtractProgress(
+                    attempt_count=1,
+                    failure=Failure(reason="invalid_json", retryable=False),
+                )
             ),
         },
     )
@@ -326,7 +333,9 @@ def test_candidate_limits_do_not_change_actionable_or_artifact_counts() -> None:
     state = AgentState(
         query=UserQuery(text="query"),
         budget=ExecutionBudget(max_documents_to_read=2),
-        search_result_ids=result_ids,
+        search_results={
+            result_id: SearchResultState() for result_id in result_ids
+        },
     )
 
     context = NewsPolicyContextBuilder(
@@ -364,7 +373,6 @@ def test_limits_visible_evidence_per_document() -> None:
             )
         )
 
-    evidence_ids: list[str] = []
     for evidence_id, document_id, source_url in (
         ("a-1", "document-a", "https://publisher-a.example/a-1"),
         ("a-2", "document-a", "https://publisher-a.example/a-2"),
@@ -372,7 +380,6 @@ def test_limits_visible_evidence_per_document() -> None:
         ("b-1", "document-b", "https://publisher-b.example/b-1"),
         ("b-2", "document-b", "https://publisher-b.example/b-2"),
     ):
-        evidence_ids.append(evidence_id)
         store.put(
             EvidenceItem(
                 id=evidence_id,
@@ -384,8 +391,12 @@ def test_limits_visible_evidence_per_document() -> None:
 
     state = AgentState(
         query=UserQuery(text="query"),
-        document_ids=["document-a", "document-b"],
-        evidence_ids=evidence_ids,
+        documents={
+            "document-a": DocumentState(
+                evidence_ids=["a-1", "a-2", "a-3"]
+            ),
+            "document-b": DocumentState(evidence_ids=["b-1", "b-2"]),
+        },
     )
 
     context = NewsPolicyContextBuilder(
@@ -421,38 +432,14 @@ def test_limits_visible_evidence_per_document() -> None:
     assert hidden_context.artifacts.evidence == 5
 
 
-def test_rejects_evidence_when_document_is_missing_from_state() -> None:
-    store = InMemoryArtifactStore()
-    store.put(
-        EvidenceItem(
-            id="evidence-orphan",
-            document_id="document-not-in-state",
-            claim="orphan claim",
-            source_url="https://www.fallback.example/report",
-        )
-    )
-    state = AgentState(
-        query=UserQuery(text="query"),
-        evidence_ids=["evidence-orphan"],
-    )
-
-    with pytest.raises(
-        ValueError,
-        match=(
-            "EvidenceItem evidence-orphan references a document missing from state: "
-            "document-not-in-state"
-        ),
-    ):
-        NewsPolicyContextBuilder(store).build(state)
-
-
 def test_truncates_visible_text_without_modifying_artifacts() -> None:
     store = _populated_store()
     state = AgentState(
         query=UserQuery(text="query"),
-        search_result_ids=["result-1"],
-        document_ids=["document-1"],
-        evidence_ids=["evidence-1"],
+        search_results={"result-1": SearchResultState()},
+        documents={
+            "document-1": DocumentState(evidence_ids=["evidence-1"])
+        },
     )
     context = NewsPolicyContextBuilder(
         store,
@@ -481,14 +468,14 @@ def test_truncates_visible_text_without_modifying_artifacts() -> None:
         (
             AgentState(
                 query=UserQuery(text="query"),
-                search_result_ids=["missing-result"],
+                search_results={"missing-result": SearchResultState()},
             ),
             "SearchResult artifact is missing or has the wrong type: missing-result",
         ),
         (
             AgentState(
                 query=UserQuery(text="query"),
-                document_ids=["result-1"],
+                documents={"result-1": DocumentState()},
             ),
             "Document artifact is missing or has the wrong type: result-1",
         ),
@@ -505,7 +492,10 @@ def test_rejects_missing_or_wrongly_typed_artifact(
 def test_validates_artifact_ids_beyond_visible_limit() -> None:
     state = AgentState(
         query=UserQuery(text="query"),
-        search_result_ids=["result-1", "missing-result"],
+        search_results={
+            "result-1": SearchResultState(),
+            "missing-result": SearchResultState(),
+        },
     )
 
     with pytest.raises(ValueError, match="missing-result"):
@@ -519,7 +509,7 @@ def test_context_and_inputs_are_isolated_snapshots() -> None:
     store = _populated_store()
     state = AgentState(
         query=UserQuery(text="original query"),
-        search_result_ids=["result-1"],
+        search_results={"result-1": SearchResultState()},
     )
     context = NewsPolicyContextBuilder(store).build(state)
 
