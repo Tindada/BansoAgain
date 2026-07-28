@@ -299,6 +299,9 @@ def test_builds_request_from_bounded_decision_context() -> None:
         "fetch_documents"
     ]
     assert "document_ref" in payload["action_instructions"]["curate_evidence"]
+    assert "only if the returned set differs" in payload["action_instructions"][
+        "curate_evidence"
+    ]
 
 
 def test_selects_search_without_a_search_plan() -> None:

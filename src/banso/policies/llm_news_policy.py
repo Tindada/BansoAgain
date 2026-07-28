@@ -65,17 +65,15 @@ ACTION_INSTRUCTIONS = {
         "remaining_document_fetches does not limit this action. params format: {}."
     ),
     AgentActionType.CURATE_EVIDENCE: (
-        "Refine the active evidence working set using query relevance, information "
-        "gain, duplication, topic coverage, source quality, useful conflicts, and "
-        'current information gaps. params format: {"active_document_refs": '
-        '["<document_ref>"]}. The array is the complete desired active working set '
-        "after curation, not only the documents whose status should change. Use only "
-        "unique document_ref values whose lifecycle_status is active or shelved. "
-        "Omitting an active group shelves it; including a shelved group reactivates it. "
-        "Unusable groups are audit context and cannot be selected. The array may be "
-        "empty, but it cannot exceed max_active_documents. When "
-        "active_document_overflow is greater than zero, reduce the active working set "
-        "before FINISH can become available."
+        "Select completed document-evidence groups to keep active based on relevance, "
+        "information gain, coverage, duplication, source quality, and useful conflicts. "
+        'params format: {"active_document_refs": ["<document_ref>"]}. The array is '
+        "the complete post-curation active set: omitted active refs are shelved, and "
+        "included shelved refs are reactivated. Use unique refs from active or shelved "
+        "groups only; unusable refs are invalid. Choose this action only if the returned "
+        "set differs from the current active set. The array may be empty but must not "
+        "exceed max_active_documents; when active_document_overflow is positive, it "
+        "must eliminate that overflow."
     ),
     AgentActionType.FINISH: (
         "Synthesize the final answer from collected documents and evidence, "
