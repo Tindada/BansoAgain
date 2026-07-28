@@ -4,6 +4,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import BaseModel, Field
 
+from banso.core.observation import RetrievalFilterReport
 from banso.retrieval.models import SearchResult
 
 
@@ -27,18 +28,6 @@ class RetrievalFilterConfig(BaseModel):
             "utm_term",
         }
     )
-
-
-class RetrievalFilterReport(BaseModel):
-    """Summary of filtering decisions."""
-
-    input_count: int
-    output_count: int
-    dropped_empty_title: int = 0
-    dropped_empty_url: int = 0
-    dropped_invalid_url: int = 0
-    dropped_duplicate_url: int = 0
-    truncated_count: int = 0
 
 
 class RetrievalFilterResult(BaseModel):

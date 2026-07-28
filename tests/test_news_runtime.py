@@ -13,10 +13,16 @@ from banso.core import (
     PlannedSearch,
     RuntimeExecutionError,
     SearchPlan,
-    SearchResultState,
     UserQuery,
 )
 from banso.core.action import AgentAction, AgentActionType
+from banso.core.observation import (
+    FetchDocumentsObservation,
+    FinishObservation,
+    PlanSearchObservation,
+    SearchObservation,
+)
+from banso.core.state import SearchResultState
 from banso.documents import (
     Document,
     DocumentFetcher,
@@ -243,7 +249,7 @@ async def _run_news_runtime() -> None:
     spans = trace_sink.get_trace(output.trace_id)
 
     assert state.done is True
-    assert [entry.action_type for entry in state.action_history] == [
+    assert [entry.action.type for entry in state.action_history] == [
         AgentActionType.PLAN_SEARCH,
         AgentActionType.SEARCH,
         AgentActionType.FETCH_DOCUMENTS,
@@ -254,12 +260,12 @@ async def _run_news_runtime() -> None:
     assert state.search_plan.model_dump() == {
         "searches": [{"query": "latest AI news", "intent": "general"}]
     }
-    assert state.action_history[0].observation.data["search_plan"] == (
-        state.search_plan.model_dump(mode="json")
-    )
-    assert state.action_history[1].observation.data["search_queries"] == [
-        "latest AI news"
-    ]
+    plan_observation = state.action_history[0].observation
+    assert isinstance(plan_observation, PlanSearchObservation)
+    assert plan_observation.search_plan == state.search_plan
+    search_observation = state.action_history[1].observation
+    assert isinstance(search_observation, SearchObservation)
+    assert search_observation.search_queries == ["latest AI news"]
     assert len(state.search_results) == 1
     assert len(state.documents) == 1
     assert sum(
@@ -268,7 +274,8 @@ async def _run_news_runtime() -> None:
     assert state.final_answer is not None
     assert "Fake summary for 'latest AI news'" in state.final_answer
     finish_observation = state.action_history[4].observation
-    assert state.citations == finish_observation.data["citations"]
+    assert isinstance(finish_observation, FinishObservation)
+    assert state.citations == finish_observation.citations
     assert "final_answer" not in output.result.model_dump()
     run_span = next(span for span in spans if span.name == "agent.run")
     assert run_span.output == {
@@ -300,7 +307,8 @@ async def _run_news_runtime_filters_search_results() -> None:
 
     assert len(state.search_results) == 2
     assert len(state.documents) == 2
-    assert search_observation.data["retrieval_filter_report"] == {
+    assert isinstance(search_observation, SearchObservation)
+    assert search_observation.retrieval_filter_report.model_dump() == {
         "input_count": 3,
         "output_count": 2,
         "dropped_empty_title": 0,
@@ -309,12 +317,10 @@ async def _run_news_runtime_filters_search_results() -> None:
         "dropped_duplicate_url": 1,
         "truncated_count": 0,
     }
-    classification_report = search_observation.data[
-        "source_classification_report"
-    ]
-    assert classification_report["input_count"] == 2
-    assert classification_report["recognized_count"] == 2
-    assert classification_report["unknown_count"] == 0
+    classification_report = search_observation.source_classification_report
+    assert classification_report.input_count == 2
+    assert classification_report.recognized_count == 2
+    assert classification_report.unknown_count == 0
 
 
 async def _run_news_runtime_respects_document_fetch_budget() -> None:
@@ -392,26 +398,30 @@ async def _run_news_runtime_deduplicates_across_searches() -> None:
     search_observations = [
         entry.observation
         for entry in state.action_history
-        if entry.action_type == AgentActionType.SEARCH
+        if entry.action.type == AgentActionType.SEARCH
     ]
     stored_results = store.list(SearchResult)
     stored_documents = store.list(Document)
     result_ids = list(state.search_results)
 
     assert len(search_observations) == 2
-    assert search_observations[0].data["search_result_ids"] == [
+    first_search = search_observations[0]
+    second_search = search_observations[1]
+    assert isinstance(first_search, SearchObservation)
+    assert isinstance(second_search, SearchObservation)
+    assert first_search.search_result_ids == [
         result_ids[0]
     ]
-    assert search_observations[1].data["search_result_ids"] == [
+    assert second_search.search_result_ids == [
         result_ids[0],
         result_ids[1],
     ]
-    assert search_observations[0].data["search_result_merge_report"] == {
+    assert first_search.search_result_merge_report.model_dump() == {
         "candidate_count": 1,
         "new_result_count": 1,
         "reused_result_count": 0,
     }
-    assert search_observations[1].data["search_result_merge_report"] == {
+    assert second_search.search_result_merge_report.model_dump() == {
         "candidate_count": 2,
         "new_result_count": 1,
         "reused_result_count": 1,
@@ -445,8 +455,13 @@ async def _run_news_runtime_skips_unfetchable_document(status_code: int) -> None
 
     assert output.result.state.done is True
     assert len(output.result.state.documents) == 1
-    assert fetch_observation.data["fetch_outcomes"] == [
+    assert isinstance(fetch_observation, FetchDocumentsObservation)
+    assert [
+        outcome.model_dump(mode="json")
+        for outcome in fetch_observation.fetch_outcomes
+    ] == [
         {
+            "status": "failure",
             "search_result_id": failed_result_id,
             "failure": {
                 "url": "https://example.com/blocked",
@@ -458,6 +473,7 @@ async def _run_news_runtime_skips_unfetchable_document(status_code: int) -> None
             },
         },
         {
+            "status": "success",
             "search_result_id": result_ids[1],
             "document_id": document_id,
         },
@@ -520,8 +536,13 @@ async def _run_document_fetch_reports_failed_when_all_documents_fail() -> None:
         state,
     )
 
-    assert observation.data["fetch_outcomes"] == [
+    assert isinstance(observation, FetchDocumentsObservation)
+    assert [
+        outcome.model_dump(mode="json")
+        for outcome in observation.fetch_outcomes
+    ] == [
         {
+            "status": "failure",
             "search_result_id": search_result.id,
             "failure": {
                 "url": search_result.url,
@@ -533,7 +554,7 @@ async def _run_document_fetch_reports_failed_when_all_documents_fail() -> None:
             },
         }
     ]
-    assert observation.data["document_index_updates"] == {}
+    assert observation.document_index_updates == {}
 
 
 def test_document_fetch_reports_failed_when_all_documents_fail() -> None:
@@ -627,10 +648,9 @@ async def _run_document_fetch_retries_then_stops_after_success() -> None:
     assert len(state.documents) == 1
 
     third = await executor.execute(action, state)
-    assert third.data == {
-        "fetch_outcomes": [],
-        "document_index_updates": {},
-    }
+    assert isinstance(third, FetchDocumentsObservation)
+    assert third.fetch_outcomes == []
+    assert third.document_index_updates == {}
     assert fetcher.call_count == 2
 
 

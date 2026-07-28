@@ -36,7 +36,7 @@ class NewsRuleBasedPolicy:
             )
 
         search_index = sum(
-            entry.action_type == AgentActionType.SEARCH
+            entry.action.type == AgentActionType.SEARCH
             for entry in state.action_history
         )
         remaining_fetches = remaining_document_fetches(state)

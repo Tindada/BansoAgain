@@ -83,6 +83,11 @@ class AgentRuntime:
                             },
                         ):
                             observation = await self.executor.execute(action, state)
+                            if action.type != observation.type:
+                                raise ValueError(
+                                    f"{action.type.value} action returned "
+                                    f"{observation.type.value} observation"
+                                )
                         step_span.set_output(
                             {
                                 "action": action,

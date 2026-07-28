@@ -5,7 +5,13 @@ import asyncio
 import pytest
 
 from banso.artifacts import InMemoryArtifactStore
-from banso.core import AgentState, DefaultStateReducer, DocumentState, UserQuery
+from banso.core import (
+    AgentState,
+    DefaultStateReducer,
+    UserQuery,
+)
+from banso.core.observation import ExtractionSuccess
+from banso.core.state import DocumentState
 from banso.core.action import AgentAction, AgentActionType
 from banso.documents import (
     Document,
@@ -115,8 +121,9 @@ async def _run_extraction_respects_concurrency_and_document_order() -> None:
 
     evidence_ids = [
         evidence_id
-        for outcome in observation.data["extraction_outcomes"]
-        for evidence_id in outcome["evidence_ids"]
+        for outcome in observation.extraction_outcomes
+        if isinstance(outcome, ExtractionSuccess)
+        for evidence_id in outcome.evidence_ids
     ]
     evidence = [store.get(evidence_id, EvidenceItem) for evidence_id in evidence_ids]
     assert extractor.max_active_count == 2
@@ -126,8 +133,8 @@ async def _run_extraction_respects_concurrency_and_document_order() -> None:
         "Third",
     ]
     assert [
-        outcome["document_id"]
-        for outcome in observation.data["extraction_outcomes"]
+        outcome.document_id
+        for outcome in observation.extraction_outcomes
     ] == [document.id for document in documents]
 
 
@@ -204,15 +211,19 @@ async def _run_extraction_isolates_known_failures() -> None:
         state,
     )
 
-    outcomes = observation.data["extraction_outcomes"]
-    evidence_ids = outcomes[0]["evidence_ids"]
+    outcomes = observation.extraction_outcomes
+    first = outcomes[0]
+    assert isinstance(first, ExtractionSuccess)
+    evidence_ids = first.evidence_ids
     assert len(evidence_ids) == 1
-    assert outcomes == [
+    assert [outcome.model_dump(mode="json") for outcome in outcomes] == [
         {
+            "status": "success",
             "document_id": documents[0].id,
             "evidence_ids": evidence_ids,
         },
         {
+            "status": "failure",
             "document_id": documents[1].id,
             "failure": {
                 "url": documents[1].url,
@@ -222,6 +233,7 @@ async def _run_extraction_isolates_known_failures() -> None:
             },
         },
         {
+            "status": "success",
             "document_id": documents[2].id,
             "evidence_ids": [],
         },
@@ -241,7 +253,7 @@ async def _run_extraction_isolates_known_failures() -> None:
         AgentAction(type=AgentActionType.EXTRACT_EVIDENCE),
         state,
     )
-    assert next_observation.data["extraction_outcomes"] == []
+    assert next_observation.extraction_outcomes == []
 
 
 def test_extraction_isolates_known_failures() -> None:
@@ -274,8 +286,12 @@ async def _run_extraction_reports_failed_when_all_documents_fail() -> None:
         state,
     )
 
-    assert observation.data["extraction_outcomes"] == [
+    assert [
+        outcome.model_dump(mode="json")
+        for outcome in observation.extraction_outcomes
+    ] == [
         {
+            "status": "failure",
             "document_id": document.id,
             "failure": {
                 "url": document.url,
@@ -298,7 +314,7 @@ async def _run_extraction_reports_failed_when_all_documents_fail() -> None:
         state.documents[document.id].extraction.attempt_count == 2
         for document in documents
     )
-    assert third.data["extraction_outcomes"] == []
+    assert third.extraction_outcomes == []
 
 
 def test_extraction_reports_failed_when_all_documents_fail() -> None:

@@ -1,9 +1,13 @@
 """Deterministic source classification for search results."""
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from banso.core.observation import (
+    SourceClassificationRecord,
+    SourceClassificationReport,
+)
 from banso.retrieval.models import SearchResult, Source, SourceType
 from banso.retrieval.url_utils import publisher_domain, publisher_home_url
 
@@ -147,18 +151,21 @@ class SourceClassificationResult(BaseModel):
     def unknown_count(self) -> int:
         return self.input_count - self.recognized_count
 
-    def report(self) -> dict[str, Any]:
+    @property
+    def report(self) -> SourceClassificationReport:
         """Return a trace-safe summary without duplicating result payloads."""
 
-        return {
-            "input_count": self.input_count,
-            "recognized_count": self.recognized_count,
-            "unknown_count": self.unknown_count,
-            "classifications": [
-                classification.model_dump(mode="json")
+        return SourceClassificationReport(
+            input_count=self.input_count,
+            recognized_count=self.recognized_count,
+            unknown_count=self.unknown_count,
+            classifications=[
+                SourceClassificationRecord.model_validate(
+                    classification.model_dump(mode="json")
+                )
                 for classification in self.classifications
             ],
-        }
+        )
 
 
 class SourceClassifier:

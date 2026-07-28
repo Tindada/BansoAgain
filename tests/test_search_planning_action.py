@@ -11,17 +11,26 @@ from banso.core import (
     AgentActionType,
     AgentRuntime,
     AgentState,
-    ActionHistoryEntry,
     DefaultStateReducer,
-    DocumentState,
     ExecutionBudget,
-    ExtractProgress,
-    Failure,
-    Observation,
     PlannedSearch,
     SearchPlan,
-    SearchResultState,
     UserQuery,
+)
+from banso.core.observation import (
+    FinishObservation,
+    PlanSearchObservation,
+    RetrievalFilterReport,
+    SearchObservation,
+    SearchResultMergeReport,
+    SourceClassificationReport,
+)
+from banso.core.state import (
+    ActionHistoryEntry,
+    DocumentState,
+    ExtractProgress,
+    Failure,
+    SearchResultState,
 )
 from banso.documents import FakeDocumentFetcher, FakeEvidenceExtractor
 from banso.executors import NewsActionExecutor
@@ -35,6 +44,32 @@ from banso.synthesis import FakeSynthesizer
 from banso.tracing import InMemoryTraceSink, SpanRecord, Tracer
 
 REFERENCE_TIME = datetime(2026, 7, 24, 8, 30, tzinfo=timezone.utc)
+
+
+def _search_observation(
+    *,
+    result_ids: list[str],
+    index_updates: dict[str, str],
+) -> SearchObservation:
+    return SearchObservation(
+        search_queries=["latest AI news"],
+        search_result_ids=result_ids,
+        search_result_index_updates=index_updates,
+        search_result_merge_report=SearchResultMergeReport(
+            candidate_count=len(result_ids),
+            new_result_count=len(index_updates),
+            reused_result_count=len(result_ids) - len(index_updates),
+        ),
+        retrieval_filter_report=RetrievalFilterReport(
+            input_count=len(result_ids),
+            output_count=len(result_ids),
+        ),
+        source_classification_report=SourceClassificationReport(
+            input_count=len(result_ids),
+            recognized_count=0,
+            unknown_count=len(result_ids),
+        ),
+    )
 
 
 class RecordingSearchQueryPlanner:
@@ -125,20 +160,16 @@ def test_news_executor_executes_plan_search() -> None:
             max_searches=2,
         )
     ]
-    assert observation == Observation(
-        data={"search_plan": plan.model_dump(mode="json")},
-    )
+    assert observation == PlanSearchObservation(search_plan=plan)
 
 
 def test_reducer_writes_search_plan_without_mutating_input_state() -> None:
     state = AgentState(query=UserQuery(text="latest AI news"))
     action = AgentAction(type=AgentActionType.PLAN_SEARCH)
-    observation = Observation(
-        data={
-            "search_plan": {
-                "searches": [{"query": "AI release", "intent": "official"}]
-            }
-        },
+    observation = PlanSearchObservation(
+        search_plan=SearchPlan(
+            searches=[PlannedSearch(query="AI release", intent="official")]
+        )
     )
 
     next_state = DefaultStateReducer().apply(state, action, observation)
@@ -154,7 +185,7 @@ def test_reducer_writes_search_plan_without_mutating_input_state() -> None:
     assert next_state.action_history == [
         ActionHistoryEntry(
             step_index=0,
-            action_type=AgentActionType.PLAN_SEARCH,
+            action=action,
             observation=observation,
         )
     ]
@@ -166,31 +197,26 @@ def test_reducer_stores_independent_action_history_snapshot() -> None:
         type=AgentActionType.SEARCH,
         params={"filters": {"domains": ["example.com"]}},
     )
-    observation = Observation(
-        data={
-            "search_result_ids": ["result-1"],
-            "search_result_index_updates": {
-                "https://example.com/result-1": "result-1"
-            },
-        },
+    observation = _search_observation(
+        result_ids=["result-1"],
+        index_updates={"https://example.com/result-1": "result-1"},
     )
 
     next_state = DefaultStateReducer().apply(state, action, observation)
     action.params["filters"]["domains"].append("other.example")
-    observation.data["search_result_ids"].append("result-2")
-    observation.data["search_result_index_updates"][
+    observation.search_result_ids.append("result-2")
+    observation.search_result_index_updates[
         "https://example.com/result-2"
     ] = "result-2"
 
     history_entry = next_state.action_history[0]
-    assert history_entry.params == {
+    assert history_entry.action.params == {
         "filters": {"domains": ["example.com"]},
     }
-    assert history_entry.observation.data == {
-        "search_result_ids": ["result-1"],
-        "search_result_index_updates": {
-            "https://example.com/result-1": "result-1"
-        },
+    assert isinstance(history_entry.observation, SearchObservation)
+    assert history_entry.observation.search_result_ids == ["result-1"]
+    assert history_entry.observation.search_result_index_updates == {
+        "https://example.com/result-1": "result-1"
     }
 
 
@@ -200,13 +226,9 @@ def test_reducer_merges_search_results_without_duplicates() -> None:
         search_results={"result-1": SearchResultState()},
         search_result_index={"https://example.com/first": "result-1"},
     )
-    observation = Observation(
-        data={
-            "search_result_ids": ["result-1", "result-2"],
-            "search_result_index_updates": {
-                "https://example.com/second": "result-2"
-            },
-        },
+    observation = _search_observation(
+        result_ids=["result-1", "result-2"],
+        index_updates={"https://example.com/second": "result-2"},
     )
 
     next_state = DefaultStateReducer().apply(
@@ -234,13 +256,9 @@ def test_reducer_rejects_existing_search_result_index_key(
     observed_ids = ["result-1"]
     if updated_result_id != "result-1":
         observed_ids.append(updated_result_id)
-    observation = Observation(
-        data={
-            "search_result_ids": observed_ids,
-            "search_result_index_updates": {
-                "https://example.com/news": updated_result_id
-            },
-        },
+    observation = _search_observation(
+        result_ids=observed_ids,
+        index_updates={"https://example.com/news": updated_result_id},
     )
 
     with pytest.raises(ValueError, match="contains an existing URL"):
@@ -254,11 +272,9 @@ def test_reducer_rejects_existing_search_result_index_key(
 def test_reducer_writes_final_answer_without_mutating_input_state() -> None:
     state = AgentState(query=UserQuery(text="latest AI news"))
     action = AgentAction(type=AgentActionType.FINISH)
-    observation = Observation(
-        data={
-            "final_answer": "Synthesized answer.",
-            "citations": ["https://example.com/source"],
-        },
+    observation = FinishObservation(
+        final_answer="Synthesized answer.",
+        citations=["https://example.com/source"],
     )
 
     next_state = DefaultStateReducer().apply(state, action, observation)
@@ -277,11 +293,9 @@ def test_reducer_replaces_citations_with_new_final_answer() -> None:
         citations=["https://example.com/old"],
     )
     action = AgentAction(type=AgentActionType.FINISH)
-    observation = Observation(
-        data={
-            "final_answer": "New answer.",
-            "citations": ["https://example.com/new", 42],
-        },
+    observation = FinishObservation(
+        final_answer="New answer.",
+        citations=["https://example.com/new"],
     )
 
     next_state = DefaultStateReducer().apply(state, action, observation)
@@ -366,25 +380,6 @@ def test_rule_policy_uses_last_step_to_end(
     assert action.type == expected
 
 
-def test_reducer_ignores_final_answer_from_other_actions() -> None:
-    state = AgentState(
-        query=UserQuery(text="latest AI news"),
-        citations=["https://example.com/existing"],
-    )
-    action = AgentAction(type=AgentActionType.SEARCH)
-    observation = Observation(
-        data={
-            "final_answer": "Unexpected answer.",
-            "citations": ["https://example.com/unexpected"],
-        },
-    )
-
-    next_state = DefaultStateReducer().apply(state, action, observation)
-
-    assert next_state.final_answer is None
-    assert next_state.citations == ["https://example.com/existing"]
-
-
 async def _run_runtime_with_bounded_plan():
     plan = SearchPlan(
         searches=[
@@ -413,7 +408,7 @@ async def _run_runtime_with_bounded_plan():
 def test_runtime_executes_bounded_search_plan_in_order() -> None:
     output, spans = asyncio.run(_run_runtime_with_bounded_plan())
 
-    assert [entry.action_type for entry in output.result.state.action_history] == [
+    assert [entry.action.type for entry in output.result.state.action_history] == [
         AgentActionType.PLAN_SEARCH,
         AgentActionType.SEARCH,
         AgentActionType.SEARCH,
@@ -422,9 +417,10 @@ def test_runtime_executes_bounded_search_plan_in_order() -> None:
         AgentActionType.FINISH,
     ]
     assert [
-        entry.observation.data["search_queries"][0]
+        entry.observation.search_queries[0]
         for entry in output.result.state.action_history
-        if entry.action_type == AgentActionType.SEARCH
+        if entry.action.type == AgentActionType.SEARCH
+        and isinstance(entry.observation, SearchObservation)
     ] == [
         "general AI update",
         "official AI release",
@@ -434,13 +430,16 @@ def test_runtime_executes_bounded_search_plan_in_order() -> None:
         entry.step_index for entry in output.result.state.action_history
     ] == list(range(6))
     assert [
-        entry.action_type for entry in output.result.state.action_history
+        entry.action.type for entry in output.result.state.action_history
     ] == [
         AgentActionType(span.output["action"]["type"])
         for span in spans
         if span.name == "agent.step" and span.status == "ok"
     ]
-    assert output.result.state.action_history[-1].action_type == AgentActionType.FINISH
+    assert (
+        output.result.state.action_history[-1].action.type
+        == AgentActionType.FINISH
+    )
     assert output.result.state.current_step == len(
         output.result.state.action_history
     )
@@ -450,9 +449,7 @@ def test_runtime_executes_bounded_search_plan_in_order() -> None:
     assert [len(span.input["state"]["action_history"]) for span in step_spans] == list(
         range(6)
     )
-    assert step_spans[0].output["observation"]["data"]["search_plan"][
-        "searches"
-    ] == [
+    assert step_spans[0].output["observation"]["search_plan"]["searches"] == [
         {"query": "general AI update", "intent": "general"},
         {"query": "official AI release", "intent": "official"},
         {"query": "AI research paper", "intent": "research"},

@@ -8,17 +8,24 @@ import pytest
 
 from banso.artifacts import InMemoryArtifactStore
 from banso.core import (
-    ActionHistoryEntry,
     AgentAction,
     AgentActionType,
     AgentState,
-    DocumentState,
     ExecutionBudget,
+    UserQuery,
+)
+from banso.core.observation import (
+    RetrievalFilterReport,
+    SearchObservation,
+    SearchResultMergeReport,
+    SourceClassificationReport,
+)
+from banso.core.state import (
+    ActionHistoryEntry,
+    DocumentState,
     ExtractProgress,
     Failure,
-    Observation,
     SearchResultState,
-    UserQuery,
 )
 from banso.documents import Document, EvidenceItem
 from banso.llm import (
@@ -30,6 +37,34 @@ from banso.llm import (
 )
 from banso.policies import LLMNewsPolicy, LLMPolicyError, NewsPolicyContextBuilder
 from banso.retrieval import SearchResult
+
+
+def _search_observation(
+    *,
+    result_ids: list[str] | None = None,
+    new_result_count: int = 0,
+    reused_result_count: int = 0,
+) -> SearchObservation:
+    result_ids = result_ids or []
+    return SearchObservation(
+        search_queries=[],
+        search_result_ids=result_ids,
+        search_result_index_updates={},
+        search_result_merge_report=SearchResultMergeReport(
+            candidate_count=new_result_count + reused_result_count,
+            new_result_count=new_result_count,
+            reused_result_count=reused_result_count,
+        ),
+        retrieval_filter_report=RetrievalFilterReport(
+            input_count=len(result_ids),
+            output_count=len(result_ids),
+        ),
+        source_classification_report=SourceClassificationReport(
+            input_count=len(result_ids),
+            recognized_count=0,
+            unknown_count=len(result_ids),
+        ),
+    )
 
 
 def _populated_state() -> tuple[InMemoryArtifactStore, AgentState]:
@@ -159,16 +194,13 @@ def test_builds_request_from_bounded_decision_context() -> None:
     state.action_history.append(
         ActionHistoryEntry(
             step_index=0,
-            action_type=AgentActionType.SEARCH,
-            params={"query": "first query"},
-            observation=Observation(
-                data={
-                    "search_result_ids": ["result-1"],
-                    "search_result_merge_report": {
-                        "new_result_count": 1,
-                        "reused_result_count": 0,
-                    },
-                }
+            action=AgentAction(
+                type=AgentActionType.SEARCH,
+                params={"query": "first query"},
+            ),
+            observation=_search_observation(
+                result_ids=["result-1"],
+                new_result_count=1,
             ),
         )
     )
@@ -452,9 +484,11 @@ def test_rejects_search_after_budget_is_exhausted() -> None:
     state.action_history.append(
         ActionHistoryEntry(
             step_index=0,
-            action_type=AgentActionType.SEARCH,
-            params={"query": "first query"},
-            observation=Observation(),
+            action=AgentAction(
+                type=AgentActionType.SEARCH,
+                params={"query": "first query"},
+            ),
+            observation=_search_observation(),
         )
     )
 
@@ -474,9 +508,11 @@ def test_rejects_repeated_search_query() -> None:
     state.action_history.append(
         ActionHistoryEntry(
             step_index=0,
-            action_type=AgentActionType.SEARCH,
-            params={"query": "AI News"},
-            observation=Observation(),
+            action=AgentAction(
+                type=AgentActionType.SEARCH,
+                params={"query": "AI News"},
+            ),
+            observation=_search_observation(),
         )
     )
 

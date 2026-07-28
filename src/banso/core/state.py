@@ -1,11 +1,12 @@
 """Agent state models."""
 
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from banso.core.action import AgentActionType, Observation
+from banso.core.action import AgentAction, AgentActionType
+from banso.core.observation import Failure, Observation, SearchPlan
 
 
 class ExecutionBudget(BaseModel):
@@ -36,34 +37,12 @@ class UserQuery(BaseModel):
     time_range: str | None = None
 
 
-class PlannedSearch(BaseModel):
-    """One query in an ordered search plan."""
-
-    query: str
-    intent: str = "general"
-
-
-class SearchPlan(BaseModel):
-    """Searches planned for one user query."""
-
-    searches: list[PlannedSearch] = Field(default_factory=list)
-
-
 class ActionHistoryEntry(BaseModel):
     """One completed action and its recorded runtime observation."""
 
     step_index: int
-    action_type: AgentActionType
-    params: dict[str, Any] = Field(default_factory=dict)
+    action: AgentAction
     observation: Observation
-
-
-class Failure(BaseModel):
-    """A resource-processing failure relevant to future decisions."""
-
-    reason: str
-    retryable: bool
-    status_code: int | None = None
 
 
 class ExtractProgress(BaseModel):

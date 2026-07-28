@@ -76,7 +76,7 @@ async def main() -> None:
 
     print("done:", state.done)
     print("trace steps:", len(state.action_history))
-    print("actions:", [entry.action_type.value for entry in state.action_history])
+    print("actions:", [entry.action.type.value for entry in state.action_history])
     print("search result ids:", list(state.search_results))
     print("document ids:", list(state.documents))
     evidence_ids = [
@@ -98,7 +98,10 @@ async def main() -> None:
     print("final answer:", state.final_answer)
     print("observations:")
     for entry in state.action_history:
-        print(f"- {entry.action_type.value}: {entry.observation.data}")
+        print(
+            f"- {entry.action.type.value}: "
+            f"{entry.observation.model_dump(mode='json')}"
+        )
 
 
 if __name__ == "__main__":

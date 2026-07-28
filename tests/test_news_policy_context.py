@@ -6,16 +6,25 @@ import pytest
 
 from banso.artifacts import InMemoryArtifactStore
 from banso.core import (
-    ActionHistoryEntry,
+    AgentAction,
     AgentActionType,
     AgentState,
-    DocumentState,
     ExecutionBudget,
+    UserQuery,
+)
+from banso.core.observation import (
+    FetchDocumentsObservation,
+    RetrievalFilterReport,
+    SearchObservation,
+    SearchResultMergeReport,
+    SourceClassificationReport,
+)
+from banso.core.state import (
+    ActionHistoryEntry,
+    DocumentState,
     ExtractProgress,
     Failure,
-    Observation,
     SearchResultState,
-    UserQuery,
 )
 from banso.documents import Document, EvidenceItem
 from banso.policies import NewsPolicyContextBuilder
@@ -191,24 +200,37 @@ def test_builds_compact_search_history_without_raw_action_details() -> None:
     state.action_history = [
         ActionHistoryEntry(
             step_index=0,
-            action_type=AgentActionType.SEARCH,
-            params={"query": "AI launches", "intent": "find announcements"},
-            observation=Observation(
-                data={
-                    "search_result_ids": ["result-1"],
-                    "search_result_merge_report": {
-                        "candidate_count": 2,
-                        "new_result_count": 1,
-                        "reused_result_count": 1,
-                    },
-                    "retrieval_filter_report": {"input_count": 99},
-                }
+            action=AgentAction(
+                type=AgentActionType.SEARCH,
+                params={"query": "AI launches", "intent": "find announcements"},
+            ),
+            observation=SearchObservation(
+                search_queries=["AI launches"],
+                search_result_ids=["result-1"],
+                search_result_index_updates={},
+                search_result_merge_report=SearchResultMergeReport(
+                    candidate_count=2,
+                    new_result_count=1,
+                    reused_result_count=1,
+                ),
+                retrieval_filter_report=RetrievalFilterReport(
+                    input_count=99,
+                    output_count=1,
+                ),
+                source_classification_report=SourceClassificationReport(
+                    input_count=1,
+                    recognized_count=0,
+                    unknown_count=1,
+                ),
             ),
         ),
         ActionHistoryEntry(
             step_index=1,
-            action_type=AgentActionType.FETCH_DOCUMENTS,
-            observation=Observation(data={"private": "hidden fetch data"}),
+            action=AgentAction(type=AgentActionType.FETCH_DOCUMENTS),
+            observation=FetchDocumentsObservation(
+                fetch_outcomes=[],
+                document_index_updates={},
+            ),
         ),
     ]
 

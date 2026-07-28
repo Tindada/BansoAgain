@@ -12,11 +12,11 @@ from banso.core import (
     AgentRuntime,
     AgentState,
     DefaultStateReducer,
-    DocumentState,
     ExecutionBudget,
-    ExtractProgress,
     UserQuery,
 )
+from banso.core.observation import FinishObservation
+from banso.core.state import DocumentState, ExtractProgress
 from banso.documents import (
     Document,
     EvidenceItem,
@@ -254,7 +254,8 @@ def test_finish_excludes_shelved_documents_and_evidence() -> None:
     request = synthesizer.requests[0]
     assert [document.id for document in request.documents] == [active.id]
     assert [evidence.id for evidence in request.evidence] == [active_evidence.id]
-    assert observation.data["citations"] == [active.url]
+    assert isinstance(observation, FinishObservation)
+    assert observation.citations == [active.url]
 
 
 def test_finish_rejects_an_oversized_active_evidence_set() -> None:
@@ -345,7 +346,7 @@ def test_runtime_can_curate_then_fill_an_information_gap() -> None:
     )
     state = output.result.state
 
-    assert [entry.action_type for entry in state.action_history] == [
+    assert [entry.action.type for entry in state.action_history] == [
         AgentActionType.SEARCH,
         AgentActionType.FETCH_DOCUMENTS,
         AgentActionType.EXTRACT_EVIDENCE,

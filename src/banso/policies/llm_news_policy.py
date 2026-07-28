@@ -364,7 +364,7 @@ class LLMNewsPolicy:
 
         actions: list[AgentActionType] = []
         executed_search_count = sum(
-            entry.action_type == AgentActionType.SEARCH
+            entry.action.type == AgentActionType.SEARCH
             for entry in state.action_history
         )
         remaining_fetches = remaining_document_fetches(state)

@@ -1,6 +1,6 @@
 """Simple search query planner implementation."""
 
-from banso.core.state import PlannedSearch, SearchPlan
+from banso.core.observation import PlannedSearch, SearchPlan
 from banso.retrieval.planner import SearchPlanningRequest
 
 

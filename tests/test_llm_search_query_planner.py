@@ -15,6 +15,7 @@ from banso.core import (
     SearchPlan,
     UserQuery,
 )
+from banso.core.observation import PlanSearchObservation, SearchObservation
 from banso.documents import FakeDocumentFetcher, FakeEvidenceExtractor
 from banso.executors import NewsActionExecutor
 from banso.llm import FakeLLMClient, LLMMessageRole
@@ -161,14 +162,17 @@ def test_news_runtime_executes_llm_generated_search_plan() -> None:
     output = asyncio.run(_run_news_runtime_with_llm_plan())
 
     assert [
-        entry.observation.data["search_queries"][0]
+        entry.observation.search_queries[0]
         for entry in output.result.state.action_history
-        if entry.action_type == AgentActionType.SEARCH
+        if entry.action.type == AgentActionType.SEARCH
+        and isinstance(entry.observation, SearchObservation)
     ] == [
         "official AI releases",
         "recent AI research",
     ]
-    assert output.result.state.action_history[0].observation.data["search_plan"] == {
+    plan_observation = output.result.state.action_history[0].observation
+    assert isinstance(plan_observation, PlanSearchObservation)
+    assert plan_observation.search_plan.model_dump(mode="json") == {
         "searches": [
             {"query": "official AI releases", "intent": "official"},
             {"query": "recent AI research", "intent": "research"},

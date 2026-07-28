@@ -8,13 +8,20 @@ from banso.core import (
     AgentActionType,
     AgentState,
     DefaultStateReducer,
-    DocumentState,
     ExecutionBudget,
+    UserQuery,
+)
+from banso.core.observation import (
+    EvidenceExtractionFailure,
+    ExtractEvidenceObservation,
+    ExtractionFailure,
+    ExtractionSuccess,
+)
+from banso.core.state import (
+    DocumentState,
     ExtractProgress,
     Failure,
-    Observation,
     SearchResultState,
-    UserQuery,
 )
 from banso.core.lifecycle import (
     curatable_document_ids,
@@ -153,15 +160,20 @@ def test_extraction_lifecycle_distinguishes_empty_success_from_failures() -> Non
 @pytest.mark.parametrize(
     "outcome",
     [
-        {"document_id": "document", "evidence_ids": []},
-        {
-            "document_id": "document",
-            "failure": {"reason": "invalid_content", "retryable": False},
-        },
+        ExtractionSuccess(document_id="document", evidence_ids=[]),
+        ExtractionFailure(
+            document_id="document",
+            failure=EvidenceExtractionFailure(
+                url="https://example.com/document",
+                message="invalid content",
+                reason="invalid_content",
+                retryable=False,
+            ),
+        ),
     ],
 )
 def test_terminal_extraction_without_evidence_becomes_unusable(
-    outcome: dict[str, object],
+    outcome: ExtractionSuccess | ExtractionFailure,
 ) -> None:
     state = AgentState(
         query=UserQuery(text="query"),
@@ -169,7 +181,7 @@ def test_terminal_extraction_without_evidence_becomes_unusable(
         documents={"document": DocumentState()},
     )
     action = AgentAction(type=AgentActionType.EXTRACT_EVIDENCE)
-    observation = Observation(data={"extraction_outcomes": [outcome]})
+    observation = ExtractEvidenceObservation(extraction_outcomes=[outcome])
     next_state = DefaultStateReducer().apply(state, action, observation)
 
     document = next_state.documents["document"]
@@ -185,15 +197,18 @@ def test_retryable_extraction_becomes_unusable_only_after_exhaustion() -> None:
         documents={"document": DocumentState()},
     )
     action = AgentAction(type=AgentActionType.EXTRACT_EVIDENCE)
-    observation = Observation(
-        data={
-            "extraction_outcomes": [
-                {
-                    "document_id": "document",
-                    "failure": {"reason": "llm_error", "retryable": True},
-                }
-            ]
-        }
+    observation = ExtractEvidenceObservation(
+        extraction_outcomes=[
+            ExtractionFailure(
+                document_id="document",
+                failure=EvidenceExtractionFailure(
+                    url="https://example.com/document",
+                    message="provider failed",
+                    reason="llm_error",
+                    retryable=True,
+                ),
+            )
+        ]
     )
 
     state = DefaultStateReducer().apply(state, action, observation)

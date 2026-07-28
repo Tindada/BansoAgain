@@ -3,12 +3,29 @@
 import asyncio
 
 from banso.artifacts import ArtifactStore
-from banso.core.action import AgentAction, AgentActionType, Observation
+from banso.core.action import AgentAction, AgentActionType
 from banso.core.lifecycle import (
     active_document_count,
     eligible_extraction_document_ids,
     eligible_fetch_result_ids,
     remaining_document_fetches,
+)
+from banso.core.observation import (
+    CurateEvidenceObservation,
+    DocumentFetchFailure,
+    EvidenceExtractionFailure,
+    ExtractEvidenceObservation,
+    ExtractionFailure,
+    ExtractionSuccess,
+    FetchDocumentsObservation,
+    FetchFailure,
+    FetchSuccess,
+    FinishObservation,
+    Observation,
+    PlanSearchObservation,
+    SearchObservation,
+    SearchResultMergeReport,
+    StopObservation,
 )
 from banso.core.state import AgentState
 from banso.documents import (
@@ -73,7 +90,7 @@ class NewsActionExecutor:
                     max_searches=state.budget.max_searches,
                 )
             )
-            return Observation(data={"search_plan": plan.model_dump(mode="json")})
+            return PlanSearchObservation(search_plan=plan)
 
         if action.type == AgentActionType.SEARCH:
             return await self._search(action, state)
@@ -90,7 +107,7 @@ class NewsActionExecutor:
         if action.type == AgentActionType.FINISH:
             return await self._synthesize(state)
 
-        return Observation()
+        return StopObservation()
 
     async def _search(self, action: AgentAction, state: AgentState) -> Observation:
         query = action.params.get("query", state.query.text)
@@ -129,23 +146,21 @@ class NewsActionExecutor:
             result_ids.append(result_id)
             new_result_count += 1
 
-        return Observation(
-            data={
-                "search_queries": [query],
-                "search_result_ids": result_ids,
-                "search_result_index_updates": index_updates,
-                "search_result_merge_report": {
-                    "candidate_count": len(results),
-                    "new_result_count": new_result_count,
-                    "reused_result_count": reused_result_count,
-                },
-                "retrieval_filter_report": filtered.report.model_dump(),
-                "source_classification_report": classified.report(),
-            },
+        return SearchObservation(
+            search_queries=[query],
+            search_result_ids=result_ids,
+            search_result_index_updates=index_updates,
+            search_result_merge_report=SearchResultMergeReport(
+                candidate_count=len(results),
+                new_result_count=new_result_count,
+                reused_result_count=reused_result_count,
+            ),
+            retrieval_filter_report=filtered.report,
+            source_classification_report=classified.report,
         )
 
     async def _fetch_documents(self, state: AgentState) -> Observation:
-        fetch_outcomes: list[dict[str, object]] = []
+        fetch_outcomes: list[FetchSuccess | FetchFailure] = []
         document_index = dict(state.document_index)
         document_index_updates: dict[str, str] = {}
         result_ids = eligible_fetch_result_ids(state)[:remaining_document_fetches(state)]
@@ -161,10 +176,10 @@ class NewsActionExecutor:
             document_id = document_index.get(normalized_result_url)
             if document_id is not None:
                 fetch_outcomes.append(
-                    {
-                        "search_result_id": result_id,
-                        "document_id": document_id,
-                    }
+                    FetchSuccess(
+                        search_result_id=result_id,
+                        document_id=document_id,
+                    )
                 )
                 continue
 
@@ -179,17 +194,17 @@ class NewsActionExecutor:
                 )
             except DocumentFetchError as error:
                 fetch_outcomes.append(
-                    {
-                        "search_result_id": result_id,
-                        "failure": {
-                            "url": error.url,
-                            "status_code": error.status_code,
-                            "reason": error.reason,
-                            "retryable": error.retryable,
-                            "message": error.message,
-                            "source_error_type": error.source_error_type,
-                        },
-                    }
+                    FetchFailure(
+                        search_result_id=result_id,
+                        failure=DocumentFetchFailure(
+                            url=error.url,
+                            status_code=error.status_code,
+                            reason=error.reason,
+                            retryable=error.retryable,
+                            message=error.message,
+                            source_error_type=error.source_error_type,
+                        ),
+                    )
                 )
                 continue
 
@@ -204,17 +219,15 @@ class NewsActionExecutor:
                 document_index_updates[normalized_document_url] = document_id
 
             fetch_outcomes.append(
-                {
-                    "search_result_id": result_id,
-                    "document_id": document_id,
-                }
+                FetchSuccess(
+                    search_result_id=result_id,
+                    document_id=document_id,
+                )
             )
 
-        return Observation(
-            data={
-                "fetch_outcomes": fetch_outcomes,
-                "document_index_updates": document_index_updates,
-            },
+        return FetchDocumentsObservation(
+            fetch_outcomes=fetch_outcomes,
+            document_index_updates=document_index_updates,
         )
 
     async def _extract_evidence(self, state: AgentState) -> Observation:
@@ -243,19 +256,19 @@ class NewsActionExecutor:
                 return document, evidence, None
 
         extraction_results = await asyncio.gather(*(extract(document) for document in documents))
-        extraction_outcomes: list[dict[str, object]] = []
+        extraction_outcomes: list[ExtractionSuccess | ExtractionFailure] = []
         for document, evidence, error in extraction_results:
             if error is not None:
                 extraction_outcomes.append(
-                    {
-                        "document_id": document.id,
-                        "failure": {
-                            "url": document.url,
-                            "reason": error.reason,
-                            "retryable": error.retryable,
-                            "message": str(error),
-                        },
-                    }
+                    ExtractionFailure(
+                        document_id=document.id,
+                        failure=EvidenceExtractionFailure(
+                            url=document.url,
+                            reason=error.reason,
+                            retryable=error.retryable,
+                            message=str(error),
+                        ),
+                    )
                 )
                 continue
             for item in evidence:
@@ -265,13 +278,13 @@ class NewsActionExecutor:
                         f"{item.document_id}, expected {document.id}"
                     )
             extraction_outcomes.append(
-                {
-                    "document_id": document.id,
-                    "evidence_ids": [self.store.put(item) for item in evidence],
-                }
+                ExtractionSuccess(
+                    document_id=document.id,
+                    evidence_ids=[self.store.put(item) for item in evidence],
+                )
             )
 
-        return Observation(data={"extraction_outcomes": extraction_outcomes})
+        return ExtractEvidenceObservation(extraction_outcomes=extraction_outcomes)
 
     def _curate_evidence(self, action: AgentAction, state: AgentState) -> Observation:
         shelve_ids = action.params["shelve_document_ids"]
@@ -301,7 +314,7 @@ class NewsActionExecutor:
         if projected_active_count > state.budget.max_active_documents:
             raise ValueError("curate_evidence would exceed the active document limit")
 
-        return Observation()
+        return CurateEvidenceObservation()
 
     async def _synthesize(self, state: AgentState) -> Observation:
         if active_document_count(state) > state.budget.max_active_documents:
@@ -329,9 +342,7 @@ class NewsActionExecutor:
             )
         )
 
-        return Observation(
-            data={
-                "final_answer": result.answer,
-                "citations": result.citations,
-            },
+        return FinishObservation(
+            final_answer=result.answer,
+            citations=result.citations,
         )

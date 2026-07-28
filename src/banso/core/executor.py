@@ -2,7 +2,8 @@
 
 from typing import Protocol
 
-from banso.core.action import AgentAction, Observation
+from banso.core.action import AgentAction
+from banso.core.observation import Observation
 from banso.core.state import AgentState
 
 

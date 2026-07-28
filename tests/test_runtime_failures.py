@@ -15,9 +15,16 @@ from banso.core import (
     AgentRuntime,
     AgentState,
     ExecutionBudget,
-    Observation,
     RuntimeExecutionError,
     UserQuery,
+)
+from banso.core.observation import (
+    Observation,
+    RetrievalFilterReport,
+    SearchObservation,
+    SearchResultMergeReport,
+    SourceClassificationReport,
+    StopObservation,
 )
 from banso.tracing import (
     InMemoryTraceSink,
@@ -49,7 +56,27 @@ class StopExecutor:
         action: AgentAction,
         state: AgentState,
     ) -> Observation:
-        return Observation()
+        if action.type == AgentActionType.STOP:
+            return StopObservation()
+        return SearchObservation(
+            search_queries=[state.query.text],
+            search_result_ids=[],
+            search_result_index_updates={},
+            search_result_merge_report=SearchResultMergeReport(
+                candidate_count=0,
+                new_result_count=0,
+                reused_result_count=0,
+            ),
+            retrieval_filter_report=RetrievalFilterReport(
+                input_count=0,
+                output_count=0,
+            ),
+            source_classification_report=SourceClassificationReport(
+                input_count=0,
+                recognized_count=0,
+                unknown_count=0,
+            ),
+        )
 
 
 class RaisingExecutor:
@@ -59,6 +86,15 @@ class RaisingExecutor:
         state: AgentState,
     ) -> Observation:
         raise OSError("executor failed")
+
+
+class MismatchedExecutor:
+    async def execute(
+        self,
+        action: AgentAction,
+        state: AgentState,
+    ) -> Observation:
+        return StopObservation()
 
 
 class RaisingReducer:
@@ -185,6 +221,22 @@ def test_runtime_records_executor_failure() -> None:
     assert "observation" not in failed_step.output
 
 
+def test_runtime_rejects_mismatched_action_and_observation_types() -> None:
+    runtime, sink = _traced_runtime(
+        policy=ContinuePolicy(),
+        executor=MismatchedExecutor(),
+    )
+
+    error = _run_and_capture(runtime)
+    spans = sink.get_trace(error.trace_id)
+
+    assert isinstance(error.original_error, ValueError)
+    assert str(error.original_error) == "search action returned stop observation"
+    failure = _failed_span(spans, "agent.action.execute")
+    assert failure.error is not None
+    assert failure.error.error_type == "ValueError"
+
+
 def test_runtime_records_reducer_failure_and_serializes_spans() -> None:
     runtime, sink = _traced_runtime(
         policy=StopPolicy(),
@@ -198,7 +250,7 @@ def test_runtime_records_reducer_failure_and_serializes_spans() -> None:
     assert failure.error is not None
     assert failure.error.error_type == "RuntimeError"
     failed_step = _failed_span(spans, "agent.step")
-    assert failed_step.output["observation"] == {"data": {}}
+    assert failed_step.output["observation"] == {"type": "stop"}
     restored = [
         SpanRecord.model_validate_json(span.model_dump_json()) for span in spans
     ]

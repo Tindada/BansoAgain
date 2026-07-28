@@ -4,7 +4,7 @@ import json
 
 from pydantic import ValidationError
 
-from banso.core.state import PlannedSearch, SearchPlan
+from banso.core.observation import PlannedSearch, SearchPlan
 from banso.llm import LLMClient, LLMMessage, LLMMessageRole, LLMRequest
 from banso.retrieval.planner import SearchPlanningError, SearchPlanningRequest
 

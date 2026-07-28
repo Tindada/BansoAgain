@@ -8,7 +8,20 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from banso.artifacts import ArtifactStore
-from banso.core import AgentAction, AgentActionType, Observation, RuntimeRunResult
+from banso.core import (
+    AgentAction,
+    AgentActionType,
+    RuntimeRunResult,
+)
+from banso.core.observation import (
+    ExtractEvidenceObservation,
+    ExtractionFailure,
+    FetchDocumentsObservation,
+    FetchFailure,
+    Observation,
+    SearchObservation,
+    validate_observation,
+)
 from banso.retrieval import SearchResult
 from banso.tracing import SpanRecord
 
@@ -110,29 +123,29 @@ def extract_evaluation_result(
         if document.lifecycle_status == "active"
     )
     curation_action_count = sum(
-        entry.action_type == AgentActionType.CURATE_EVIDENCE
+        entry.action.type == AgentActionType.CURATE_EVIDENCE
         for entry in state.action_history
     )
     steps = _completed_steps(spans)
     document_fetch_failures = [
         {
-            "search_result_id": outcome["search_result_id"],
-            **failure,
+            "search_result_id": outcome.search_result_id,
+            **outcome.failure.model_dump(mode="json"),
         }
-        for action, observation in steps
-        if action.type == AgentActionType.FETCH_DOCUMENTS
-        for outcome in observation.data.get("fetch_outcomes", [])
-        if (failure := outcome.get("failure")) is not None
+        for _, observation in steps
+        if isinstance(observation, FetchDocumentsObservation)
+        for outcome in observation.fetch_outcomes
+        if isinstance(outcome, FetchFailure)
     ]
     evidence_extraction_failures = [
         {
-            "document_id": outcome["document_id"],
-            **failure,
+            "document_id": outcome.document_id,
+            **outcome.failure.model_dump(mode="json"),
         }
-        for action, observation in steps
-        if action.type == AgentActionType.EXTRACT_EVIDENCE
-        for outcome in observation.data.get("extraction_outcomes", [])
-        if (failure := outcome.get("failure")) is not None
+        for _, observation in steps
+        if isinstance(observation, ExtractEvidenceObservation)
+        for outcome in observation.extraction_outcomes
+        if isinstance(outcome, ExtractionFailure)
     ]
 
     sources = [
@@ -154,29 +167,19 @@ def extract_evaluation_result(
     recognized_source_count = 0
     unknown_source_count = 0
     source_classifications: list[dict[str, Any]] = []
-    for action, observation in steps:
-        if action.type != AgentActionType.SEARCH:
+    for _, observation in steps:
+        if not isinstance(observation, SearchObservation):
             continue
-        filter_report = _dict_value(observation.data.get("retrieval_filter_report"))
-        classification_report = _dict_value(
-            observation.data.get("source_classification_report")
-        )
-        retrieved_result_count += filter_report.get("input_count", 0)
-        filtered_result_count += filter_report.get("output_count", 0)
-        result_ids = observation.data.get("search_result_ids")
-        fallback_classified_count = (
-            len(result_ids) if isinstance(result_ids, list) else 0
-        )
-        classified_result_count += classification_report.get(
-            "input_count", fallback_classified_count
-        )
-        recognized_source_count += classification_report.get("recognized_count", 0)
-        unknown_source_count += classification_report.get("unknown_count", 0)
-        classifications = classification_report.get("classifications", [])
+        filter_report = observation.retrieval_filter_report
+        classification_report = observation.source_classification_report
+        retrieved_result_count += filter_report.input_count
+        filtered_result_count += filter_report.output_count
+        classified_result_count += classification_report.input_count
+        recognized_source_count += classification_report.recognized_count
+        unknown_source_count += classification_report.unknown_count
         source_classifications.extend(
-            classification
-            for classification in classifications
-            if isinstance(classification, dict)
+            classification.model_dump(mode="json")
+            for classification in classification_report.classifications
         )
     step_durations: dict[str, float] = {}
     total_action_seconds = 0.0
@@ -249,7 +252,7 @@ def _completed_steps(
         if action_value is None or observation_value is None:
             continue
         action = AgentAction.model_validate(action_value)
-        observation = Observation.model_validate(observation_value)
+        observation = validate_observation(observation_value)
         step_index = span.attributes.get("step_index", 0)
         decoded.append(
             (
@@ -260,12 +263,6 @@ def _completed_steps(
         )
     decoded.sort(key=lambda item: item[0])
     return [(action, observation) for _, action, observation in decoded]
-
-
-def _dict_value(value: object) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        return {}
-    return value
 
 
 def _ratio(numerator: int, denominator: int) -> float:

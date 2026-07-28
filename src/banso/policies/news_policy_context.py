@@ -204,7 +204,7 @@ class NewsPolicyContextBuilder:
         search_history = [
             self._build_search(entry)
             for entry in state.action_history
-            if entry.action_type == AgentActionType.SEARCH
+            if entry.action.type == AgentActionType.SEARCH
         ]
         fetch_statuses = {
             search_result_id: progress_status(
@@ -426,12 +426,12 @@ class NewsPolicyContextBuilder:
 
     @staticmethod
     def _build_search(entry: ActionHistoryEntry) -> SearchHistoryItem:
-        merge_report = entry.observation.data.get("search_result_merge_report", {})
+        merge_report = entry.observation.search_result_merge_report
         return SearchHistoryItem(
-            query=entry.params["query"],
-            intent=entry.params.get("intent"),
-            new_results=merge_report.get("new_result_count", 0),
-            reused_results=merge_report.get("reused_result_count", 0),
+            query=entry.action.params["query"],
+            intent=entry.action.params.get("intent"),
+            new_results=merge_report.new_result_count,
+            reused_results=merge_report.reused_result_count,
         )
 
     def _load_all(self, artifact_ids: list[str], artifact_type: type[TArtifact]) -> list[TArtifact]:

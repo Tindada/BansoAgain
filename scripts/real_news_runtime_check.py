@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 
 from banso.apps.real_news import build_real_news_runtime
 from banso.core import AgentActionType, AgentState, UserQuery
+from banso.core.observation import SearchObservation
 from banso.documents import Document, EvidenceItem
 from banso.retrieval import SearchResult
 
@@ -45,16 +46,17 @@ async def main(*, verbose: bool = False) -> None:
 
     print("done:", state.done)
     print("trace steps:", len(state.action_history))
-    print("actions:", [entry.action_type.value for entry in state.action_history])
+    print("actions:", [entry.action.type.value for entry in state.action_history])
     print("timings:")
     for span in action_spans:
         print(f"- {span.attributes['action_type']}: {span.duration_seconds:.2f}s")
     total_duration = sum(span.duration_seconds for span in action_spans)
     print(f"total action time: {total_duration:.2f}s")
     search_queries = [
-        entry.observation.data["search_queries"][0]
+        entry.observation.search_queries[0]
         for entry in state.action_history
-        if entry.action_type == AgentActionType.SEARCH
+        if entry.action.type == AgentActionType.SEARCH
+        and isinstance(entry.observation, SearchObservation)
     ]
     print("search queries:", search_queries)
     print("search results:", len(state.search_results))
@@ -127,7 +129,10 @@ async def main(*, verbose: bool = False) -> None:
 
     print("observations:")
     for entry in state.action_history:
-        print(f"- {entry.action_type.value}: {entry.observation.data}")
+        print(
+            f"- {entry.action.type.value}: "
+            f"{entry.observation.model_dump(mode='json')}"
+        )
 
 
 if __name__ == "__main__":

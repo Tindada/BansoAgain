@@ -157,9 +157,9 @@ def test_extract_evaluation_result_preserves_multiple_searches() -> None:
     search_entries = [
         entry
         for entry in output.result.state.action_history
-        if entry.action_type.value == "search"
+        if entry.action.type.value == "search"
     ]
-    assert [entry.params["query"] for entry in search_entries] == [
+    assert [entry.action.params["query"] for entry in search_entries] == [
         "AI releases",
         "AI research",
         "AI policy",

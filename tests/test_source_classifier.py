@@ -135,4 +135,4 @@ def test_classifier_marks_unregistered_untyped_source_unknown() -> None:
     assert output.results[0].source is not None
     assert output.results[0].source.type == SourceType.UNKNOWN
     assert output.classifications[0].classification_source == "unknown"
-    assert output.report()["unknown_count"] == 1
+    assert output.report.unknown_count == 1

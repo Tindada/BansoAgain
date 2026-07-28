@@ -5,7 +5,8 @@ from typing import Protocol
 
 from pydantic import BaseModel
 
-from banso.core.state import SearchPlan, UserQuery
+from banso.core.observation import SearchPlan
+from banso.core.state import UserQuery
 
 
 class SearchPlanningRequest(BaseModel):
