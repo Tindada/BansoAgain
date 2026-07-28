@@ -121,6 +121,7 @@ def test_builds_compact_context_from_completed_work() -> None:
         "remaining_searches": 3,
         "remaining_document_reads": 5,
         "max_active_documents": 6,
+        "active_document_overflow": 0,
     }
     assert context.search_history == []
     assert context.work.model_dump() == {

@@ -91,6 +91,7 @@ class BudgetSummary(BaseModel):
     remaining_searches: int
     remaining_document_reads: int
     max_active_documents: int
+    active_document_overflow: int
 
 
 class ResourceWorkSummary(BaseModel):
@@ -256,6 +257,10 @@ class NewsPolicyContextBuilder:
                 remaining_searches=max(state.budget.max_searches - len(search_history), 0),
                 remaining_document_reads=remaining_reads,
                 max_active_documents=state.budget.max_active_documents,
+                active_document_overflow=max(
+                    active_count - state.budget.max_active_documents,
+                    0,
+                ),
             ),
             search_history=search_history,
             work=WorkSummary(

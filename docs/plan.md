@@ -184,7 +184,11 @@ STOP
   累计读取预算。空证据及终态提取失败文档自动成为不可恢复的 unusable，不计为
   Agent 精筛行为。
 - Policy Context 使用 rollout 内稳定的 `D1`、`D2` 短引用供 LLM 选择文档，Policy
-  校验后将引用转换为内部 UUID，LLM 不直接接触 Artifact ID。
+  校验后将引用转换为内部 UUID，LLM 不直接接触 Artifact ID。LLM 通过
+  `active_document_refs` 声明精筛后的完整 active 集合，Policy 根据当前生命周期
+  推导内部的 shelve/reactivate 差异，避免让模型负责状态转换方向。
+- Policy Context 显示 active、shelved、unusable 状态及 active 超限数量；超限时
+  `FINISH` 暂不可用，但 `STOP` 仍作为模型可自主选择的放弃作答动作保留。
 - 输出可校验的结构化 `AgentAction`，不允许生成任意工具调用。
 - `LLMNewsPolicy` 内部使用 `NewsPolicyContextBuilder`，根据 State 和 ArtifactStore
   构造模型可见的决策事实；通用 `Policy` 接口继续只返回 `AgentAction`。

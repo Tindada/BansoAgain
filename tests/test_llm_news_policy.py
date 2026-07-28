@@ -97,10 +97,7 @@ def _select_action(
         (AgentActionType.EXTRACT_EVIDENCE, {}, {}),
         (
             AgentActionType.CURATE_EVIDENCE,
-            {
-                "shelve_document_refs": ["D1"],
-                "reactivate_document_refs": [],
-            },
+            {"active_document_refs": []},
             {
                 "shelve_document_ids": ["document-1"],
                 "reactivate_document_ids": [],
@@ -136,6 +133,23 @@ def test_selects_each_supported_action(
         rationale="Choose the next useful step.",
     )
     assert len(client.requests) == 1
+
+
+def test_curation_reactivates_a_selected_shelved_document() -> None:
+    store, state = _populated_state()
+    state.documents["document-1"].lifecycle_status = "shelved"
+
+    action, _ = _select_action(
+        '{"type":"curate_evidence","params":{"active_document_refs":["D1"]},'
+        '"rationale":"Restore the useful source."}',
+        state,
+        store,
+    )
+
+    assert action.params == {
+        "shelve_document_ids": [],
+        "reactivate_document_ids": ["document-1"],
+    }
 
 
 def test_builds_request_from_bounded_decision_context() -> None:
@@ -190,6 +204,7 @@ def test_builds_request_from_bounded_decision_context() -> None:
         "remaining_searches": 2,
         "remaining_document_reads": 7,
         "max_active_documents": 8,
+        "active_document_overflow": 0,
     }
     assert context["search_history"] == [
         {
@@ -382,26 +397,10 @@ def test_rejects_invalid_search_params(params: dict[str, object]) -> None:
     "params",
     [
         {},
-        {
-            "shelve_document_refs": [],
-            "reactivate_document_refs": [],
-        },
-        {
-            "shelve_document_refs": ["D1", "D1"],
-            "reactivate_document_refs": [],
-        },
-        {
-            "shelve_document_refs": ["D1"],
-            "reactivate_document_refs": ["D1"],
-        },
-        {
-            "shelve_document_refs": ["D2"],
-            "reactivate_document_refs": [],
-        },
-        {
-            "shelve_document_refs": "D1",
-            "reactivate_document_refs": [],
-        },
+        {"active_document_refs": ["D1", "D1"]},
+        {"active_document_refs": ["D2"]},
+        {"active_document_refs": "D1"},
+        {"active_document_refs": ["D1"]},
     ],
 )
 def test_rejects_invalid_curation_refs(params: dict[str, object]) -> None:

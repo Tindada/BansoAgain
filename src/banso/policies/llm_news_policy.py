@@ -66,14 +66,15 @@ ACTION_INSTRUCTIONS = {
     AgentActionType.CURATE_EVIDENCE: (
         "Refine the active evidence working set using query relevance, information "
         "gain, duplication, topic coverage, source quality, useful conflicts, and "
-        'current information gaps. params format: {"shelve_document_refs": '
-        '["<document_ref>"], "reactivate_document_refs": ["<document_ref>"]}. '
-        "Both fields are required. Use only document_ref values shown in the context; "
-        "each array must contain unique values, and the arrays must be disjoint. "
-        "At least one of the two arrays must contain a document_ref. "
-        "Shelve weaker active groups to free slots, reactivate useful shelved groups, "
-        "or atomically exchange both. Only groups with extracted evidence are eligible; "
-        "unusable groups are audit context and cannot be reactivated."
+        'current information gaps. params format: {"active_document_refs": '
+        '["<document_ref>"]}. The array is the complete desired active working set '
+        "after curation, not only the documents whose status should change. Use only "
+        "unique document_ref values whose lifecycle_status is active or shelved. "
+        "Omitting an active group shelves it; including a shelved group reactivates it. "
+        "Unusable groups are audit context and cannot be selected. The array may be "
+        "empty, but it cannot exceed max_active_documents. When "
+        "active_document_overflow is greater than zero, reduce the active working set "
+        "before FINISH can become available."
     ),
     AgentActionType.FINISH: (
         "Synthesize the final answer from collected documents and evidence, "
@@ -294,48 +295,30 @@ class LLMNewsPolicy:
         params: dict[str, Any],
         state: AgentState,
     ) -> dict[str, list[str]]:
-        expected_keys = {"shelve_document_refs", "reactivate_document_refs"}
-        if set(params) != expected_keys:
+        if set(params) != {"active_document_refs"}:
             raise LLMPolicyError(
-                "curate_evidence params must contain exactly "
-                "shelve_document_refs and reactivate_document_refs",
+                "curate_evidence params must contain exactly active_document_refs",
                 reason="invalid_params",
             )
 
-        reference_lists: dict[str, list[str]] = {}
-        for name in expected_keys:
-            references = params[name]
-            if not isinstance(references, list) or not all(
-                isinstance(reference, str) for reference in references
-            ):
-                raise LLMPolicyError(
-                    f"{name} must be a list of strings",
-                    reason="invalid_params",
-                )
-            if len(set(references)) != len(references):
-                raise LLMPolicyError(
-                    f"{name} must contain unique document references",
-                    reason="invalid_params",
-                )
-            reference_lists[name] = references
-
-        shelve_refs = reference_lists["shelve_document_refs"]
-        reactivate_refs = reference_lists["reactivate_document_refs"]
-        if not shelve_refs and not reactivate_refs:
+        active_refs = params["active_document_refs"]
+        if not isinstance(active_refs, list) or not all(
+            isinstance(document_ref, str) for document_ref in active_refs
+        ):
             raise LLMPolicyError(
-                "curate_evidence must change at least one document",
+                "active_document_refs must be a list of strings",
                 reason="invalid_params",
             )
-        if set(shelve_refs) & set(reactivate_refs):
+        if len(set(active_refs)) != len(active_refs):
             raise LLMPolicyError(
-                "curate_evidence document references must be disjoint",
+                "active_document_refs must contain unique document references",
                 reason="invalid_params",
             )
 
         _, ref_to_id = document_reference_maps(state)
         unknown_refs = [
             document_ref
-            for document_ref in [*shelve_refs, *reactivate_refs]
+            for document_ref in active_refs
             if document_ref not in ref_to_id
         ]
         if unknown_refs:
@@ -345,13 +328,25 @@ class LLMNewsPolicy:
                 reason="invalid_params",
             )
 
+        requested_active_set = {
+            ref_to_id[document_ref] for document_ref in active_refs
+        }
+        current_active_set = {
+            document_id
+            for document_id, document in state.documents.items()
+            if document.lifecycle_status == "active"
+        }
+        shelve_ids = list(current_active_set - requested_active_set)
+        reactivate_ids = list(requested_active_set - current_active_set)
+        if not shelve_ids and not reactivate_ids:
+            raise LLMPolicyError(
+                "curate_evidence must change the active document set",
+                reason="invalid_params",
+            )
+
         return {
-            "shelve_document_ids": [
-                ref_to_id[document_ref] for document_ref in shelve_refs
-            ],
-            "reactivate_document_ids": [
-                ref_to_id[document_ref] for document_ref in reactivate_refs
-            ],
+            "shelve_document_ids": shelve_ids,
+            "reactivate_document_ids": reactivate_ids,
         }
 
     @staticmethod
