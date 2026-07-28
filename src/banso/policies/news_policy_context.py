@@ -126,6 +126,13 @@ class ArtifactSummary(BaseModel):
     distinct_evidence_source_count: int
 
 
+class WorkingSetSummary(BaseModel):
+    """Document references grouped by their current curation status."""
+
+    active_document_refs: list[str]
+    shelved_document_refs: list[str]
+
+
 class NewsPolicyContext(BaseModel):
     """Compact, action-oriented facts visible to the LLM news policy."""
 
@@ -135,6 +142,7 @@ class NewsPolicyContext(BaseModel):
     search_history: list[SearchHistoryItem]
     work: WorkSummary
     artifacts: ArtifactSummary
+    working_set: WorkingSetSummary
     candidate_results: list[SearchResultCandidate]
     candidate_documents: list[DocumentCandidate]
     evidence_groups: list[EvidenceGroup]
@@ -308,6 +316,18 @@ class NewsPolicyContextBuilder:
                 active_evidence_count=active_evidence_count,
                 shelved_evidence_count=shelved_evidence_count,
                 distinct_evidence_source_count=len(evidence_domains),
+            ),
+            working_set=WorkingSetSummary(
+                active_document_refs=[
+                    id_to_document_ref[document_id]
+                    for document_id, document in state.documents.items()
+                    if document.lifecycle_status == "active"
+                ],
+                shelved_document_refs=[
+                    id_to_document_ref[document_id]
+                    for document_id, document in state.documents.items()
+                    if document.lifecycle_status == "shelved"
+                ],
             ),
             candidate_results=self._build_search_results(candidate_search_results, fetch_statuses),
             candidate_documents=self._build_documents(

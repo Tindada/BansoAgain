@@ -152,6 +152,10 @@ def test_builds_compact_context_from_completed_work() -> None:
         "shelved_evidence_count": 0,
         "distinct_evidence_source_count": 1,
     }
+    assert context.working_set.model_dump() == {
+        "active_document_refs": ["D1"],
+        "shelved_document_refs": [],
+    }
     assert context.candidate_results == []
     assert context.candidate_documents == []
     assert [group.model_dump() for group in context.evidence_groups] == [
@@ -600,6 +604,10 @@ def test_shelved_evidence_group_uses_the_configured_claim_limit() -> None:
     assert group.claim_previews == ["claim-0", "claim-1", "claim-2"]
     assert group.lifecycle_reason == "Duplicated stronger sources."
     assert group.lifecycle_updated_at_step == 4
+    assert context.working_set.model_dump() == {
+        "active_document_refs": [],
+        "shelved_document_refs": ["D1"],
+    }
     assert context.artifacts.model_dump() == {
         "search_result_count": 0,
         "document_count": 1,

@@ -241,6 +241,10 @@ def test_builds_request_from_bounded_decision_context() -> None:
         "shelved_evidence_count": 0,
         "distinct_evidence_source_count": 1,
     }
+    assert context["working_set"] == {
+        "active_document_refs": ["D1"],
+        "shelved_document_refs": [],
+    }
     assert context["candidate_results"][0]["fetch_status"] == "pending"
     assert context["candidate_results"][0]["source"] == {
         "name": "example.com",
@@ -299,7 +303,10 @@ def test_builds_request_from_bounded_decision_context() -> None:
         "fetch_documents"
     ]
     assert "document_ref" in payload["action_instructions"]["curate_evidence"]
-    assert "only if the returned set differs" in payload["action_instructions"][
+    assert "context.working_set.active_document_refs" in payload["action_instructions"][
+        "curate_evidence"
+    ]
+    assert "merely to confirm the current set" in payload["action_instructions"][
         "curate_evidence"
     ]
 
