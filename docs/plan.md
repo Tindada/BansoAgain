@@ -2,7 +2,7 @@
 
 ## 背景
 
-目标是设计并逐步实现一个“新闻搜索 + 信息筛选 + 总结”的 agent 系统。当前已完成
+目标是设计并逐步实现一个“新闻搜索 + 信息筛选 + 总结”的新闻 Agent。当前已完成
 固定流程 MVP、LLM Policy 所需的 State、Artifact 与 Policy Context、跨 Search
 结果去重和独立 LLM tracing，以及根据这些输入动态选择 Action 的最小
 `LLMNewsPolicy`。规则 Policy 和 LLM Policy 均已接入真实运行入口。

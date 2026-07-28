@@ -1,7 +1,6 @@
 """Simple action executor implementation for smoke testing."""
 
-from banso.core.action import AgentAction, AgentActionType
-from banso.core.observation import Observation
+from banso.core.action import AgentAction, AgentActionType, Observation
 from banso.core.state import AgentState
 
 

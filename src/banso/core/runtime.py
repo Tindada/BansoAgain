@@ -1,13 +1,21 @@
-"""Minimal agent runtime loop."""
+"""Minimal agent runtime loop and result models."""
 
-from pydantic import BaseModel
+from typing import Any
+
+from pydantic import BaseModel, Field
 
 from banso.core.executor import ActionExecutor
 from banso.core.policy import Policy
 from banso.core.reducer import DefaultStateReducer, StateReducer
-from banso.core.result import AgentResult
 from banso.core.state import AgentState
 from banso.tracing import Tracer
+
+
+class AgentResult(BaseModel):
+    """Final result returned by an agent run."""
+
+    state: AgentState
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class RuntimeRunResult(BaseModel):

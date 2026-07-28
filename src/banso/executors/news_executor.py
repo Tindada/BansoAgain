@@ -3,14 +3,13 @@
 import asyncio
 
 from banso.artifacts import ArtifactStore
-from banso.core.action import AgentAction, AgentActionType
+from banso.core.action import AgentAction, AgentActionType, Observation
 from banso.core.lifecycle import (
     active_document_count,
     eligible_extraction_document_ids,
     eligible_read_result_ids,
     remaining_document_reads,
 )
-from banso.core.observation import Observation
 from banso.core.state import AgentState
 from banso.documents import (
     Document,

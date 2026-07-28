@@ -3,7 +3,7 @@
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, JsonValue
 
 
 class AgentActionType(StrEnum):
@@ -26,3 +26,9 @@ class AgentAction(BaseModel):
     type: AgentActionType
     params: dict[str, Any] = Field(default_factory=dict)
     rationale: str | None = None
+
+
+class Observation(BaseModel):
+    """Structured result returned after executing an action."""
+
+    data: dict[str, JsonValue] = Field(default_factory=dict)

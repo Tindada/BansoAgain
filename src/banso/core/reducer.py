@@ -3,9 +3,8 @@
 from copy import deepcopy
 from typing import Protocol
 
-from banso.core.action import AgentAction, AgentActionType
+from banso.core.action import AgentAction, AgentActionType, Observation
 from banso.core.lifecycle import progress_status
-from banso.core.observation import Observation
 from banso.core.state import (
     ActionHistoryEntry,
     AgentState,
