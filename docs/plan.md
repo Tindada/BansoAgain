@@ -26,7 +26,7 @@
 - 已初始化 Python 项目结构，并使用 `uv` 管理依赖。
 - 已定义核心 runtime、state、action、policy、executor、reducer、result 等基础模块。
 - 已实现最小 `AgentRuntime` 主循环，支持 policy 决策、executor 执行、reducer 更新状态和 trace 收集。
-- 已实现新闻场景的固定流程 policy：搜索、读取文档、抽取 evidence、生成总结。
+- 已实现新闻场景的固定流程 policy：搜索、获取文档、抽取 evidence、生成总结。
 - 已实现最小 `LLMNewsPolicy`，由 LLM 根据有界 Policy Context、可用 action 和剩余
   预算选择结构化 `AgentAction`，并校验动作参数、搜索预算和重复 query；Action
   availability 由资源生命周期和剩余额度决定。
@@ -38,10 +38,10 @@
 - 已通过 provider-independent 的 `TracingLLMClient` 统一记录 LLM 实际输入、原始
   provider 响应、completion 和 token usage；业务解析结果继续保存在对应
   Observation、Artifact 或外层 Span 中。
-- 已实现可替换的 retrieval、document reader、evidence extractor、synthesizer 和 LLM client 接口及部分实现。
-- 已接入 Tavily retrieval、HTTP document reader、OpenAI SDK LLM client、LLM evidence extractor 和 LLM synthesizer。
-- HTTP document reader 会在解析正文前校验响应 Content-Type，仅将 HTML/XHTML
-  交给现有 HTML 提取逻辑，其他类型作为明确的文档读取失败记录。
+- 已实现可替换的 retrieval、document fetcher、evidence extractor、synthesizer 和 LLM client 接口及部分实现。
+- 已接入 Tavily retrieval、HTTP document fetcher、OpenAI SDK LLM client、LLM evidence extractor 和 LLM synthesizer。
+- HTTP document fetcher 会在解析正文前校验响应 Content-Type，仅将 HTML/XHTML
+  交给现有 HTML 提取逻辑，其他类型作为明确的文档获取失败记录。
 - 已实现超长文档的分块 evidence extraction，并隔离单篇文档的 LLM 提取失败。
 - LLM evidence extraction 为单篇文档设置最大 chunk 数，超过上限时在调用 LLM 前
   将该文档记录为 `document_too_large`，避免异常文档无上限占用执行时间。
@@ -49,14 +49,14 @@
   classifier，以及基础 artifact store。
 - Search 结果和文档已通过 State 中的标准化 URL 索引实现去重，同一 URL 复用首次
   保存的 artifact；单次 Search 内部的重复结果继续由 retrieval filter 过滤。
-- Retrieval filter 仅允许可由当前文档读取链路直接消费的绝对 HTTP(S) URL，非法
+- Retrieval filter 仅允许可由当前文档获取链路直接消费的绝对 HTTP(S) URL，非法
   URL 会在保存 artifact 前被丢弃并记录分类计数。
 - 已实现与业务模型解耦的 `SpanRecord`、`Tracer` 和 `InMemoryTraceSink`，通过
   `ContextVar` 传播当前 Span，并以 `trace_id` 关联运行结果和执行轨迹。
 - `AgentState` 是运行进度的权威记录，保存 Action/Observation 历史、artifact ID、
   URL 索引、最终答案和 citations，并在初始化时固定本次运行使用的 UTC
   `reference_time`；完整 artifact 继续由 `ArtifactStore` 保存。
-- State 分别记录每个 Search Result 的读取进度，以及每个 Document 的证据提取进度、
+- State 分别记录每个 Search Result 的文档获取进度，以及每个 Document 的证据提取进度、
   Evidence ID 和可选的 active/shelved/unusable 生命周期；未完成提取时生命周期为
   `None`，成功形成 Evidence 后成为 active，空证据或终态失败成为 unusable，
   shelved 只来自 Agent 精筛。
@@ -68,7 +68,7 @@
   LLM Search Planner 将其加入 prompt，作为解释“最近”“本周”等相对时间的统一基准。
 - Runtime 已分别使用 Policy、Executor 和 Reducer 子 Span 记录耗时；失败 Span
   记录异常类型和信息，Trace 自身失败不会改变业务执行结果。
-- 已补充覆盖核心 runtime、新闻执行器、retrieval、document reader、LLM 配置和 LLM 组件的测试。
+- 已补充覆盖核心 runtime、新闻执行器、retrieval、document fetcher、LLM 配置和 LLM 组件的测试。
 
 ## 阶段 1：系统架构设计
 
@@ -89,7 +89,7 @@ Policy
 AgentState
 AgentAction
 RetrievalProvider
-DocumentReader
+DocumentFetcher
 DocumentRanker
 EvidenceExtractor
 Synthesizer
@@ -151,7 +151,7 @@ tracer 记录运行边界 Span
 - Query 分析
 - 生成搜索 query
 - 调用搜索 provider
-- 读取文档
+- 获取文档
 - 筛选相关文档
 - 抽取 evidence
 - 多源总结
@@ -166,7 +166,7 @@ LLM policy 第一版使用受约束的动作空间：
 
 ```text
 SEARCH
-READ_DOCUMENT
+FETCH_DOCUMENTS
 EXTRACT_EVIDENCE
 CURATE_EVIDENCE
 FINISH
@@ -181,7 +181,7 @@ STOP
 - `FINISH` 生成最终答案并终止运行；`STOP` 不生成新答案，直接终止运行。
 - `CURATE_EVIDENCE` 允许 LLM 根据相关性、信息增量、重复程度、覆盖缺口和来源质量，
   在已有 Evidence 的文档组之间进行 active/shelved 精筛；搁置不会删除产物或返还
-  累计读取预算。空证据及终态提取失败文档自动成为不可恢复的 unusable，不计为
+  累计获取预算。空证据及终态提取失败文档自动成为不可恢复的 unusable，不计为
   Agent 精筛行为。
 - Policy Context 使用 rollout 内稳定的 `D1`、`D2` 短引用供 LLM 选择文档，Policy
   校验后将引用转换为内部 UUID，LLM 不直接接触 Artifact ID。LLM 通过
@@ -198,7 +198,7 @@ STOP
   是否增加纠正重试由 evaluation 结果决定。
 - 记录 action 选择所需的简短 decision metadata，保证行为可审计。
 - 继续使用固定流程 policy 作为 baseline，而不是直接替换或删除。
-- 累计文档预算只约束搜索可用性和读取执行边界；active 文档上限只约束精筛后的
+- 累计文档获取预算只约束搜索可用性和获取执行边界；active 文档上限只约束精筛后的
   Evidence 工作集及 `FINISH`。最大步骤数、搜索数和 token/cost 预算继续独立生效。
 
 当前已完成最小 Policy、资源生命周期约束、精简的显式 Policy Context、确定性输出
@@ -332,7 +332,7 @@ Rollout 必须保存 LLM 实际接收的 prompt/messages、原始 completion、�
 
 ## 已知问题
 
-### 文档读取与异常处理
+### 文档获取与异常处理
 
 - HTTP 429、可恢复的 5xx、超时和连接错误尚未实现有上限的重试，也缺少按
   失败类别聚合的指标和持久化日志。
@@ -354,7 +354,7 @@ Rollout 必须保存 LLM 实际接收的 prompt/messages、原始 completion、�
   影响业务执行的诊断日志。
 - Evaluation 当前仍从 `agent.step` Span 的输出还原 Action 和 Observation。二者已经
   存在于 `AgentState.action_history`，后续应以 State 作为业务事实来源，只从 Span
-  读取阶段耗时、失败和 LLM usage 等观测数据，避免评估结果依赖 best-effort Trace。
+  获取阶段耗时、失败和 LLM usage 等观测数据，避免评估结果依赖 best-effort Trace。
 
 ### 检索规划
 

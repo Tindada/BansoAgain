@@ -26,17 +26,17 @@ def active_document_count(state: AgentState) -> int:
     return sum(document.lifecycle_status == "active" for document in state.documents.values())
 
 
-def remaining_document_reads(state: AgentState) -> int:
+def remaining_document_fetches(state: AgentState) -> int:
     """Return the number of unique documents the run may still collect."""
-    return max(state.budget.max_documents_to_read - len(state.documents), 0)
+    return max(state.budget.max_document_fetches - len(state.documents), 0)
 
 
-def eligible_read_result_ids(state: AgentState) -> list[str]:
-    """Return unread results followed by retryable read failures."""
+def eligible_fetch_result_ids(state: AgentState) -> list[str]:
+    """Return unfetched results followed by retryable fetch failures."""
     pending: list[str] = []
     retryable: list[str] = []
     for result_id, result in state.search_results.items():
-        status = progress_status(result, state.budget.max_read_attempts)
+        status = progress_status(result, state.budget.max_fetch_attempts)
         if status == "pending":
             pending.append(result_id)
         elif status == "retryable":

@@ -23,7 +23,7 @@ from banso.core import (
     SearchResultState,
     UserQuery,
 )
-from banso.documents import FakeDocumentReader, FakeEvidenceExtractor
+from banso.documents import FakeDocumentFetcher, FakeEvidenceExtractor
 from banso.executors import NewsActionExecutor
 from banso.policies import NewsRuleBasedPolicy
 from banso.retrieval import (
@@ -53,7 +53,7 @@ def _news_executor(
     return NewsActionExecutor(
         store=InMemoryArtifactStore(),
         retrieval_provider=FakeRetrievalProvider(),
-        document_reader=FakeDocumentReader(),
+        document_fetcher=FakeDocumentFetcher(),
         evidence_extractor=FakeEvidenceExtractor(),
         synthesizer=FakeSynthesizer(),
         search_query_planner=search_query_planner,
@@ -302,7 +302,7 @@ def test_rule_policy_uses_resource_lifecycle_after_searching() -> None:
     )
 
     action = asyncio.run(policy.select_action(state))
-    assert action.type == AgentActionType.READ_DOCUMENT
+    assert action.type == AgentActionType.FETCH_DOCUMENTS
 
     state.search_results["result-1"] = SearchResultState(
         attempt_count=1,
@@ -332,7 +332,7 @@ def test_rule_policy_retries_eligible_failure() -> None:
 
     action = asyncio.run(NewsRuleBasedPolicy().select_action(state))
 
-    assert action.type == AgentActionType.READ_DOCUMENT
+    assert action.type == AgentActionType.FETCH_DOCUMENTS
 
 
 @pytest.mark.parametrize(
@@ -417,7 +417,7 @@ def test_runtime_executes_bounded_search_plan_in_order() -> None:
         AgentActionType.PLAN_SEARCH,
         AgentActionType.SEARCH,
         AgentActionType.SEARCH,
-        AgentActionType.READ_DOCUMENT,
+        AgentActionType.FETCH_DOCUMENTS,
         AgentActionType.EXTRACT_EVIDENCE,
         AgentActionType.FINISH,
     ]

@@ -44,7 +44,7 @@ def test_retrieval_filter_preserves_order_and_limits_results() -> None:
     assert output.report.truncated_count == 1
 
 
-def test_retrieval_filter_drops_urls_that_cannot_be_read_over_http() -> None:
+def test_retrieval_filter_drops_urls_that_cannot_be_fetched_over_http() -> None:
     results = [
         SearchResult(title="Relative redirect", url="/goto?url=opaque-token"),
         SearchResult(title="Protocol relative", url="//example.com/article"),

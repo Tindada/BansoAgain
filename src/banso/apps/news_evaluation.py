@@ -58,7 +58,7 @@ class NewsEvaluationResult(BaseModel):
     source_types: list[str] = Field(default_factory=list)
     preferred_source_types: list[str] = Field(default_factory=list)
     preferred_source_type_match: bool = False
-    document_read_failures: list[dict[str, Any]] = Field(default_factory=list)
+    document_fetch_failures: list[dict[str, Any]] = Field(default_factory=list)
     evidence_extraction_failures: list[dict[str, Any]] = Field(default_factory=list)
     step_durations: dict[str, float] = Field(default_factory=dict)
     total_action_seconds: float = 0.0
@@ -114,14 +114,14 @@ def extract_evaluation_result(
         for entry in state.action_history
     )
     steps = _completed_steps(spans)
-    document_read_failures = [
+    document_fetch_failures = [
         {
             "search_result_id": outcome["search_result_id"],
             **failure,
         }
         for action, observation in steps
-        if action.type == AgentActionType.READ_DOCUMENT
-        for outcome in observation.data.get("read_outcomes", [])
+        if action.type == AgentActionType.FETCH_DOCUMENTS
+        for outcome in observation.data.get("fetch_outcomes", [])
         if (failure := outcome.get("failure")) is not None
     ]
     evidence_extraction_failures = [
@@ -226,7 +226,7 @@ def extract_evaluation_result(
         source_types=source_types,
         preferred_source_types=case.preferred_source_types,
         preferred_source_type_match=preferred_source_type_match,
-        document_read_failures=document_read_failures,
+        document_fetch_failures=document_fetch_failures,
         evidence_extraction_failures=evidence_extraction_failures,
         step_durations=step_durations,
         total_action_seconds=total_action_seconds,

@@ -102,7 +102,7 @@ def test_builds_compact_context_from_completed_work() -> None:
     state.budget = ExecutionBudget(
         max_steps=10,
         max_searches=3,
-        max_documents_to_read=6,
+        max_document_fetches=6,
     )
 
     context = NewsPolicyContextBuilder(_populated_store()).build(state)
@@ -119,13 +119,13 @@ def test_builds_compact_context_from_completed_work() -> None:
     assert context.budget.model_dump() == {
         "remaining_steps": 6,
         "remaining_searches": 3,
-        "remaining_document_reads": 5,
+        "remaining_document_fetches": 5,
         "max_active_documents": 6,
         "active_document_overflow": 0,
     }
     assert context.search_history == []
     assert context.work.model_dump() == {
-        "read": {
+        "fetch": {
             "pending": 0,
             "retryable": 0,
             "failed": 0,
@@ -203,8 +203,8 @@ def test_builds_compact_search_history_without_raw_action_details() -> None:
         ),
         ActionHistoryEntry(
             step_index=1,
-            action_type=AgentActionType.READ_DOCUMENT,
-            observation=Observation(data={"private": "hidden read data"}),
+            action_type=AgentActionType.FETCH_DOCUMENTS,
+            observation=Observation(data={"private": "hidden fetch data"}),
         ),
     ]
 
@@ -224,7 +224,7 @@ def test_builds_compact_search_history_without_raw_action_details() -> None:
     serialized = context.model_dump_json()
     assert "step_index" not in serialized
     assert "candidate_count" not in serialized
-    assert "hidden read data" not in serialized
+    assert "hidden fetch data" not in serialized
 
 
 def test_exposes_only_actionable_resources_and_aggregates_failures() -> None:
@@ -300,7 +300,7 @@ def test_exposes_only_actionable_resources_and_aggregates_failures() -> None:
 
     context = NewsPolicyContextBuilder(store).build(state)
 
-    assert context.work.read.model_dump() == {
+    assert context.work.fetch.model_dump() == {
         "pending": 1,
         "retryable": 1,
         "failed": 1,
@@ -320,7 +320,7 @@ def test_exposes_only_actionable_resources_and_aggregates_failures() -> None:
     assert context.work.extracted_without_evidence == 1
     assert context.artifacts.unusable_document_count == 2
     assert [
-        (result.title, result.read_status)
+        (result.title, result.fetch_status)
         for result in context.candidate_results
     ] == [
         ("result-pending", "pending"),
@@ -359,7 +359,7 @@ def test_candidate_limits_do_not_change_actionable_or_artifact_counts() -> None:
         )
     state = AgentState(
         query=UserQuery(text="query"),
-        budget=ExecutionBudget(max_documents_to_read=2),
+        budget=ExecutionBudget(max_document_fetches=2),
         search_results={
             result_id: SearchResultState() for result_id in result_ids
         },
@@ -370,7 +370,7 @@ def test_candidate_limits_do_not_change_actionable_or_artifact_counts() -> None:
         max_search_results=1,
     ).build(state)
 
-    assert context.work.read.actionable == 2
+    assert context.work.fetch.actionable == 2
     assert context.artifacts.search_result_count == 3
     assert [result.title for result in context.candidate_results] == [
         "result-2"

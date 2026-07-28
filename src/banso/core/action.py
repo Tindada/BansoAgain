@@ -11,7 +11,7 @@ class AgentActionType(StrEnum):
 
     PLAN_SEARCH = "plan_search"
     SEARCH = "search"
-    READ_DOCUMENT = "read_document"
+    FETCH_DOCUMENTS = "fetch_documents"
     # RANK_DOCUMENTS = "rank_documents"
     EXTRACT_EVIDENCE = "extract_evidence"
     CURATE_EVIDENCE = "curate_evidence"

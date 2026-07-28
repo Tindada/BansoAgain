@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from banso.artifacts import InMemoryArtifactStore
 from banso.core import AgentRuntime
-from banso.documents import HTTPDocumentReader, LLMEvidenceExtractor
+from banso.documents import HTTPDocumentFetcher, LLMEvidenceExtractor
 from banso.executors import NewsActionExecutor
 from banso.llm import (
     ThinkingTagStrippingLLMClient,
@@ -74,7 +74,7 @@ def build_real_news_runtime() -> RealNewsRuntimeBundle:
         executor=NewsActionExecutor(
             store=store,
             retrieval_provider=build_tavily_provider_from_env(),
-            document_reader=HTTPDocumentReader(),
+            document_fetcher=HTTPDocumentFetcher(),
             evidence_extractor=LLMEvidenceExtractor(client=local_llm_client),
             synthesizer=LLMSynthesizer(client=external_llm_client),
             search_query_planner=LLMSearchQueryPlanner(client=external_llm_client),

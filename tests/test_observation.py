@@ -12,10 +12,10 @@ def test_observation_defaults_to_empty_data() -> None:
 def test_observation_round_trips_as_json() -> None:
     observation = Observation(
         data={
-            "successfully_read_document_count": 1,
+            "successfully_fetched_document_count": 1,
             "failed_document_count": 1,
             "document_ids": ["document-1"],
-            "document_read_failures": [
+            "document_fetch_failures": [
                 {"reason": "timeout", "url": "https://example.com"}
             ],
         },

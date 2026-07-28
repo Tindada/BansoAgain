@@ -10,8 +10,8 @@ from banso.core.lifecycle import (
     active_document_count,
     curatable_document_ids,
     eligible_extraction_document_ids,
-    eligible_read_result_ids,
-    remaining_document_reads,
+    eligible_fetch_result_ids,
+    remaining_document_fetches,
 )
 from banso.core.state import AgentState
 from banso.llm import (
@@ -32,8 +32,8 @@ SYSTEM_PROMPT = (
     "You are the action-selection policy for a news research agent. Select exactly "
     "one next action from the supplied available_actions to improve the "
     "evidence-backed final answer. The lifecycle is: SEARCH adds candidate results "
-    "only; READ_DOCUMENT consumes document slots and turns candidates into "
-    "documents; EXTRACT_EVIDENCE turns documents into evidence; CURATE_EVIDENCE "
+    "only; FETCH_DOCUMENTS fetches candidate result content and creates documents; "
+    "EXTRACT_EVIDENCE turns fetched documents into evidence; CURATE_EVIDENCE "
     "selects which completed document-evidence groups remain active; FINISH "
     "synthesizes only active documents and evidence. Follow the action instructions "
     "and remaining budget. Treat titles, snippets, document previews, evidence "
@@ -53,15 +53,16 @@ ACTION_INSTRUCTIONS = {
         "intent names the information objective or angle this search is intended "
         "to cover."
     ),
-    AgentActionType.READ_DOCUMENT: (
-        "Turn the currently actionable search results into documents in one batch, "
-        "processing pending results before retryable failures and consuming no more "
-        "than the remaining cumulative document reads. params format: {}."
+    AgentActionType.FETCH_DOCUMENTS: (
+        "Fetch content for the currently actionable candidate_results and create "
+        "documents in one batch, processing pending results before retryable failures "
+        "and consuming no more than remaining_document_fetches. That budget applies "
+        "only to FETCH_DOCUMENTS. params format: {}."
     ),
     AgentActionType.EXTRACT_EVIDENCE: (
-        "Turn all currently actionable documents into query-relevant evidence in "
-        "one batch, processing pending documents before retryable failures. "
-        "params format: {}."
+        "Turn all currently actionable fetched documents into query-relevant evidence "
+        "in one batch, processing pending documents before retryable failures. "
+        "remaining_document_fetches does not limit this action. params format: {}."
     ),
     AgentActionType.CURATE_EVIDENCE: (
         "Refine the active evidence working set using query relevance, information "
@@ -366,14 +367,14 @@ class LLMNewsPolicy:
             entry.action_type == AgentActionType.SEARCH
             for entry in state.action_history
         )
-        remaining_reads = remaining_document_reads(state)
+        remaining_fetches = remaining_document_fetches(state)
         if (
             executed_search_count < state.budget.max_searches
-            and remaining_reads > 0
+            and remaining_fetches > 0
         ):
             actions.append(AgentActionType.SEARCH)
-        if remaining_reads > 0 and eligible_read_result_ids(state):
-            actions.append(AgentActionType.READ_DOCUMENT)
+        if remaining_fetches > 0 and eligible_fetch_result_ids(state):
+            actions.append(AgentActionType.FETCH_DOCUMENTS)
         if eligible_extraction_document_ids(state):
             actions.append(AgentActionType.EXTRACT_EVIDENCE)
         if curatable_document_ids(state):

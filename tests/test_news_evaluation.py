@@ -19,7 +19,7 @@ from banso.core import (
     SearchPlan,
     UserQuery,
 )
-from banso.documents import FakeDocumentReader, FakeEvidenceExtractor
+from banso.documents import FakeDocumentFetcher, FakeEvidenceExtractor
 from banso.executors import NewsActionExecutor
 from banso.policies import NewsRuleBasedPolicy
 from banso.retrieval import (
@@ -59,7 +59,7 @@ async def _extract_successful_evaluation_result():
         executor=NewsActionExecutor(
             store=store,
             retrieval_provider=FakeRetrievalProvider(),
-            document_reader=FakeDocumentReader(),
+            document_fetcher=FakeDocumentFetcher(),
             evidence_extractor=FakeEvidenceExtractor(),
             synthesizer=FakeSynthesizer(),
         ),
@@ -96,7 +96,7 @@ def test_extract_evaluation_result() -> None:
     assert set(result.step_durations) == {
         "plan_search",
         "search",
-        "read_document",
+        "fetch_documents",
         "extract_evidence",
         "finish",
     }
@@ -126,7 +126,7 @@ async def _extract_multi_search_evaluation_result():
         executor=NewsActionExecutor(
             store=store,
             retrieval_provider=FakeRetrievalProvider(),
-            document_reader=FakeDocumentReader(),
+            document_fetcher=FakeDocumentFetcher(),
             evidence_extractor=FakeEvidenceExtractor(),
             synthesizer=FakeSynthesizer(),
             search_query_planner=ThreeQueryPlanner(),
@@ -209,7 +209,7 @@ async def _extract_unknown_source_evaluation_result():
         executor=NewsActionExecutor(
             store=store,
             retrieval_provider=UnknownSourceRetrievalProvider(),
-            document_reader=FakeDocumentReader(),
+            document_fetcher=FakeDocumentFetcher(),
             evidence_extractor=FakeEvidenceExtractor(),
             synthesizer=FakeSynthesizer(),
         ),

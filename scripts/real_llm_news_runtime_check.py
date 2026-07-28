@@ -1,6 +1,6 @@
 """Manual smoke check for the news runtime with a real LLM client.
 
-Retrieval and document reading remain fake. Evidence extraction and synthesis
+Retrieval and document fetching remain fake. Evidence extraction and synthesis
 use OpenAISDKLLMClient.
 
 Run with:
@@ -16,7 +16,7 @@ from banso.artifacts import InMemoryArtifactStore
 from banso.core import AgentRuntime, AgentState, UserQuery
 from banso.documents import (
     Document,
-    DocumentReadRequest,
+    DocumentFetchRequest,
     EvidenceItem,
     LLMEvidenceExtractor,
 )
@@ -32,8 +32,8 @@ from banso.synthesis import LLMSynthesizer
 from banso.tracing import InMemoryTraceSink, Tracer
 
 
-class SampleNewsDocumentReader:
-    async def read(self, request: DocumentReadRequest) -> Document:
+class SampleNewsDocumentFetcher:
+    async def fetch(self, request: DocumentFetchRequest) -> Document:
         return Document(
             url=request.url,
             title=request.title or "Sample AI news report",
@@ -64,7 +64,7 @@ async def main() -> None:
         executor=NewsActionExecutor(
             store=store,
             retrieval_provider=FakeRetrievalProvider(),
-            document_reader=SampleNewsDocumentReader(),
+            document_fetcher=SampleNewsDocumentFetcher(),
             evidence_extractor=LLMEvidenceExtractor(client=evidence_llm_client),
             synthesizer=LLMSynthesizer(client=external_llm_client),
         ),

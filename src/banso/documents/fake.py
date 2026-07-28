@@ -3,13 +3,13 @@
 from banso.core.state import UserQuery
 from banso.documents.extractor import EvidenceExtractionRequest
 from banso.documents.models import Document, EvidenceItem
-from banso.documents.reader import DocumentReadRequest
+from banso.documents.fetcher import DocumentFetchRequest
 
 
-class FakeDocumentReader:
+class FakeDocumentFetcher:
     """Returns deterministic documents without fetching remote content."""
 
-    async def read(self, request: DocumentReadRequest) -> Document:
+    async def fetch(self, request: DocumentFetchRequest) -> Document:
         title = request.title or "Fake document"
         return Document(
             url=request.url,

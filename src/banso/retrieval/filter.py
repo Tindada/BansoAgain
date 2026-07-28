@@ -71,7 +71,7 @@ class RetrievalFilter:
                 report.dropped_empty_url += 1
                 continue
 
-            if not _is_readable_http_url(url):
+            if not _is_fetchable_http_url(url):
                 report.dropped_invalid_url += 1
                 continue
 
@@ -95,8 +95,8 @@ class RetrievalFilter:
         return RetrievalFilterResult(results=filtered, report=report)
 
 
-def _is_readable_http_url(url: str) -> bool:
-    """Return whether a URL can be passed directly to an HTTP document reader."""
+def _is_fetchable_http_url(url: str) -> bool:
+    """Return whether a URL can be passed directly to an HTTP document fetcher."""
 
     try:
         parsed = urlsplit(url)

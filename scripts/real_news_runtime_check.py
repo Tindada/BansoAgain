@@ -1,6 +1,6 @@
 """Manual end-to-end smoke check for the real news runtime path.
 
-This uses real Tavily search, real HTTP document reading, and a real LLM client.
+This uses real Tavily search, real HTTP document fetching, and a real LLM client.
 
 Run with:
 UV_CACHE_DIR=.uv-cache uv run python scripts/real_news_runtime_check.py

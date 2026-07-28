@@ -13,9 +13,9 @@ from banso.core.lifecycle import (
     LifecycleStatus,
     active_document_count,
     eligible_extraction_document_ids,
-    eligible_read_result_ids,
+    eligible_fetch_result_ids,
     progress_status,
-    remaining_document_reads,
+    remaining_document_fetches,
 )
 from banso.core.state import (
     ActionHistoryEntry,
@@ -41,13 +41,13 @@ class PolicySourceView(BaseModel):
 
 
 class SearchResultCandidate(BaseModel):
-    """One search result actionable by the next read operation."""
+    """One search result actionable by the next fetch operation."""
 
     title: str
     snippet: str | None = None
     source: PolicySourceView
     published_at: datetime | None = None
-    read_status: LifecycleStatus
+    fetch_status: LifecycleStatus
 
 
 class DocumentCandidate(BaseModel):
@@ -89,7 +89,7 @@ class BudgetSummary(BaseModel):
 
     remaining_steps: int
     remaining_searches: int
-    remaining_document_reads: int
+    remaining_document_fetches: int
     max_active_documents: int
     active_document_overflow: int
 
@@ -105,9 +105,9 @@ class ResourceWorkSummary(BaseModel):
 
 
 class WorkSummary(BaseModel):
-    """Actionable read and extraction work."""
+    """Actionable fetch and extraction work."""
 
-    read: ResourceWorkSummary
+    fetch: ResourceWorkSummary
     extraction: ResourceWorkSummary
     extracted_without_evidence: int
 
@@ -198,10 +198,10 @@ class NewsPolicyContextBuilder:
             for entry in state.action_history
             if entry.action_type == AgentActionType.SEARCH
         ]
-        read_statuses = {
+        fetch_statuses = {
             search_result_id: progress_status(
                 result,
-                state.budget.max_read_attempts,
+                state.budget.max_fetch_attempts,
             )
             for search_result_id, result in state.search_results.items()
         }
@@ -212,19 +212,19 @@ class NewsPolicyContextBuilder:
             )
             for document_id, document in state.documents.items()
         }
-        read_counts = Counter(read_statuses.values())
+        fetch_counts = Counter(fetch_statuses.values())
         extraction_counts = Counter(extraction_statuses.values())
         evidence_count_by_document_id = {
             document_id: len(evidence_items)
             for document_id, evidence_items in evidence_items_by_document_id.items()
         }
         id_to_document_ref, _ = document_reference_maps(state)
-        remaining_reads = remaining_document_reads(state)
-        actionable_read_ids = eligible_read_result_ids(state)[:remaining_reads]
+        remaining_fetches = remaining_document_fetches(state)
+        actionable_fetch_ids = eligible_fetch_result_ids(state)[:remaining_fetches]
         actionable_extraction_ids = eligible_extraction_document_ids(state)
         candidate_search_results = [
             search_result_by_id[search_result_id]
-            for search_result_id in actionable_read_ids
+            for search_result_id in actionable_fetch_ids
         ]
         candidate_documents = [
             document_by_id[document_id]
@@ -255,7 +255,7 @@ class NewsPolicyContextBuilder:
             budget=BudgetSummary(
                 remaining_steps=max(state.budget.max_steps - state.current_step, 0),
                 remaining_searches=max(state.budget.max_searches - len(search_history), 0),
-                remaining_document_reads=remaining_reads,
+                remaining_document_fetches=remaining_fetches,
                 max_active_documents=state.budget.max_active_documents,
                 active_document_overflow=max(
                     active_count - state.budget.max_active_documents,
@@ -264,11 +264,11 @@ class NewsPolicyContextBuilder:
             ),
             search_history=search_history,
             work=WorkSummary(
-                read=ResourceWorkSummary(
-                    pending=read_counts["pending"],
-                    retryable=read_counts["retryable"],
-                    failed=read_counts["failed"],
-                    actionable=len(actionable_read_ids),
+                fetch=ResourceWorkSummary(
+                    pending=fetch_counts["pending"],
+                    retryable=fetch_counts["retryable"],
+                    failed=fetch_counts["failed"],
+                    actionable=len(actionable_fetch_ids),
                     failure_reasons=self._failure_reasons(
                         result
                         for result in state.search_results.values()
@@ -309,7 +309,7 @@ class NewsPolicyContextBuilder:
                 shelved_evidence_count=shelved_evidence_count,
                 distinct_evidence_source_count=len(evidence_domains),
             ),
-            candidate_results=self._build_search_results(candidate_search_results, read_statuses),
+            candidate_results=self._build_search_results(candidate_search_results, fetch_statuses),
             candidate_documents=self._build_documents(
                 candidate_documents,
                 extraction_statuses,
@@ -338,7 +338,7 @@ class NewsPolicyContextBuilder:
                 ),
                 source=self._build_source(search_result.source, search_result.url),
                 published_at=search_result.published_at,
-                read_status=statuses[search_result.id],
+                fetch_status=statuses[search_result.id],
             )
             for search_result in search_results[: self.max_search_results]
         ]

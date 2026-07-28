@@ -15,7 +15,7 @@ from banso.core import (
     SearchPlan,
     UserQuery,
 )
-from banso.documents import FakeDocumentReader, FakeEvidenceExtractor
+from banso.documents import FakeDocumentFetcher, FakeEvidenceExtractor
 from banso.executors import NewsActionExecutor
 from banso.llm import FakeLLMClient, LLMMessageRole
 from banso.llm.tracing import TracingLLMClient
@@ -143,7 +143,7 @@ async def _run_news_runtime_with_llm_plan():
         executor=NewsActionExecutor(
             store=InMemoryArtifactStore(),
             retrieval_provider=FakeRetrievalProvider(),
-            document_reader=FakeDocumentReader(),
+            document_fetcher=FakeDocumentFetcher(),
             evidence_extractor=FakeEvidenceExtractor(),
             synthesizer=FakeSynthesizer(),
             search_query_planner=LLMSearchQueryPlanner(client=client),

@@ -13,7 +13,7 @@ from banso.documents import (
     EvidenceExtractionRequest,
     EvidenceItem,
 )
-from banso.documents.fake import FakeDocumentReader
+from banso.documents.fake import FakeDocumentFetcher
 from banso.executors import NewsActionExecutor
 from banso.retrieval import FakeRetrievalProvider
 from banso.synthesis import FakeSynthesizer
@@ -102,7 +102,7 @@ async def _run_extraction_respects_concurrency_and_document_order() -> None:
     executor = NewsActionExecutor(
         store=store,
         retrieval_provider=FakeRetrievalProvider(),
-        document_reader=FakeDocumentReader(),
+        document_fetcher=FakeDocumentFetcher(),
         evidence_extractor=extractor,
         synthesizer=FakeSynthesizer(),
         max_extraction_concurrency=2,
@@ -140,7 +140,7 @@ def test_extraction_concurrency_must_be_positive() -> None:
         NewsActionExecutor(
             store=InMemoryArtifactStore(),
             retrieval_provider=FakeRetrievalProvider(),
-            document_reader=FakeDocumentReader(),
+            document_fetcher=FakeDocumentFetcher(),
             evidence_extractor=TrackingEvidenceExtractor(),
             synthesizer=FakeSynthesizer(),
             max_extraction_concurrency=0,
@@ -161,7 +161,7 @@ async def _run_extraction_rejects_misassigned_evidence() -> None:
     executor = NewsActionExecutor(
         store=store,
         retrieval_provider=FakeRetrievalProvider(),
-        document_reader=FakeDocumentReader(),
+        document_fetcher=FakeDocumentFetcher(),
         evidence_extractor=MisassignedEvidenceExtractor(),
         synthesizer=FakeSynthesizer(),
     )
@@ -194,7 +194,7 @@ async def _run_extraction_isolates_known_failures() -> None:
     executor = NewsActionExecutor(
         store=store,
         retrieval_provider=FakeRetrievalProvider(),
-        document_reader=FakeDocumentReader(),
+        document_fetcher=FakeDocumentFetcher(),
         evidence_extractor=PartiallyFailingEvidenceExtractor(),
         synthesizer=FakeSynthesizer(),
     )
@@ -264,7 +264,7 @@ async def _run_extraction_reports_failed_when_all_documents_fail() -> None:
     executor = NewsActionExecutor(
         store=store,
         retrieval_provider=FakeRetrievalProvider(),
-        document_reader=FakeDocumentReader(),
+        document_fetcher=FakeDocumentFetcher(),
         evidence_extractor=FailingEvidenceExtractor(),
         synthesizer=FakeSynthesizer(),
     )

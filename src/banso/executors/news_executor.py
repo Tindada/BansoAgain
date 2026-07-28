@@ -7,15 +7,15 @@ from banso.core.action import AgentAction, AgentActionType, Observation
 from banso.core.lifecycle import (
     active_document_count,
     eligible_extraction_document_ids,
-    eligible_read_result_ids,
-    remaining_document_reads,
+    eligible_fetch_result_ids,
+    remaining_document_fetches,
 )
 from banso.core.state import AgentState
 from banso.documents import (
     Document,
-    DocumentReadError,
-    DocumentReadRequest,
-    DocumentReader,
+    DocumentFetchError,
+    DocumentFetchRequest,
+    DocumentFetcher,
     EvidenceExtractionError,
     EvidenceExtractionRequest,
     EvidenceExtractor,
@@ -42,7 +42,7 @@ class NewsActionExecutor:
         self,
         store: ArtifactStore,
         retrieval_provider: RetrievalProvider,
-        document_reader: DocumentReader,
+        document_fetcher: DocumentFetcher,
         evidence_extractor: EvidenceExtractor,
         synthesizer: Synthesizer,
         retrieval_filter: RetrievalFilter | None = None,
@@ -55,7 +55,7 @@ class NewsActionExecutor:
 
         self.store = store
         self.retrieval_provider = retrieval_provider
-        self.document_reader = document_reader
+        self.document_fetcher = document_fetcher
         self.evidence_extractor = evidence_extractor
         self.synthesizer = synthesizer
         self.retrieval_filter = retrieval_filter or RetrievalFilter()
@@ -78,8 +78,8 @@ class NewsActionExecutor:
         if action.type == AgentActionType.SEARCH:
             return await self._search(action, state)
 
-        if action.type == AgentActionType.READ_DOCUMENT:
-            return await self._read_document(state)
+        if action.type == AgentActionType.FETCH_DOCUMENTS:
+            return await self._fetch_documents(state)
 
         if action.type == AgentActionType.EXTRACT_EVIDENCE:
             return await self._extract_evidence(state)
@@ -144,11 +144,11 @@ class NewsActionExecutor:
             },
         )
 
-    async def _read_document(self, state: AgentState) -> Observation:
-        read_outcomes: list[dict[str, object]] = []
+    async def _fetch_documents(self, state: AgentState) -> Observation:
+        fetch_outcomes: list[dict[str, object]] = []
         document_index = dict(state.document_index)
         document_index_updates: dict[str, str] = {}
-        result_ids = eligible_read_result_ids(state)[:remaining_document_reads(state)]
+        result_ids = eligible_fetch_result_ids(state)[:remaining_document_fetches(state)]
         for result_id in result_ids:
             result = self.store.get(result_id, SearchResult)
             if result is None:
@@ -160,7 +160,7 @@ class NewsActionExecutor:
             )
             document_id = document_index.get(normalized_result_url)
             if document_id is not None:
-                read_outcomes.append(
+                fetch_outcomes.append(
                     {
                         "search_result_id": result_id,
                         "document_id": document_id,
@@ -169,16 +169,16 @@ class NewsActionExecutor:
                 continue
 
             try:
-                document = await self.document_reader.read(
-                    DocumentReadRequest(
+                document = await self.document_fetcher.fetch(
+                    DocumentFetchRequest(
                         url=result.url,
                         title=result.title,
                         source=result.source,
                         metadata={"search_result_id": result.id},
                     )
                 )
-            except DocumentReadError as error:
-                read_outcomes.append(
+            except DocumentFetchError as error:
+                fetch_outcomes.append(
                     {
                         "search_result_id": result_id,
                         "failure": {
@@ -203,7 +203,7 @@ class NewsActionExecutor:
                 document_index[normalized_document_url] = document_id
                 document_index_updates[normalized_document_url] = document_id
 
-            read_outcomes.append(
+            fetch_outcomes.append(
                 {
                     "search_result_id": result_id,
                     "document_id": document_id,
@@ -212,7 +212,7 @@ class NewsActionExecutor:
 
         return Observation(
             data={
-                "read_outcomes": read_outcomes,
+                "fetch_outcomes": fetch_outcomes,
                 "document_index_updates": document_index_updates,
             },
         )

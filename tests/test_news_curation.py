@@ -20,7 +20,7 @@ from banso.core import (
 from banso.documents import (
     Document,
     EvidenceItem,
-    FakeDocumentReader,
+    FakeDocumentFetcher,
     FakeEvidenceExtractor,
 )
 from banso.executors import NewsActionExecutor
@@ -41,7 +41,7 @@ def _executor(
     return NewsActionExecutor(
         store=store,
         retrieval_provider=retrieval_provider or FakeRetrievalProvider(),
-        document_reader=FakeDocumentReader(),
+        document_fetcher=FakeDocumentFetcher(),
         evidence_extractor=FakeEvidenceExtractor(),
         synthesizer=synthesizer or FakeSynthesizer(),
     )
@@ -183,7 +183,7 @@ def test_curation_allows_exchange_but_rejects_active_overflow() -> None:
     state = AgentState(
         query=UserQuery(text="query"),
         budget=ExecutionBudget(
-            max_documents_to_read=2,
+            max_document_fetches=2,
             max_active_documents=1,
         ),
         documents={
@@ -263,7 +263,7 @@ def test_finish_rejects_an_oversized_active_evidence_set() -> None:
     second, second_evidence = _terminal_document(store, "second")
     state = AgentState(
         query=UserQuery(text="query"),
-        budget=ExecutionBudget(max_documents_to_read=2, max_active_documents=1),
+        budget=ExecutionBudget(max_document_fetches=2, max_active_documents=1),
         documents={
             first.id: _extracted_state(first_evidence.id),
             second.id: _extracted_state(second_evidence.id),
@@ -306,14 +306,14 @@ class _CurationFlowPolicy:
                 type=AgentActionType.SEARCH,
                 params={"query": "initial source"},
             ),
-            AgentAction(type=AgentActionType.READ_DOCUMENT),
+            AgentAction(type=AgentActionType.FETCH_DOCUMENTS),
             AgentAction(type=AgentActionType.EXTRACT_EVIDENCE),
             AgentAction(type=AgentActionType.STOP),
             AgentAction(
                 type=AgentActionType.SEARCH,
                 params={"query": "gap source"},
             ),
-            AgentAction(type=AgentActionType.READ_DOCUMENT),
+            AgentAction(type=AgentActionType.FETCH_DOCUMENTS),
             AgentAction(type=AgentActionType.EXTRACT_EVIDENCE),
             AgentAction(type=AgentActionType.FINISH),
         ]
@@ -337,7 +337,7 @@ def test_runtime_can_curate_then_fill_an_information_gap() -> None:
                 budget=ExecutionBudget(
                     max_steps=9,
                     max_searches=2,
-                    max_documents_to_read=2,
+                    max_document_fetches=2,
                     max_active_documents=1,
                 ),
             )
@@ -347,11 +347,11 @@ def test_runtime_can_curate_then_fill_an_information_gap() -> None:
 
     assert [entry.action_type for entry in state.action_history] == [
         AgentActionType.SEARCH,
-        AgentActionType.READ_DOCUMENT,
+        AgentActionType.FETCH_DOCUMENTS,
         AgentActionType.EXTRACT_EVIDENCE,
         AgentActionType.CURATE_EVIDENCE,
         AgentActionType.SEARCH,
-        AgentActionType.READ_DOCUMENT,
+        AgentActionType.FETCH_DOCUMENTS,
         AgentActionType.EXTRACT_EVIDENCE,
         AgentActionType.FINISH,
     ]

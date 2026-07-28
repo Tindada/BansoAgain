@@ -1,4 +1,4 @@
-"""Document reader interface."""
+"""Document fetcher interface."""
 
 from typing import Any, Literal, Protocol
 
@@ -8,7 +8,7 @@ from banso.documents.models import Document
 from banso.retrieval.models import Source
 
 
-DocumentReadFailureReason = Literal[
+DocumentFetchFailureReason = Literal[
     "document_too_large",
     "http_status",
     "no_extractable_text",
@@ -19,14 +19,14 @@ DocumentReadFailureReason = Literal[
 ]
 
 
-class DocumentReadError(Exception):
-    """A known external failure while reading a document."""
+class DocumentFetchError(Exception):
+    """A known external failure while fetching a document."""
 
     def __init__(
         self,
         *,
         url: str,
-        reason: DocumentReadFailureReason,
+        reason: DocumentFetchFailureReason,
         message: str,
         source_error_type: str,
         status_code: int | None = None,
@@ -40,7 +40,7 @@ class DocumentReadError(Exception):
 
     @property
     def retryable(self) -> bool:
-        """Return whether repeating the same read may recover."""
+        """Return whether repeating the same fetch may recover."""
         if self.reason in {"timeout", "transport"}:
             return True
         if self.reason != "http_status" or self.status_code is None:
@@ -50,8 +50,8 @@ class DocumentReadError(Exception):
         )
 
 
-class DocumentReadRequest(BaseModel):
-    """Structured request for reading a document."""
+class DocumentFetchRequest(BaseModel):
+    """Structured request for fetching a document."""
 
     url: str
     title: str | None = None
@@ -59,9 +59,9 @@ class DocumentReadRequest(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-class DocumentReader(Protocol):
-    """Reads and parses documents from a source location."""
+class DocumentFetcher(Protocol):
+    """Fetches and parses documents from a source location."""
 
-    async def read(self, request: DocumentReadRequest) -> Document:
+    async def fetch(self, request: DocumentFetchRequest) -> Document:
         """Return a parsed document."""
         ...

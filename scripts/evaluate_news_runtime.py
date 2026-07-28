@@ -1,7 +1,7 @@
 """Run the real news runtime over a JSONL evaluation set.
 
 Run with:
-UV_CACHE_DIR=.uv-cache uv run python scripts/evaluate_news_runtime.py
+uv run python scripts/evaluate_news_runtime.py
 """
 
 import argparse
@@ -32,7 +32,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cases", type=Path, default=DEFAULT_CASES)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--limit", type=int)
-    parser.add_argument("--max-documents-to-read", type=int, default=6)
+    parser.add_argument("--max-document-fetches", type=int, default=6)
     parser.add_argument("--max-active-documents", type=int)
     return parser.parse_args()
 
@@ -40,7 +40,7 @@ def parse_args() -> argparse.Namespace:
 async def run_case(
     case,
     *,
-    max_documents_to_read: int,
+    max_document_fetches: int,
     max_active_documents: int | None,
 ) -> tuple[NewsEvaluationResult, list[SpanRecord]]:
     print(f"running {case.id}: {case.query}", flush=True)
@@ -57,7 +57,7 @@ async def run_case(
                     time_range=case.time_range,
                 ),
                 budget=ExecutionBudget(
-                    max_documents_to_read=max_documents_to_read,
+                    max_document_fetches=max_document_fetches,
                     max_active_documents=max_active_documents,
                 ),
             )
@@ -111,7 +111,7 @@ async def main(args: argparse.Namespace) -> None:
         for case in cases:
             result, spans = await run_case(
                 case,
-                max_documents_to_read=args.max_documents_to_read,
+                max_document_fetches=args.max_document_fetches,
                 max_active_documents=args.max_active_documents,
             )
             results.append(result)
@@ -139,7 +139,7 @@ async def main(args: argparse.Namespace) -> None:
             "cases_path": str(args.cases),
             "results_path": str(output_path),
             "traces_path": str(traces_path),
-            "max_documents_to_read": args.max_documents_to_read,
+            "max_document_fetches": args.max_document_fetches,
             "max_active_documents": args.max_active_documents,
             "vllm_model": os.getenv("VLLM_MODEL"),
             "external_llm_model": os.getenv("EXTERNAL_LLM_MODEL"),

@@ -1,4 +1,4 @@
-"""HTTP-backed document reader."""
+"""HTTP-backed document fetcher."""
 
 import asyncio
 from dataclasses import dataclass, field
@@ -12,7 +12,7 @@ from bs4.element import Tag
 from pypdf import PdfReader
 
 from banso.documents.models import Document
-from banso.documents.reader import DocumentReadError, DocumentReadRequest
+from banso.documents.fetcher import DocumentFetchError, DocumentFetchRequest
 
 
 _HTML_CONTENT_TYPES = {"application/xhtml+xml", "text/html"}
@@ -34,8 +34,8 @@ class _PDFPageLimitError(Exception):
     """Raised when a PDF exceeds the configured page limit."""
 
 
-class HTTPDocumentReader:
-    """Reads supported documents over HTTP and extracts plain text."""
+class HTTPDocumentFetcher:
+    """Fetches supported documents over HTTP and extracts plain text."""
 
     def __init__(
         self,
@@ -60,7 +60,7 @@ class HTTPDocumentReader:
             "Accept": "text/html,application/xhtml+xml,application/pdf",
         }
 
-    async def read(self, request: DocumentReadRequest) -> Document:
+    async def fetch(self, request: DocumentFetchRequest) -> Document:
         """Fetch and parse a document from the requested URL."""
 
         try:
@@ -77,10 +77,10 @@ class HTTPDocumentReader:
             response.raise_for_status()
         except httpx.HTTPStatusError as error:
             message = (
-                f"HTTP {error.response.status_code} while reading document: "
+                f"HTTP {error.response.status_code} while fetching document: "
                 f"{error.response.url}"
             )
-            raise DocumentReadError(
+            raise DocumentFetchError(
                 url=str(response.url),
                 status_code=response.status_code,
                 reason="http_status",
@@ -88,16 +88,16 @@ class HTTPDocumentReader:
                 source_error_type=type(error).__name__,
             ) from error
         except httpx.TimeoutException as error:
-            message = str(error) or f"Timed out while reading document: {request.url}"
-            raise DocumentReadError(
+            message = str(error) or f"Timed out while fetching document: {request.url}"
+            raise DocumentFetchError(
                 url=request.url,
                 reason="timeout",
                 message=message,
                 source_error_type=type(error).__name__,
             ) from error
         except httpx.TransportError as error:
-            message = str(error) or (f"Transport error while reading document: {request.url}")
-            raise DocumentReadError(
+            message = str(error) or (f"Transport error while fetching document: {request.url}")
+            raise DocumentFetchError(
                 url=request.url,
                 reason="transport",
                 message=message,
@@ -109,10 +109,10 @@ class HTTPDocumentReader:
         if media_type not in _SUPPORTED_CONTENT_TYPES:
             displayed_content_type = content_type or "<missing>"
             message = (
-                f"Unsupported content type {displayed_content_type!r} while reading "
+                f"Unsupported content type {displayed_content_type!r} while fetching "
                 f"document: {response.url}"
             )
-            raise DocumentReadError(
+            raise DocumentFetchError(
                 url=str(response.url),
                 status_code=response.status_code,
                 reason="unsupported_content_type",
@@ -125,7 +125,7 @@ class HTTPDocumentReader:
 
         metadata: dict[str, Any] = {
             **request.metadata,
-            "reader": "http",
+            "fetcher": "http",
             "status_code": response.status_code,
             "content_type": response.headers.get("content-type"),
             "final_url": str(response.url),
@@ -158,7 +158,7 @@ class HTTPDocumentReader:
                 f"max_pdf_bytes={self._max_pdf_bytes}; "
                 f"pdf_bytes={len(content)}; url={response.url}"
             )
-            raise DocumentReadError(
+            raise DocumentFetchError(
                 url=str(response.url),
                 status_code=response.status_code,
                 reason="document_too_large",
@@ -173,7 +173,7 @@ class HTTPDocumentReader:
                 max_pages=self._max_pdf_pages,
             )
         except _PDFPageLimitError as error:
-            raise DocumentReadError(
+            raise DocumentFetchError(
                 url=str(response.url),
                 status_code=response.status_code,
                 reason="document_too_large",
@@ -183,7 +183,7 @@ class HTTPDocumentReader:
         except Exception as error:
             detail = str(error) or "PDF parser failed"
             message = f"{detail} while parsing PDF document: {response.url}"
-            raise DocumentReadError(
+            raise DocumentFetchError(
                 url=str(response.url),
                 status_code=response.status_code,
                 reason="parse_error",
@@ -193,7 +193,7 @@ class HTTPDocumentReader:
 
         if not extraction.text.strip():
             message = f"PDF contains no extractable text: {response.url}"
-            raise DocumentReadError(
+            raise DocumentFetchError(
                 url=str(response.url),
                 status_code=response.status_code,
                 reason="no_extractable_text",

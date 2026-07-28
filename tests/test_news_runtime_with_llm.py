@@ -4,7 +4,7 @@ import asyncio
 
 from banso.artifacts import InMemoryArtifactStore
 from banso.core import AgentRuntime, AgentState, UserQuery
-from banso.documents import FakeDocumentReader, LLMEvidenceExtractor
+from banso.documents import FakeDocumentFetcher, LLMEvidenceExtractor
 from banso.executors import NewsActionExecutor
 from banso.llm import FakeLLMClient
 from banso.policies import NewsRuleBasedPolicy
@@ -29,7 +29,7 @@ async def _run_news_runtime_with_llm() -> None:
         executor=NewsActionExecutor(
             store=store,
             retrieval_provider=FakeRetrievalProvider(),
-            document_reader=FakeDocumentReader(),
+            document_fetcher=FakeDocumentFetcher(),
             evidence_extractor=LLMEvidenceExtractor(
                 client=evidence_client,
                 model="fake-evidence-model",

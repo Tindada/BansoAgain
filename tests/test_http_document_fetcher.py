@@ -1,4 +1,4 @@
-"""Tests for the HTTP-backed document reader."""
+"""Tests for the HTTP-backed document fetcher."""
 
 import asyncio
 from io import BytesIO
@@ -8,11 +8,11 @@ import pytest
 from pypdf import PdfReader, PdfWriter
 
 from banso.documents import (
-    DocumentReadError,
-    DocumentReadRequest,
-    HTTPDocumentReader,
+    DocumentFetchError,
+    DocumentFetchRequest,
+    HTTPDocumentFetcher,
 )
-from banso.documents.http_reader import _extract_html_content, _extract_pdf_content
+from banso.documents.http_fetcher import _extract_html_content, _extract_pdf_content
 from banso.retrieval import Source, SourceType
 
 
@@ -89,7 +89,7 @@ def _encrypt_pdf(content: bytes) -> bytes:
     return output.getvalue()
 
 
-async def _run_http_document_reader_extracts_html_document() -> None:
+async def _run_http_document_fetcher_extracts_html_document() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert str(request.url) == "https://example.com/news"
         return httpx.Response(
@@ -115,11 +115,11 @@ async def _run_http_document_reader_extracts_html_document() -> None:
         )
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    reader = HTTPDocumentReader(client=client)
+    fetcher = HTTPDocumentFetcher(client=client)
 
     try:
-        document = await reader.read(
-            DocumentReadRequest(
+        document = await fetcher.fetch(
+            DocumentFetchRequest(
                 url="https://example.com/news",
                 source=Source(
                     name="Example News",
@@ -137,7 +137,7 @@ async def _run_http_document_reader_extracts_html_document() -> None:
     assert document.source.name == "Example News"
     assert document.text == "Article heading\nFirst paragraph.\nSecond paragraph."
     assert "console.log" not in document.text
-    assert document.metadata["reader"] == "http"
+    assert document.metadata["fetcher"] == "http"
     assert document.metadata["status_code"] == 200
     assert document.metadata["content_type"] == "text/html; charset=utf-8"
     assert document.metadata["final_url"] == "https://example.com/news"
@@ -146,7 +146,7 @@ async def _run_http_document_reader_extracts_html_document() -> None:
     assert document.metadata["extracted_text_chars"] == len(document.text)
 
 
-async def _run_http_document_reader_prefers_request_title() -> None:
+async def _run_http_document_fetcher_prefers_request_title() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             200,
@@ -156,11 +156,11 @@ async def _run_http_document_reader_prefers_request_title() -> None:
         )
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    reader = HTTPDocumentReader(client=client)
+    fetcher = HTTPDocumentFetcher(client=client)
 
     try:
-        document = await reader.read(
-            DocumentReadRequest(
+        document = await fetcher.fetch(
+            DocumentFetchRequest(
                 url="https://example.com/news",
                 title="Search result title",
                 metadata={"search_result_id": "result-1"},
@@ -174,41 +174,41 @@ async def _run_http_document_reader_prefers_request_title() -> None:
     assert document.metadata["search_result_id"] == "result-1"
 
 
-def test_http_document_reader_extracts_html_document() -> None:
-    asyncio.run(_run_http_document_reader_extracts_html_document())
+def test_http_document_fetcher_extracts_html_document() -> None:
+    asyncio.run(_run_http_document_fetcher_extracts_html_document())
 
 
-def test_http_document_reader_prefers_request_title() -> None:
-    asyncio.run(_run_http_document_reader_prefers_request_title())
+def test_http_document_fetcher_prefers_request_title() -> None:
+    asyncio.run(_run_http_document_fetcher_prefers_request_title())
 
 
-async def _run_http_document_reader_exposes_http_status() -> None:
+async def _run_http_document_fetcher_exposes_http_status() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(403, request=request)
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    reader = HTTPDocumentReader(client=client)
+    fetcher = HTTPDocumentFetcher(client=client)
 
     try:
         try:
-            await reader.read(DocumentReadRequest(url="https://example.com/blocked"))
-        except DocumentReadError as error:
+            await fetcher.fetch(DocumentFetchRequest(url="https://example.com/blocked"))
+        except DocumentFetchError as error:
             assert error.url == "https://example.com/blocked"
             assert error.reason == "http_status"
             assert error.status_code == 403
             assert error.source_error_type == "HTTPStatusError"
             assert isinstance(error.__cause__, httpx.HTTPStatusError)
         else:
-            raise AssertionError("expected DocumentReadError")
+            raise AssertionError("expected DocumentFetchError")
     finally:
         await client.aclose()
 
 
-def test_http_document_reader_exposes_http_status() -> None:
-    asyncio.run(_run_http_document_reader_exposes_http_status())
+def test_http_document_fetcher_exposes_http_status() -> None:
+    asyncio.run(_run_http_document_fetcher_exposes_http_status())
 
 
-async def _run_http_document_reader_exposes_transport_failure(
+async def _run_http_document_fetcher_exposes_transport_failure(
     source_error: httpx.TransportError,
     expected_reason: str,
 ) -> None:
@@ -216,19 +216,19 @@ async def _run_http_document_reader_exposes_transport_failure(
         raise source_error
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    reader = HTTPDocumentReader(client=client)
+    fetcher = HTTPDocumentFetcher(client=client)
 
     try:
         try:
-            await reader.read(DocumentReadRequest(url="https://example.com/news"))
-        except DocumentReadError as error:
+            await fetcher.fetch(DocumentFetchRequest(url="https://example.com/news"))
+        except DocumentFetchError as error:
             assert error.url == "https://example.com/news"
             assert error.reason == expected_reason
             assert error.status_code is None
             assert error.source_error_type == type(source_error).__name__
             assert error.__cause__ is source_error
         else:
-            raise AssertionError("expected DocumentReadError")
+            raise AssertionError("expected DocumentFetchError")
     finally:
         await client.aclose()
 
@@ -241,18 +241,18 @@ async def _run_http_document_reader_exposes_transport_failure(
     ),
     ids=["timeout", "transport"],
 )
-def test_http_document_reader_exposes_transport_failure(
+def test_http_document_fetcher_exposes_transport_failure(
     source_error: httpx.TransportError,
     expected_reason: str,
 ) -> None:
-    case = _run_http_document_reader_exposes_transport_failure(
+    case = _run_http_document_fetcher_exposes_transport_failure(
         source_error,
         expected_reason,
     )
     asyncio.run(case)
 
 
-async def _run_http_document_reader_rejects_unsupported_content_type(
+async def _run_http_document_fetcher_rejects_unsupported_content_type(
     content_type: str | None,
 ) -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -265,19 +265,19 @@ async def _run_http_document_reader_rejects_unsupported_content_type(
         )
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    reader = HTTPDocumentReader(client=client)
+    fetcher = HTTPDocumentFetcher(client=client)
 
     try:
         try:
-            await reader.read(DocumentReadRequest(url="https://example.com/report"))
-        except DocumentReadError as error:
+            await fetcher.fetch(DocumentFetchRequest(url="https://example.com/report"))
+        except DocumentFetchError as error:
             assert error.url == "https://example.com/report"
             assert error.reason == "unsupported_content_type"
             assert error.status_code == 200
             assert error.source_error_type == "UnsupportedContentType"
             assert (content_type or "<missing>") in error.message
         else:
-            raise AssertionError("expected DocumentReadError")
+            raise AssertionError("expected DocumentFetchError")
     finally:
         await client.aclose()
 
@@ -287,11 +287,11 @@ async def _run_http_document_reader_rejects_unsupported_content_type(
     ["image/png", None],
     ids=["unsupported", "missing"],
 )
-def test_http_document_reader_rejects_unsupported_content_type(
+def test_http_document_fetcher_rejects_unsupported_content_type(
     content_type: str | None,
 ) -> None:
     asyncio.run(
-        _run_http_document_reader_rejects_unsupported_content_type(content_type)
+        _run_http_document_fetcher_rejects_unsupported_content_type(content_type)
     )
 
 
@@ -375,7 +375,7 @@ def test_html_extraction_falls_back_to_body_and_removes_page_chrome() -> None:
     assert extraction.text == "Body heading\nBody text."
 
 
-def test_pdf_extraction_combines_pages_and_reads_title() -> None:
+def test_pdf_extraction_combines_pages_and_extracts_title() -> None:
     content = _make_text_pdf("First page.", "Second page.", title="PDF title")
 
     extraction = _extract_pdf_content(content, max_pages=10)
@@ -390,7 +390,7 @@ def test_pdf_extraction_combines_pages_and_reads_title() -> None:
     }
 
 
-async def _read_pdf(
+async def _fetch_pdf(
     content: bytes,
     *,
     content_type: str = "Application/PDF; charset=binary",
@@ -407,23 +407,23 @@ async def _read_pdf(
         )
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    reader = HTTPDocumentReader(
+    fetcher = HTTPDocumentFetcher(
         client=client,
         max_pdf_bytes=max_pdf_bytes,
         max_pdf_pages=max_pdf_pages,
     )
     try:
-        return await reader.read(
-            DocumentReadRequest(url="https://example.com/report", title=title)
+        return await fetcher.fetch(
+            DocumentFetchRequest(url="https://example.com/report", title=title)
         )
     finally:
         await client.aclose()
 
 
-def test_http_document_reader_extracts_pdf_and_prefers_request_title() -> None:
+def test_http_document_fetcher_extracts_pdf_and_prefers_request_title() -> None:
     content = _make_text_pdf("Report body.", title="PDF title")
 
-    document = asyncio.run(_read_pdf(content, title="Search result title"))
+    document = asyncio.run(_fetch_pdf(content, title="Search result title"))
 
     assert document.title == "Search result title"
     assert document.text == "Report body."
@@ -435,78 +435,78 @@ def test_http_document_reader_extracts_pdf_and_prefers_request_title() -> None:
     assert document.metadata["extracted_text_chars"] == len(document.text)
 
 
-def test_http_document_reader_uses_pdf_metadata_title() -> None:
+def test_http_document_fetcher_uses_pdf_metadata_title() -> None:
     document = asyncio.run(
-        _read_pdf(_make_text_pdf("Report body.", title="PDF title"))
+        _fetch_pdf(_make_text_pdf("Report body.", title="PDF title"))
     )
 
     assert document.title == "PDF title"
 
 
-def test_http_document_reader_reports_pdf_without_extractable_text() -> None:
+def test_http_document_fetcher_reports_pdf_without_extractable_text() -> None:
     try:
-        asyncio.run(_read_pdf(_make_text_pdf("")))
-    except DocumentReadError as error:
+        asyncio.run(_fetch_pdf(_make_text_pdf("")))
+    except DocumentFetchError as error:
         assert error.reason == "no_extractable_text"
         assert error.status_code == 200
         assert error.source_error_type == "NoExtractableText"
     else:
-        raise AssertionError("expected DocumentReadError")
+        raise AssertionError("expected DocumentFetchError")
 
 
-def test_http_document_reader_reports_malformed_pdf() -> None:
+def test_http_document_fetcher_reports_malformed_pdf() -> None:
     try:
-        asyncio.run(_read_pdf(b"%PDF-broken"))
-    except DocumentReadError as error:
+        asyncio.run(_fetch_pdf(b"%PDF-broken"))
+    except DocumentFetchError as error:
         assert error.reason == "parse_error"
         assert error.status_code == 200
         assert error.__cause__ is not None
     else:
-        raise AssertionError("expected DocumentReadError")
+        raise AssertionError("expected DocumentFetchError")
 
 
-def test_http_document_reader_reports_password_protected_pdf() -> None:
+def test_http_document_fetcher_reports_password_protected_pdf() -> None:
     encrypted = _encrypt_pdf(_make_text_pdf("Secret report."))
 
     try:
-        asyncio.run(_read_pdf(encrypted))
-    except DocumentReadError as error:
+        asyncio.run(_fetch_pdf(encrypted))
+    except DocumentFetchError as error:
         assert error.reason == "parse_error"
         assert error.status_code == 200
         assert error.__cause__ is not None
     else:
-        raise AssertionError("expected DocumentReadError")
+        raise AssertionError("expected DocumentFetchError")
 
 
-def test_http_document_reader_enforces_pdf_byte_limit() -> None:
+def test_http_document_fetcher_enforces_pdf_byte_limit() -> None:
     content = _make_text_pdf("Report body.")
 
     try:
-        asyncio.run(_read_pdf(content, max_pdf_bytes=len(content) - 1))
-    except DocumentReadError as error:
+        asyncio.run(_fetch_pdf(content, max_pdf_bytes=len(content) - 1))
+    except DocumentFetchError as error:
         assert error.reason == "document_too_large"
         assert error.source_error_type == "PDFByteLimitExceeded"
     else:
-        raise AssertionError("expected DocumentReadError")
+        raise AssertionError("expected DocumentFetchError")
 
 
-def test_http_document_reader_enforces_pdf_page_limit() -> None:
+def test_http_document_fetcher_enforces_pdf_page_limit() -> None:
     content = _make_text_pdf("First page.", "Second page.")
 
     try:
-        asyncio.run(_read_pdf(content, max_pdf_pages=1))
-    except DocumentReadError as error:
+        asyncio.run(_fetch_pdf(content, max_pdf_pages=1))
+    except DocumentFetchError as error:
         assert error.reason == "document_too_large"
         assert error.source_error_type == "PDFPageLimitExceeded"
         assert error.__cause__ is not None
     else:
-        raise AssertionError("expected DocumentReadError")
+        raise AssertionError("expected DocumentFetchError")
 
 
-def test_http_document_reader_validates_pdf_limits() -> None:
+def test_http_document_fetcher_validates_pdf_limits() -> None:
     for kwargs in ({"max_pdf_bytes": 0}, {"max_pdf_pages": 0}):
         try:
-            HTTPDocumentReader(**kwargs)
+            HTTPDocumentFetcher(**kwargs)
         except ValueError:
             pass
         else:

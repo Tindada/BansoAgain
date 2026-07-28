@@ -1,31 +1,31 @@
-"""Document reading, ranking, and evidence extraction."""
+"""Document fetching, ranking, and evidence extraction."""
 
 from banso.documents.extractor import (
     EvidenceExtractionError,
     EvidenceExtractionRequest,
     EvidenceExtractor,
 )
-from banso.documents.fake import FakeDocumentReader, FakeEvidenceExtractor
-from banso.documents.http_reader import HTTPDocumentReader
+from banso.documents.fake import FakeDocumentFetcher, FakeEvidenceExtractor
+from banso.documents.http_fetcher import HTTPDocumentFetcher
 from banso.documents.llm_extractor import LLMEvidenceExtractor
 from banso.documents.models import Document, EvidenceItem
-from banso.documents.reader import (
-    DocumentReadError,
-    DocumentReader,
-    DocumentReadRequest,
+from banso.documents.fetcher import (
+    DocumentFetchError,
+    DocumentFetcher,
+    DocumentFetchRequest,
 )
 
 __all__ = [
     "Document",
-    "DocumentReadError",
-    "DocumentReader",
-    "DocumentReadRequest",
+    "DocumentFetchError",
+    "DocumentFetcher",
+    "DocumentFetchRequest",
     "EvidenceExtractionError",
     "EvidenceExtractionRequest",
     "EvidenceExtractor",
     "EvidenceItem",
-    "FakeDocumentReader",
+    "FakeDocumentFetcher",
     "FakeEvidenceExtractor",
-    "HTTPDocumentReader",
+    "HTTPDocumentFetcher",
     "LLMEvidenceExtractor",
 ]

@@ -4,8 +4,8 @@ from banso.core.action import AgentAction, AgentActionType
 from banso.core.lifecycle import (
     active_document_count,
     eligible_extraction_document_ids,
-    eligible_read_result_ids,
-    remaining_document_reads,
+    eligible_fetch_result_ids,
+    remaining_document_fetches,
 )
 from banso.core.state import AgentState
 
@@ -39,11 +39,11 @@ class NewsRuleBasedPolicy:
             entry.action_type == AgentActionType.SEARCH
             for entry in state.action_history
         )
-        remaining_reads = remaining_document_reads(state)
+        remaining_fetches = remaining_document_fetches(state)
         if (
             search_index < state.budget.max_searches
             and search_index < len(state.search_plan.searches)
-            and remaining_reads > 0
+            and remaining_fetches > 0
         ):
             search = state.search_plan.searches[search_index]
             return AgentAction(
@@ -52,10 +52,10 @@ class NewsRuleBasedPolicy:
                 rationale="Run the next planned search.",
             )
 
-        if remaining_reads > 0 and eligible_read_result_ids(state):
+        if remaining_fetches > 0 and eligible_fetch_result_ids(state):
             return AgentAction(
-                type=AgentActionType.READ_DOCUMENT,
-                rationale="Read the remaining eligible search results.",
+                type=AgentActionType.FETCH_DOCUMENTS,
+                rationale="Fetch the remaining eligible search results.",
             )
 
         if eligible_extraction_document_ids(state):

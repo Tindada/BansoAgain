@@ -28,20 +28,20 @@ def _update_index(
     target_index.update(index_updates)
 
 
-def _apply_read_outcomes(state: AgentState, outcomes: object) -> None:
+def _apply_fetch_outcomes(state: AgentState, outcomes: object) -> None:
     if not isinstance(outcomes, list):
-        raise ValueError("read outcomes must be a list")
+        raise ValueError("fetch outcomes must be a list")
 
     for outcome in outcomes:
         if not isinstance(outcome, dict):
-            raise ValueError("read outcome must be a mapping")
+            raise ValueError("fetch outcome must be a mapping")
         result_id = outcome["search_result_id"]
         if not isinstance(result_id, str):
-            raise ValueError("read outcome search_result_id must be a string")
+            raise ValueError("fetch outcome search_result_id must be a string")
 
         result = state.search_results.get(result_id)
         if result is None:
-            raise ValueError(f"read outcome contains an unknown search result: {result_id}")
+            raise ValueError(f"fetch outcome contains an unknown search result: {result_id}")
         attempt_count = result.attempt_count + 1
         document_id = outcome.get("document_id")
         failure = outcome.get("failure")
@@ -58,7 +58,7 @@ def _apply_read_outcomes(state: AgentState, outcomes: object) -> None:
                 failure=Failure.model_validate(failure),
             )
             continue
-        raise ValueError("read outcome must contain exactly one outcome")
+        raise ValueError("fetch outcome must contain exactly one outcome")
 
 
 def _apply_extraction_outcomes(
@@ -170,8 +170,8 @@ class DefaultStateReducer:
                 "search result index",
             )
 
-        if action.type == AgentActionType.READ_DOCUMENT:
-            _apply_read_outcomes(next_state, observation.data.get("read_outcomes"))
+        if action.type == AgentActionType.FETCH_DOCUMENTS:
+            _apply_fetch_outcomes(next_state, observation.data.get("fetch_outcomes"))
             _update_index(
                 next_state.document_index,
                 observation.data.get("document_index_updates", {}),

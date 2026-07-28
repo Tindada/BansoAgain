@@ -19,9 +19,9 @@ from banso.core import (
 from banso.core.action import AgentAction, AgentActionType
 from banso.documents import (
     Document,
-    DocumentReader,
-    DocumentReadError,
-    FakeDocumentReader,
+    DocumentFetcher,
+    DocumentFetchError,
+    FakeDocumentFetcher,
     FakeEvidenceExtractor,
 )
 from banso.executors import NewsActionExecutor
@@ -92,28 +92,28 @@ class CrossSearchDuplicateRetrievalProvider:
         ]
 
 
-class PartiallyBlockedDocumentReader(FakeDocumentReader):
+class PartiallyBlockedDocumentFetcher(FakeDocumentFetcher):
     def __init__(self, status_code: int = 403) -> None:
         self.status_code = status_code
 
-    async def read(self, request):
+    async def fetch(self, request):
         if request.url.endswith("blocked"):
-            raise DocumentReadError(
+            raise DocumentFetchError(
                 url=request.url,
                 reason="http_status",
-                message=f"HTTP {self.status_code} while reading document",
+                message=f"HTTP {self.status_code} while fetching document",
                 status_code=self.status_code,
                 source_error_type="HTTPStatusError",
             )
-        return await super().read(request)
+        return await super().fetch(request)
 
 
-class BlockedDocumentReader(FakeDocumentReader):
-    async def read(self, request):
-        raise DocumentReadError(
+class BlockedDocumentFetcher(FakeDocumentFetcher):
+    async def fetch(self, request):
+        raise DocumentFetchError(
             url=request.url,
             reason="http_status",
-            message="HTTP 503 while reading document",
+            message="HTTP 503 while fetching document",
             status_code=503,
             source_error_type="HTTPStatusError",
         )
@@ -130,8 +130,8 @@ class PartiallyBlockedRetrievalProvider:
                 source=source,
             ),
             SearchResult(
-                title="Readable",
-                url="https://example.com/readable",
+                title="Fetchable",
+                url="https://example.com/fetchable",
                 rank=2,
                 source=source,
             ),
@@ -189,7 +189,7 @@ def _news_executor(
     store: InMemoryArtifactStore,
     *,
     retrieval_provider: RetrievalProvider | None = None,
-    document_reader: DocumentReader | None = None,
+    document_fetcher: DocumentFetcher | None = None,
     search_query_planner: SearchQueryPlanner | None = None,
 ) -> NewsActionExecutor:
     return NewsActionExecutor(
@@ -199,10 +199,10 @@ def _news_executor(
             if retrieval_provider is not None
             else FakeRetrievalProvider()
         ),
-        document_reader=(
-            document_reader
-            if document_reader is not None
-            else FakeDocumentReader()
+        document_fetcher=(
+            document_fetcher
+            if document_fetcher is not None
+            else FakeDocumentFetcher()
         ),
         evidence_extractor=FakeEvidenceExtractor(),
         synthesizer=FakeSynthesizer(),
@@ -214,7 +214,7 @@ def _news_runtime(
     store: InMemoryArtifactStore,
     *,
     retrieval_provider: RetrievalProvider | None = None,
-    document_reader: DocumentReader | None = None,
+    document_fetcher: DocumentFetcher | None = None,
     search_query_planner: SearchQueryPlanner | None = None,
     tracer: Tracer | None = None,
 ) -> AgentRuntime:
@@ -223,7 +223,7 @@ def _news_runtime(
         executor=_news_executor(
             store,
             retrieval_provider=retrieval_provider,
-            document_reader=document_reader,
+            document_fetcher=document_fetcher,
             search_query_planner=search_query_planner,
         ),
         tracer=tracer,
@@ -246,7 +246,7 @@ async def _run_news_runtime() -> None:
     assert [entry.action_type for entry in state.action_history] == [
         AgentActionType.PLAN_SEARCH,
         AgentActionType.SEARCH,
-        AgentActionType.READ_DOCUMENT,
+        AgentActionType.FETCH_DOCUMENTS,
         AgentActionType.EXTRACT_EVIDENCE,
         AgentActionType.FINISH,
     ]
@@ -317,7 +317,7 @@ async def _run_news_runtime_filters_search_results() -> None:
     assert classification_report["unknown_count"] == 0
 
 
-async def _run_news_runtime_respects_document_read_budget() -> None:
+async def _run_news_runtime_respects_document_fetch_budget() -> None:
     store = InMemoryArtifactStore()
     runtime = _news_runtime(
         store,
@@ -327,7 +327,7 @@ async def _run_news_runtime_respects_document_read_budget() -> None:
     output = await runtime.run(
         AgentState(
             query=UserQuery(text="latest AI news"),
-            budget=ExecutionBudget(max_documents_to_read=1),
+            budget=ExecutionBudget(max_document_fetches=1),
         )
     )
 
@@ -335,7 +335,7 @@ async def _run_news_runtime_respects_document_read_budget() -> None:
     assert len(output.result.state.documents) == 1
 
 
-async def _run_news_runtime_preserves_search_order_when_reading() -> None:
+async def _run_news_runtime_preserves_search_order_when_fetching() -> None:
     store = InMemoryArtifactStore()
     runtime = _news_runtime(
         store,
@@ -346,7 +346,7 @@ async def _run_news_runtime_preserves_search_order_when_reading() -> None:
     output = await runtime.run(
         AgentState(
             query=UserQuery(text="latest AI news"),
-            budget=ExecutionBudget(max_searches=2, max_documents_to_read=8),
+            budget=ExecutionBudget(max_searches=2, max_document_fetches=8),
         )
     )
     results = [
@@ -385,7 +385,7 @@ async def _run_news_runtime_deduplicates_across_searches() -> None:
     output = await runtime.run(
         AgentState(
             query=UserQuery(text="latest AI news"),
-            budget=ExecutionBudget(max_searches=2, max_documents_to_read=8),
+            budget=ExecutionBudget(max_searches=2, max_document_fetches=8),
         )
     )
     state = output.result.state
@@ -429,23 +429,23 @@ async def _run_news_runtime_deduplicates_across_searches() -> None:
     assert len(stored_documents) == 2
 
 
-async def _run_news_runtime_skips_unreadable_document(status_code: int) -> None:
+async def _run_news_runtime_skips_unfetchable_document(status_code: int) -> None:
     store = InMemoryArtifactStore()
     runtime = _news_runtime(
         store,
         retrieval_provider=PartiallyBlockedRetrievalProvider(),
-        document_reader=PartiallyBlockedDocumentReader(status_code),
+        document_fetcher=PartiallyBlockedDocumentFetcher(status_code),
     )
 
     output = await runtime.run(AgentState(query=UserQuery(text="latest AI news")))
-    read_observation = output.result.state.action_history[2].observation
+    fetch_observation = output.result.state.action_history[2].observation
     result_ids = list(output.result.state.search_results)
     document_id = next(iter(output.result.state.documents))
     failed_result_id = result_ids[0]
 
     assert output.result.state.done is True
     assert len(output.result.state.documents) == 1
-    assert read_observation.data["read_outcomes"] == [
+    assert fetch_observation.data["fetch_outcomes"] == [
         {
             "search_result_id": failed_result_id,
             "failure": {
@@ -453,7 +453,7 @@ async def _run_news_runtime_skips_unreadable_document(status_code: int) -> None:
                 "status_code": status_code,
                 "reason": "http_status",
                 "retryable": 500 <= status_code < 600,
-                "message": f"HTTP {status_code} while reading document",
+                "message": f"HTTP {status_code} while fetching document",
                 "source_error_type": "HTTPStatusError",
             },
         },
@@ -462,13 +462,13 @@ async def _run_news_runtime_skips_unreadable_document(status_code: int) -> None:
             "document_id": document_id,
         },
     ]
-    failed_read = output.result.state.search_results[failed_result_id]
-    assert failed_read.failure is not None
+    failed_fetch = output.result.state.search_results[failed_result_id]
+    assert failed_fetch.failure is not None
     assert (
-        failed_read.failure.retryable
+        failed_fetch.failure.retryable
         is (status_code == 503)
     )
-    assert failed_read.attempt_count == (
+    assert failed_fetch.attempt_count == (
         2 if status_code == 503 else 1
     )
 
@@ -481,12 +481,12 @@ def test_news_runtime_filters_search_results() -> None:
     asyncio.run(_run_news_runtime_filters_search_results())
 
 
-def test_news_runtime_respects_document_read_budget() -> None:
-    asyncio.run(_run_news_runtime_respects_document_read_budget())
+def test_news_runtime_respects_document_fetch_budget() -> None:
+    asyncio.run(_run_news_runtime_respects_document_fetch_budget())
 
 
-def test_news_runtime_preserves_search_order_when_reading() -> None:
-    asyncio.run(_run_news_runtime_preserves_search_order_when_reading())
+def test_news_runtime_preserves_search_order_when_fetching() -> None:
+    asyncio.run(_run_news_runtime_preserves_search_order_when_fetching())
 
 
 def test_news_runtime_deduplicates_across_searches() -> None:
@@ -494,11 +494,11 @@ def test_news_runtime_deduplicates_across_searches() -> None:
 
 
 @pytest.mark.parametrize("status_code", [404, 503])
-def test_news_runtime_skips_unreadable_document(status_code: int) -> None:
-    asyncio.run(_run_news_runtime_skips_unreadable_document(status_code))
+def test_news_runtime_skips_unfetchable_document(status_code: int) -> None:
+    asyncio.run(_run_news_runtime_skips_unfetchable_document(status_code))
 
 
-async def _run_document_read_reports_failed_when_all_documents_fail() -> None:
+async def _run_document_fetch_reports_failed_when_all_documents_fail() -> None:
     store = InMemoryArtifactStore()
     search_result = SearchResult(
         title="Unavailable",
@@ -512,15 +512,15 @@ async def _run_document_read_reports_failed_when_all_documents_fail() -> None:
     )
     executor = _news_executor(
         store,
-        document_reader=BlockedDocumentReader(),
+        document_fetcher=BlockedDocumentFetcher(),
     )
 
     observation = await executor.execute(
-        AgentAction(type=AgentActionType.READ_DOCUMENT),
+        AgentAction(type=AgentActionType.FETCH_DOCUMENTS),
         state,
     )
 
-    assert observation.data["read_outcomes"] == [
+    assert observation.data["fetch_outcomes"] == [
         {
             "search_result_id": search_result.id,
             "failure": {
@@ -528,7 +528,7 @@ async def _run_document_read_reports_failed_when_all_documents_fail() -> None:
                 "status_code": 503,
                 "reason": "http_status",
                 "retryable": True,
-                "message": "HTTP 503 while reading document",
+                "message": "HTTP 503 while fetching document",
                 "source_error_type": "HTTPStatusError",
             },
         }
@@ -536,21 +536,21 @@ async def _run_document_read_reports_failed_when_all_documents_fail() -> None:
     assert observation.data["document_index_updates"] == {}
 
 
-def test_document_read_reports_failed_when_all_documents_fail() -> None:
-    asyncio.run(_run_document_read_reports_failed_when_all_documents_fail())
+def test_document_fetch_reports_failed_when_all_documents_fail() -> None:
+    asyncio.run(_run_document_fetch_reports_failed_when_all_documents_fail())
 
 
-class BrokenDocumentReader(FakeDocumentReader):
-    async def read(self, request):
-        raise TypeError("reader implementation bug")
+class BrokenDocumentFetcher(FakeDocumentFetcher):
+    async def fetch(self, request):
+        raise TypeError("fetcher implementation bug")
 
 
-def test_news_runtime_does_not_hide_unknown_reader_errors() -> None:
+def test_news_runtime_does_not_hide_unknown_fetcher_errors() -> None:
     store = InMemoryArtifactStore()
     trace_sink = InMemoryTraceSink()
     runtime = _news_runtime(
         store,
-        document_reader=BrokenDocumentReader(),
+        document_fetcher=BrokenDocumentFetcher(),
         tracer=Tracer(trace_sink),
     )
 
@@ -572,34 +572,34 @@ def test_news_runtime_does_not_hide_unknown_reader_errors() -> None:
     ) == 2
 
 
-class TransientDocumentReader(FakeDocumentReader):
+class TransientDocumentFetcher(FakeDocumentFetcher):
     def __init__(self) -> None:
         self.call_count = 0
 
-    async def read(self, request):
+    async def fetch(self, request):
         self.call_count += 1
         if self.call_count == 1:
-            raise DocumentReadError(
+            raise DocumentFetchError(
                 url=request.url,
                 reason="timeout",
                 message="temporary timeout",
                 source_error_type="ReadTimeout",
             )
-        return await super().read(request)
+        return await super().fetch(request)
 
 
-class RedirectingDocumentReader(FakeDocumentReader):
+class RedirectingDocumentFetcher(FakeDocumentFetcher):
     def __init__(self) -> None:
         self.call_count = 0
 
-    async def read(self, request):
+    async def fetch(self, request):
         self.call_count += 1
-        document = await super().read(request)
+        document = await super().fetch(request)
         document.url = "https://official.example/article?utm_source=redirect"
         return document
 
 
-async def _run_document_read_retries_then_stops_after_success() -> None:
+async def _run_document_fetch_retries_then_stops_after_success() -> None:
     store = InMemoryArtifactStore()
     result = SearchResult(
         title="Article",
@@ -609,10 +609,10 @@ async def _run_document_read_retries_then_stops_after_success() -> None:
         query=UserQuery(text="latest AI news"),
         search_results={store.put(result): SearchResultState()},
     )
-    reader = TransientDocumentReader()
-    executor = _news_executor(store, document_reader=reader)
+    fetcher = TransientDocumentFetcher()
+    executor = _news_executor(store, document_fetcher=fetcher)
     reducer = DefaultStateReducer()
-    action = AgentAction(type=AgentActionType.READ_DOCUMENT)
+    action = AgentAction(type=AgentActionType.FETCH_DOCUMENTS)
 
     first = await executor.execute(action, state)
     state = reducer.apply(state, action, first)
@@ -628,17 +628,17 @@ async def _run_document_read_retries_then_stops_after_success() -> None:
 
     third = await executor.execute(action, state)
     assert third.data == {
-        "read_outcomes": [],
+        "fetch_outcomes": [],
         "document_index_updates": {},
     }
-    assert reader.call_count == 2
+    assert fetcher.call_count == 2
 
 
-def test_document_read_retries_then_stops_after_success() -> None:
-    asyncio.run(_run_document_read_retries_then_stops_after_success())
+def test_document_fetch_retries_then_stops_after_success() -> None:
+    asyncio.run(_run_document_fetch_retries_then_stops_after_success())
 
 
-async def _run_document_read_reuses_redirect_target() -> None:
+async def _run_document_fetch_reuses_redirect_target() -> None:
     store = InMemoryArtifactStore()
     results = [
         SearchResult(
@@ -656,14 +656,14 @@ async def _run_document_read_reuses_redirect_target() -> None:
             store.put(result): SearchResultState() for result in results
         },
     )
-    reader = RedirectingDocumentReader()
-    executor = _news_executor(store, document_reader=reader)
-    action = AgentAction(type=AgentActionType.READ_DOCUMENT)
+    fetcher = RedirectingDocumentFetcher()
+    executor = _news_executor(store, document_fetcher=fetcher)
+    action = AgentAction(type=AgentActionType.FETCH_DOCUMENTS)
 
     observation = await executor.execute(action, state)
     state = DefaultStateReducer().apply(state, action, observation)
 
-    assert reader.call_count == 1
+    assert fetcher.call_count == 1
     assert len(store.list(Document)) == 1
     assert len(state.documents) == 1
     document_id = next(iter(state.documents))
@@ -674,5 +674,5 @@ async def _run_document_read_reuses_redirect_target() -> None:
     }
 
 
-def test_document_read_reuses_redirect_target() -> None:
-    asyncio.run(_run_document_read_reuses_redirect_target())
+def test_document_fetch_reuses_redirect_target() -> None:
+    asyncio.run(_run_document_fetch_reuses_redirect_target())

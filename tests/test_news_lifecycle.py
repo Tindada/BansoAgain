@@ -19,11 +19,11 @@ from banso.core import (
 from banso.core.lifecycle import (
     curatable_document_ids,
     eligible_extraction_document_ids,
-    eligible_read_result_ids,
+    eligible_fetch_result_ids,
     progress_status,
-    remaining_document_reads,
+    remaining_document_fetches,
 )
-from banso.documents import DocumentReadError, EvidenceExtractionError
+from banso.documents import DocumentFetchError, EvidenceExtractionError
 
 
 @pytest.mark.parametrize(
@@ -71,10 +71,10 @@ def test_progress_status(
     assert progress_status(progress, max_attempts) == expected
 
 
-def test_read_lifecycle_prioritizes_pending_results_before_retries() -> None:
+def test_fetch_lifecycle_prioritizes_pending_results_before_retries() -> None:
     state = AgentState(
         query=UserQuery(text="test"),
-        budget=ExecutionBudget(max_documents_to_read=2, max_read_attempts=2),
+        budget=ExecutionBudget(max_document_fetches=2, max_fetch_attempts=2),
         search_results={
             "pending": SearchResultState(),
             "succeeded": SearchResultState(
@@ -93,14 +93,14 @@ def test_read_lifecycle_prioritizes_pending_results_before_retries() -> None:
         documents={"document": DocumentState()},
     )
 
-    assert remaining_document_reads(state) == 1
-    assert eligible_read_result_ids(state) == ["pending", "retryable"]
+    assert remaining_document_fetches(state) == 1
+    assert eligible_fetch_result_ids(state) == ["pending", "retryable"]
 
 
-def test_read_lifecycle_exhausts_retries_and_document_budget() -> None:
+def test_fetch_lifecycle_exhausts_retries_and_document_budget() -> None:
     state = AgentState(
         query=UserQuery(text="test"),
-        budget=ExecutionBudget(max_documents_to_read=1, max_read_attempts=2),
+        budget=ExecutionBudget(max_document_fetches=1, max_fetch_attempts=2),
         search_results={
             "exhausted": SearchResultState(
                 attempt_count=2,
@@ -110,11 +110,11 @@ def test_read_lifecycle_exhausts_retries_and_document_budget() -> None:
         },
     )
 
-    assert eligible_read_result_ids(state) == ["pending"]
+    assert eligible_fetch_result_ids(state) == ["pending"]
 
     state.documents["document"] = DocumentState()
-    assert remaining_document_reads(state) == 0
-    assert eligible_read_result_ids(state) == ["pending"]
+    assert remaining_document_fetches(state) == 0
+    assert eligible_fetch_result_ids(state) == ["pending"]
 
 
 def test_extraction_lifecycle_distinguishes_empty_success_from_failures() -> None:
@@ -219,8 +219,8 @@ def test_shelved_document_is_not_actionable_for_extraction() -> None:
 @pytest.mark.parametrize(
     "budget",
     [
-        {"max_documents_to_read": 3, "max_active_documents": 0},
-        {"max_documents_to_read": 3, "max_active_documents": 4},
+        {"max_document_fetches": 3, "max_active_documents": 0},
+        {"max_document_fetches": 3, "max_active_documents": 4},
     ],
 )
 def test_execution_budget_rejects_invalid_active_document_limit(
@@ -262,12 +262,12 @@ def test_search_result_state_validates_pending_and_completed_outcomes() -> None:
         ("parse_error", None, False),
     ],
 )
-def test_document_read_failure_retryability(
+def test_document_fetch_failure_retryability(
     reason,
     status_code: int | None,
     expected: bool,
 ) -> None:
-    error = DocumentReadError(
+    error = DocumentFetchError(
         url="https://example.com/article",
         reason=reason,
         message="failed",
