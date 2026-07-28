@@ -29,7 +29,7 @@
 - 已实现新闻场景的固定流程 policy：搜索、读取文档、抽取 evidence、生成总结。
 - 已实现最小 `LLMNewsPolicy`，由 LLM 根据有界 Policy Context、可用 action 和剩余
   预算选择结构化 `AgentAction`，并校验动作参数、搜索预算和重复 query；Action
-  availability 由资源生命周期和剩余额度决定，文档额度耗尽后不再提供 `SEARCH`。
+  availability 由资源生命周期和剩余额度决定。
 - `LLMNewsPolicy` 的非法输出和已知 LLM 调用失败会作为带 reason 的 policy error
   向上抛出，由 Runtime Span 保存失败信息；第一版不重试或自动回退。
 - 真实新闻运行入口支持通过 `BANSO_NEWS_POLICY` 选择规则 Policy 或 LLM Policy，
@@ -56,9 +56,10 @@
 - `AgentState` 是运行进度的权威记录，保存 Action/Observation 历史、artifact ID、
   URL 索引、最终答案和 citations，并在初始化时固定本次运行使用的 UTC
   `reference_time`；完整 artifact 继续由 `ArtifactStore` 保存。
-- State 分别记录每个 Search Result 的读取进度和每个 Document 的证据提取进度，
-  包含尝试次数、成功产物或失败原因；Policy 和 Executor 据此选择 pending、
-  retryable 或已完成的资源。
+- State 分别记录每个 Search Result 的读取进度，以及每个 Document 的证据提取进度、
+  Evidence ID 和可选的 active/shelved/unusable 生命周期；未完成提取时生命周期为
+  `None`，成功形成 Evidence 后成为 active，空证据或终态失败成为 unusable，
+  shelved 只来自 Agent 精筛。
 - 内存 ArtifactStore 已保证同 ID 不可覆盖，并在写入、读取和列举时提供隔离快照。
 - 已实现新闻专用的 `NewsPolicyContextBuilder`，从 State 和 ArtifactStore
   确定性构造用户查询、参考时间、剩余预算、搜索历史、资源生命周期摘要以及有界的
@@ -167,6 +168,7 @@ LLM policy 第一版使用受约束的动作空间：
 SEARCH
 READ_DOCUMENT
 EXTRACT_EVIDENCE
+CURATE_EVIDENCE
 FINISH
 STOP
 ```
@@ -177,6 +179,12 @@ STOP
   `SearchPlan`；LLM policy 不依赖 SearchPlan，直接根据 query 和当前 context
   生成 `SEARCH(query, intent)`。
 - `FINISH` 生成最终答案并终止运行；`STOP` 不生成新答案，直接终止运行。
+- `CURATE_EVIDENCE` 允许 LLM 根据相关性、信息增量、重复程度、覆盖缺口和来源质量，
+  在已有 Evidence 的文档组之间进行 active/shelved 精筛；搁置不会删除产物或返还
+  累计读取预算。空证据及终态提取失败文档自动成为不可恢复的 unusable，不计为
+  Agent 精筛行为。
+- Policy Context 使用 rollout 内稳定的 `D1`、`D2` 短引用供 LLM 选择文档，Policy
+  校验后将引用转换为内部 UUID，LLM 不直接接触 Artifact ID。
 - 输出可校验的结构化 `AgentAction`，不允许生成任意工具调用。
 - `LLMNewsPolicy` 内部使用 `NewsPolicyContextBuilder`，根据 State 和 ArtifactStore
   构造模型可见的决策事实；通用 `Policy` 接口继续只返回 `AgentAction`。
@@ -186,7 +194,8 @@ STOP
   是否增加纠正重试由 evaluation 结果决定。
 - 记录 action 选择所需的简短 decision metadata，保证行为可审计。
 - 继续使用固定流程 policy 作为 baseline，而不是直接替换或删除。
-- 通过最大步骤数、搜索数、文档数和 token/cost 预算约束 agent 行为。
+- 累计文档预算只约束搜索可用性和读取执行边界；active 文档上限只约束精筛后的
+  Evidence 工作集及 `FINISH`。最大步骤数、搜索数和 token/cost 预算继续独立生效。
 
 当前已完成最小 Policy、资源生命周期约束、精简的显式 Policy Context、确定性输出
 校验、独立 LLM tracing 和真实运行入口接入；token/cost 预算和基于评估结果的重试

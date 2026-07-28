@@ -5,9 +5,10 @@ import asyncio
 from banso.artifacts import ArtifactStore
 from banso.core.action import AgentAction, AgentActionType
 from banso.core.lifecycle import (
+    active_document_count,
     eligible_extraction_document_ids,
     eligible_read_result_ids,
-    remaining_document_count,
+    remaining_document_reads,
 )
 from banso.core.observation import Observation
 from banso.core.state import AgentState
@@ -73,9 +74,7 @@ class NewsActionExecutor:
                     max_searches=state.budget.max_searches,
                 )
             )
-            return Observation(
-                data={"search_plan": plan.model_dump(mode="json")},
-            )
+            return Observation(data={"search_plan": plan.model_dump(mode="json")})
 
         if action.type == AgentActionType.SEARCH:
             return await self._search(action, state)
@@ -85,6 +84,9 @@ class NewsActionExecutor:
 
         if action.type == AgentActionType.EXTRACT_EVIDENCE:
             return await self._extract_evidence(state)
+
+        if action.type == AgentActionType.CURATE_EVIDENCE:
+            return self._curate_evidence(action, state)
 
         if action.type == AgentActionType.FINISH:
             return await self._synthesize(state)
@@ -147,14 +149,11 @@ class NewsActionExecutor:
         read_outcomes: list[dict[str, object]] = []
         document_index = dict(state.document_index)
         document_index_updates: dict[str, str] = {}
-        result_ids = eligible_read_result_ids(state)[: remaining_document_count(state)]
+        result_ids = eligible_read_result_ids(state)[:remaining_document_reads(state)]
         for result_id in result_ids:
             result = self.store.get(result_id, SearchResult)
             if result is None:
-                raise ValueError(
-                    "SearchResult artifact is missing or has the wrong type: "
-                    f"{result_id}"
-                )
+                raise ValueError(f"SearchResult artifact is missing or has the wrong type: {result_id}")
 
             normalized_result_url = normalize_url(
                 result.url,
@@ -224,10 +223,7 @@ class NewsActionExecutor:
         for document_id in eligible_extraction_document_ids(state):
             document = self.store.get(document_id, Document)
             if document is None:
-                raise ValueError(
-                    "Document artifact is missing or has the wrong type: "
-                    f"{document_id}"
-                )
+                raise ValueError(f"Document artifact is missing or has the wrong type: {document_id}")
             documents.append(document)
 
         semaphore = asyncio.Semaphore(self.max_extraction_concurrency)
@@ -247,9 +243,7 @@ class NewsActionExecutor:
                     return document, [], error
                 return document, evidence, None
 
-        extraction_results = await asyncio.gather(
-            *(extract(document) for document in documents)
-        )
+        extraction_results = await asyncio.gather(*(extract(document) for document in documents))
         extraction_outcomes: list[dict[str, object]] = []
         for document, evidence, error in extraction_results:
             if error is not None:
@@ -280,10 +274,45 @@ class NewsActionExecutor:
 
         return Observation(data={"extraction_outcomes": extraction_outcomes})
 
+    def _curate_evidence(self, action: AgentAction, state: AgentState) -> Observation:
+        shelve_ids = action.params["shelve_document_ids"]
+        reactivate_ids = action.params["reactivate_document_ids"]
+
+        invalid_ids = [
+            document_id
+            for document_id in shelve_ids
+            if (document := state.documents.get(document_id)) is None
+            or document.lifecycle_status != "active"
+        ]
+        invalid_ids.extend(
+            document_id
+            for document_id in reactivate_ids
+            if (document := state.documents.get(document_id)) is None
+            or document.lifecycle_status != "shelved"
+        )
+        if invalid_ids:
+            raise ValueError(
+                "curate_evidence contains invalid lifecycle transitions: "
+                + ", ".join(invalid_ids)
+            )
+
+        projected_active_count = (
+            active_document_count(state) - len(shelve_ids) + len(reactivate_ids)
+        )
+        if projected_active_count > state.budget.max_active_documents:
+            raise ValueError("curate_evidence would exceed the active document limit")
+
+        return Observation()
+
     async def _synthesize(self, state: AgentState) -> Observation:
+        if active_document_count(state) > state.budget.max_active_documents:
+            raise ValueError("finish requires curation within the active document limit")
+
         documents: list[Document] = []
         evidence: list[EvidenceItem] = []
         for document_id, document_state in state.documents.items():
+            if document_state.lifecycle_status != "active":
+                continue
             document = self.store.get(document_id, Document)
             if document is not None:
                 documents.append(document)

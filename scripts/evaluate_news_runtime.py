@@ -33,6 +33,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=Path)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--max-documents-to-read", type=int, default=6)
+    parser.add_argument("--max-active-documents", type=int)
     return parser.parse_args()
 
 
@@ -40,6 +41,7 @@ async def run_case(
     case,
     *,
     max_documents_to_read: int,
+    max_active_documents: int | None,
 ) -> tuple[NewsEvaluationResult, list[SpanRecord]]:
     print(f"running {case.id}: {case.query}", flush=True)
     spans: list[SpanRecord] = []
@@ -56,6 +58,7 @@ async def run_case(
                 ),
                 budget=ExecutionBudget(
                     max_documents_to_read=max_documents_to_read,
+                    max_active_documents=max_active_documents,
                 ),
             )
         )
@@ -109,6 +112,7 @@ async def main(args: argparse.Namespace) -> None:
             result, spans = await run_case(
                 case,
                 max_documents_to_read=args.max_documents_to_read,
+                max_active_documents=args.max_active_documents,
             )
             results.append(result)
             output_file.write(result.model_dump_json() + "\n")
@@ -119,9 +123,7 @@ async def main(args: argparse.Namespace) -> None:
                         {
                             "trace_id": spans[0].trace_id,
                             "evaluation_case_id": case.id,
-                            "spans": [
-                                span.model_dump(mode="json") for span in spans
-                            ],
+                            "spans": [span.model_dump(mode="json") for span in spans],
                         },
                         ensure_ascii=False,
                     )
@@ -138,15 +140,13 @@ async def main(args: argparse.Namespace) -> None:
             "results_path": str(output_path),
             "traces_path": str(traces_path),
             "max_documents_to_read": args.max_documents_to_read,
+            "max_active_documents": args.max_active_documents,
             "vllm_model": os.getenv("VLLM_MODEL"),
             "external_llm_model": os.getenv("EXTERNAL_LLM_MODEL"),
         }
     )
     summary_path = output_path.with_suffix(".summary.json")
-    summary_path.write_text(
-        json.dumps(summary, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(json.dumps(summary, indent=2, ensure_ascii=False))
     print(f"results: {output_path}")
     print(f"traces: {traces_path}")

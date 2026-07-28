@@ -84,7 +84,12 @@ def test_extract_evaluation_result() -> None:
     assert result.unknown_source_count == 0
     assert result.classification_coverage == 1.0
     assert result.document_count == 1
+    assert result.active_document_count == 1
+    assert result.shelved_document_count == 0
+    assert result.unusable_document_count == 0
     assert result.evidence_count == 1
+    assert result.active_evidence_count == 1
+    assert result.curation_action_count == 0
     assert result.citations == ["https://example.com/news/fake-result"]
     assert result.source_types == ["news"]
     assert result.preferred_source_type_match is True
@@ -243,8 +248,12 @@ def test_summarize_evaluation_results() -> None:
     assert summary["completed_count"] == 2
     assert summary["passed_minimums_count"] == 2
     assert summary["with_documents_count"] == 2
+    assert summary["with_active_documents_count"] == 2
+    assert summary["with_unusable_documents_count"] == 0
     assert summary["with_evidence_count"] == 2
+    assert summary["with_active_evidence_count"] == 2
     assert summary["with_citations_count"] == 2
+    assert summary["total_curation_actions"] == 0
     assert summary["preferred_source_match_count"] == 1
     assert summary["error_count"] == 0
     assert summary["classification_coverage"] == 0.5
@@ -262,3 +271,6 @@ def test_summarize_evaluation_results() -> None:
             "count": 1,
         }
     ]
+    assert summary["average_active_documents"] == 1.0
+    assert summary["average_unusable_documents"] == 0.0
+    assert summary["average_active_evidence"] == 1.0

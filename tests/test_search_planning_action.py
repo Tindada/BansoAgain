@@ -312,6 +312,8 @@ def test_rule_policy_uses_resource_lifecycle_after_searching() -> None:
     assert action.type == AgentActionType.EXTRACT_EVIDENCE
 
     state.documents["document-1"].extraction = ExtractProgress(attempt_count=1)
+    state.documents["document-1"].evidence_ids = ["evidence-1"]
+    state.documents["document-1"].lifecycle_status = "active"
     action = asyncio.run(policy.select_action(state))
     assert action.type == AgentActionType.FINISH
 
@@ -334,23 +336,29 @@ def test_rule_policy_retries_eligible_failure() -> None:
 
 
 @pytest.mark.parametrize(
-    ("document_ids", "expected"),
+    ("evidence_ids", "expected"),
     [
-        (["document-1"], AgentActionType.FINISH),
+        (["evidence-1"], AgentActionType.FINISH),
         ([], AgentActionType.STOP),
     ],
 )
 def test_rule_policy_uses_last_step_to_end(
-    document_ids: list[str],
+    evidence_ids: list[str],
     expected: AgentActionType,
 ) -> None:
     state = AgentState(
         query=UserQuery(text="latest AI news"),
         current_step=11,
-        documents={
-            document_id: DocumentState()
-            for document_id in document_ids
-        },
+        documents=(
+            {
+                "document-1": DocumentState(
+                    evidence_ids=evidence_ids,
+                    lifecycle_status="active",
+                )
+            }
+            if evidence_ids
+            else {}
+        ),
     )
 
     action = asyncio.run(NewsRuleBasedPolicy().select_action(state))

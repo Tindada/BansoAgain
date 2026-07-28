@@ -21,22 +21,22 @@ def progress_status(
     return "failed"
 
 
-def remaining_document_count(state: AgentState) -> int:
+def active_document_count(state: AgentState) -> int:
+    """Return the number of documents in the active working set."""
+    return sum(document.lifecycle_status == "active" for document in state.documents.values())
+
+
+def remaining_document_reads(state: AgentState) -> int:
     """Return the number of unique documents the run may still collect."""
     return max(state.budget.max_documents_to_read - len(state.documents), 0)
 
 
 def eligible_read_result_ids(state: AgentState) -> list[str]:
     """Return unread results followed by retryable read failures."""
-    if remaining_document_count(state) == 0:
-        return []
     pending: list[str] = []
     retryable: list[str] = []
     for result_id, result in state.search_results.items():
-        status = progress_status(
-            result,
-            state.budget.max_read_attempts,
-        )
+        status = progress_status(result, state.budget.max_read_attempts)
         if status == "pending":
             pending.append(result_id)
         elif status == "retryable":
@@ -49,12 +49,20 @@ def eligible_extraction_document_ids(state: AgentState) -> list[str]:
     pending: list[str] = []
     retryable: list[str] = []
     for document_id, document in state.documents.items():
-        status = progress_status(
-            document.extraction,
-            state.budget.max_extraction_attempts,
-        )
+        if document.lifecycle_status is not None:
+            continue
+        status = progress_status(document.extraction, state.budget.max_extraction_attempts)
         if status == "pending":
             pending.append(document_id)
         elif status == "retryable":
             retryable.append(document_id)
     return [*pending, *retryable]
+
+
+def curatable_document_ids(state: AgentState) -> list[str]:
+    """Return evidence-bearing documents available for agent curation."""
+    return [
+        document_id
+        for document_id, document in state.documents.items()
+        if document.lifecycle_status in {"active", "shelved"}
+    ]

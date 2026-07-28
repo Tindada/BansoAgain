@@ -2,8 +2,10 @@
 
 from banso.core.action import AgentAction, AgentActionType
 from banso.core.lifecycle import (
+    active_document_count,
     eligible_extraction_document_ids,
     eligible_read_result_ids,
+    remaining_document_reads,
 )
 from banso.core.state import AgentState
 
@@ -12,14 +14,15 @@ class NewsRuleBasedPolicy:
     """Selects a fixed news workflow action sequence."""
 
     async def select_action(self, state: AgentState) -> AgentAction:
-        has_sources = bool(state.documents)
+        active_count = active_document_count(state)
+        can_finish = 0 < active_count <= state.budget.max_active_documents
         if state.budget.max_steps - state.current_step <= 1:
             return (
                 AgentAction(
                     type=AgentActionType.FINISH,
                     rationale="Synthesize the available research before the run ends.",
                 )
-                if has_sources
+                if can_finish
                 else AgentAction(
                     type=AgentActionType.STOP,
                     rationale="Stop because no step remains to collect usable sources.",
@@ -36,9 +39,11 @@ class NewsRuleBasedPolicy:
             entry.action_type == AgentActionType.SEARCH
             for entry in state.action_history
         )
+        remaining_reads = remaining_document_reads(state)
         if (
             search_index < state.budget.max_searches
             and search_index < len(state.search_plan.searches)
+            and remaining_reads > 0
         ):
             search = state.search_plan.searches[search_index]
             return AgentAction(
@@ -47,7 +52,7 @@ class NewsRuleBasedPolicy:
                 rationale="Run the next planned search.",
             )
 
-        if eligible_read_result_ids(state):
+        if remaining_reads > 0 and eligible_read_result_ids(state):
             return AgentAction(
                 type=AgentActionType.READ_DOCUMENT,
                 rationale="Read the remaining eligible search results.",
@@ -59,7 +64,7 @@ class NewsRuleBasedPolicy:
                 rationale="Extract evidence from the remaining eligible documents.",
             )
 
-        if has_sources:
+        if can_finish:
             return AgentAction(
                 type=AgentActionType.FINISH,
                 rationale="Synthesize the final answer and finish the workflow.",

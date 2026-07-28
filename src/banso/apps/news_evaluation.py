@@ -47,7 +47,12 @@ class NewsEvaluationResult(BaseModel):
     classification_coverage: float = 0.0
     source_classifications: list[dict[str, Any]] = Field(default_factory=list)
     document_count: int = 0
+    active_document_count: int = 0
+    shelved_document_count: int = 0
+    unusable_document_count: int = 0
     evidence_count: int = 0
+    active_evidence_count: int = 0
+    curation_action_count: int = 0
     citations: list[str] = Field(default_factory=list)
     source_domains: list[str] = Field(default_factory=list)
     source_types: list[str] = Field(default_factory=list)
@@ -85,8 +90,28 @@ def extract_evaluation_result(
 
     state = output.result.state
     evidence_count = sum(
+        len(document.evidence_ids) for document in state.documents.values()
+    )
+    active_document_count = sum(
+        document.lifecycle_status == "active"
+        for document in state.documents.values()
+    )
+    shelved_document_count = sum(
+        document.lifecycle_status == "shelved"
+        for document in state.documents.values()
+    )
+    unusable_document_count = sum(
+        document.lifecycle_status == "unusable"
+        for document in state.documents.values()
+    )
+    active_evidence_count = sum(
         len(document.evidence_ids)
         for document in state.documents.values()
+        if document.lifecycle_status == "active"
+    )
+    curation_action_count = sum(
+        entry.action_type == AgentActionType.CURATE_EVIDENCE
+        for entry in state.action_history
     )
     steps = _completed_steps(spans)
     document_read_failures = [
@@ -132,9 +157,7 @@ def extract_evaluation_result(
     for action, observation in steps:
         if action.type != AgentActionType.SEARCH:
             continue
-        filter_report = _dict_value(
-            observation.data.get("retrieval_filter_report")
-        )
+        filter_report = _dict_value(observation.data.get("retrieval_filter_report"))
         classification_report = _dict_value(
             observation.data.get("source_classification_report")
         )
@@ -168,8 +191,8 @@ def extract_evaluation_result(
         total_action_seconds += duration
     passed_minimums = (
         state.done
-        and len(state.documents) >= case.min_documents
-        and evidence_count >= case.min_evidence
+        and active_document_count >= case.min_documents
+        and active_evidence_count >= case.min_evidence
         and len(state.citations) >= case.min_citations
         and bool(state.final_answer)
     )
@@ -192,7 +215,12 @@ def extract_evaluation_result(
         ),
         source_classifications=source_classifications,
         document_count=len(state.documents),
+        active_document_count=active_document_count,
+        shelved_document_count=shelved_document_count,
+        unusable_document_count=unusable_document_count,
         evidence_count=evidence_count,
+        active_evidence_count=active_evidence_count,
+        curation_action_count=curation_action_count,
         citations=state.citations,
         source_domains=source_domains,
         source_types=source_types,
@@ -246,9 +274,7 @@ def _ratio(numerator: int, denominator: int) -> float:
     return round(numerator / denominator, 4)
 
 
-def summarize_evaluation_results(
-    results: list[NewsEvaluationResult],
-) -> dict[str, Any]:
+def summarize_evaluation_results(results: list[NewsEvaluationResult]) -> dict[str, Any]:
     """Aggregate objective pipeline metrics across evaluation cases."""
 
     count = len(results)
@@ -299,8 +325,20 @@ def summarize_evaluation_results(
         "completed_count": sum(result.completed for result in results),
         "passed_minimums_count": sum(result.passed_minimums for result in results),
         "with_documents_count": sum(result.document_count > 0 for result in results),
+        "with_active_documents_count": sum(
+            result.active_document_count > 0 for result in results
+        ),
+        "with_unusable_documents_count": sum(
+            result.unusable_document_count > 0 for result in results
+        ),
         "with_evidence_count": sum(result.evidence_count > 0 for result in results),
+        "with_active_evidence_count": sum(
+            result.active_evidence_count > 0 for result in results
+        ),
         "with_citations_count": sum(bool(result.citations) for result in results),
+        "total_curation_actions": sum(
+            result.curation_action_count for result in results
+        ),
         "preferred_source_match_count": sum(
             result.preferred_source_type_match for result in results
         ),
@@ -331,8 +369,17 @@ def summarize_evaluation_results(
         "average_documents": round(
             sum(result.document_count for result in results) / count, 2
         ),
+        "average_active_documents": round(
+            sum(result.active_document_count for result in results) / count, 2
+        ),
+        "average_unusable_documents": round(
+            sum(result.unusable_document_count for result in results) / count, 2
+        ),
         "average_evidence": round(
             sum(result.evidence_count for result in results) / count, 2
+        ),
+        "average_active_evidence": round(
+            sum(result.active_evidence_count for result in results) / count, 2
         ),
         "average_action_seconds": round(
             sum(result.total_action_seconds for result in results) / count, 2

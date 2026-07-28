@@ -293,6 +293,7 @@ def test_evaluation_keeps_runtime_failure_trace_id(
                 query="test query",
             ),
             max_documents_to_read=1,
+            max_active_documents=None,
         )
     )
 
@@ -317,8 +318,13 @@ def test_evaluation_writes_in_memory_trace_jsonl(
         trace_id = span.trace_id
     spans = sink.get_trace(trace_id)
 
-    async def fake_run_case(case, *, max_documents_to_read):
-        del max_documents_to_read
+    async def fake_run_case(
+        case,
+        *,
+        max_documents_to_read,
+        max_active_documents,
+    ):
+        del max_documents_to_read, max_active_documents
         return (
             NewsEvaluationResult(
                 case_id=case.id,
@@ -344,6 +350,7 @@ def test_evaluation_writes_in_memory_trace_jsonl(
                 output=output_path,
                 limit=None,
                 max_documents_to_read=1,
+                max_active_documents=None,
             )
         )
     )

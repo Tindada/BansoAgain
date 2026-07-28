@@ -1,7 +1,7 @@
 """Agent state models."""
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -15,8 +15,17 @@ class ExecutionBudget(BaseModel):
     max_steps: int = 12
     max_searches: int = 3
     max_documents_to_read: int = 8
+    max_active_documents: int | None = Field(default=None, ge=1)
     max_read_attempts: int = 2
     max_extraction_attempts: int = 2
+
+    @model_validator(mode="after")
+    def validate_active_document_limit(self) -> "ExecutionBudget":
+        if self.max_active_documents is None:
+            self.max_active_documents = self.max_documents_to_read
+        elif self.max_active_documents > self.max_documents_to_read:
+            raise ValueError("max_active_documents cannot exceed max_documents_to_read")
+        return self
 
 
 class UserQuery(BaseModel):
@@ -76,14 +85,13 @@ class SearchResultState(BaseModel):
     def validate_read_state(self) -> "SearchResultState":
         if self.attempt_count == 0:
             if self.document_id is not None or self.failure is not None:
-                raise ValueError(
-                    "pending search result cannot contain a read outcome"
-                )
+                raise ValueError("pending search result cannot contain a read outcome")
         elif (self.document_id is None) == (self.failure is None):
-            raise ValueError(
-                "completed read must contain exactly one of document_id or failure"
-            )
+            raise ValueError("completed read must contain exactly one of document_id or failure")
         return self
+
+
+DocumentLifecycleStatus = Literal["active", "shelved", "unusable"]
 
 
 class DocumentState(BaseModel):
@@ -91,6 +99,9 @@ class DocumentState(BaseModel):
 
     extraction: ExtractProgress | None = None
     evidence_ids: list[str] = Field(default_factory=list)
+    lifecycle_status: DocumentLifecycleStatus | None = None
+    lifecycle_reason: str | None = None
+    lifecycle_updated_at_step: int | None = Field(default=None, ge=0)
 
 
 class AgentState(BaseModel):

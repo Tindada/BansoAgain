@@ -19,6 +19,7 @@ from banso.core import (
 )
 from banso.documents import Document, EvidenceItem
 from banso.policies import NewsPolicyContextBuilder
+from banso.policies.news_policy_context import document_reference_maps
 from banso.retrieval import SearchResult, Source, SourceType
 
 
@@ -81,6 +82,7 @@ def _completed_state() -> AgentState:
             "document-1": DocumentState(
                 extraction=ExtractProgress(attempt_count=1),
                 evidence_ids=["evidence-1"],
+                lifecycle_status="active",
             ),
         },
     )
@@ -117,7 +119,8 @@ def test_builds_compact_context_from_completed_work() -> None:
     assert context.budget.model_dump() == {
         "remaining_steps": 6,
         "remaining_searches": 3,
-        "remaining_document_slots": 5,
+        "remaining_document_reads": 5,
+        "max_active_documents": 6,
     }
     assert context.search_history == []
     assert context.work.model_dump() == {
@@ -138,15 +141,24 @@ def test_builds_compact_context_from_completed_work() -> None:
         "extracted_without_evidence": 0,
     }
     assert context.artifacts.model_dump() == {
-        "search_results": 1,
-        "documents": 1,
-        "evidence": 1,
-        "distinct_evidence_sources": 1,
+        "search_result_count": 1,
+        "document_count": 1,
+        "active_document_count": 1,
+        "shelved_document_count": 0,
+        "unusable_document_count": 0,
+        "evidence_count": 1,
+        "active_evidence_count": 1,
+        "shelved_evidence_count": 0,
+        "distinct_evidence_source_count": 1,
     }
     assert context.candidate_results == []
     assert context.candidate_documents == []
     assert [group.model_dump() for group in context.evidence_groups] == [
         {
+            "document_ref": "D1",
+            "lifecycle_status": "active",
+            "lifecycle_reason": None,
+            "lifecycle_updated_at_step": None,
             "document_title": "Document",
             "source": {
                 "name": "Example",
@@ -271,14 +283,16 @@ def test_exposes_only_actionable_resources_and_aggregates_failures() -> None:
                 )
             ),
             "document-empty": DocumentState(
-                extraction=ExtractProgress(attempt_count=1)
+                extraction=ExtractProgress(attempt_count=1),
+                lifecycle_status="unusable",
             ),
             "document-pending": DocumentState(),
             "document-failed": DocumentState(
                 extraction=ExtractProgress(
                     attempt_count=1,
                     failure=Failure(reason="invalid_json", retryable=False),
-                )
+                ),
+                lifecycle_status="unusable",
             ),
         },
     )
@@ -303,6 +317,7 @@ def test_exposes_only_actionable_resources_and_aggregates_failures() -> None:
         },
     }
     assert context.work.extracted_without_evidence == 1
+    assert context.artifacts.unusable_document_count == 2
     assert [
         (result.title, result.read_status)
         for result in context.candidate_results
@@ -311,11 +326,22 @@ def test_exposes_only_actionable_resources_and_aggregates_failures() -> None:
         ("result-retry", "retryable"),
     ]
     assert [
-        (document.title, document.extraction_status)
+        (document.document_ref, document.title, document.extraction_status)
         for document in context.candidate_documents
     ] == [
-        ("document-pending", "pending"),
-        ("document-retry", "retryable"),
+        ("D3", "document-pending", "pending"),
+        ("D1", "document-retry", "retryable"),
+    ]
+    assert [
+        (
+            group.document_ref,
+            group.lifecycle_status,
+            group.evidence_count,
+        )
+        for group in context.evidence_groups
+    ] == [
+        ("D2", "unusable", 0),
+        ("D4", "unusable", 0),
     ]
 
 
@@ -344,7 +370,7 @@ def test_candidate_limits_do_not_change_actionable_or_artifact_counts() -> None:
     ).build(state)
 
     assert context.work.read.actionable == 2
-    assert context.artifacts.search_results == 3
+    assert context.artifacts.search_result_count == 3
     assert [result.title for result in context.candidate_results] == [
         "result-2"
     ]
@@ -393,9 +419,15 @@ def test_limits_visible_evidence_per_document() -> None:
         query=UserQuery(text="query"),
         documents={
             "document-a": DocumentState(
-                evidence_ids=["a-1", "a-2", "a-3"]
+                extraction=ExtractProgress(attempt_count=1),
+                evidence_ids=["a-1", "a-2", "a-3"],
+                lifecycle_status="active",
             ),
-            "document-b": DocumentState(evidence_ids=["b-1", "b-2"]),
+            "document-b": DocumentState(
+                extraction=ExtractProgress(attempt_count=1),
+                evidence_ids=["b-1", "b-2"],
+                lifecycle_status="active",
+            ),
         },
     )
 
@@ -410,8 +442,8 @@ def test_limits_visible_evidence_per_document() -> None:
     assert [
         group.evidence_count for group in context.evidence_groups
     ] == [3, 2]
-    assert context.artifacts.evidence == 5
-    assert context.artifacts.distinct_evidence_sources == 2
+    assert context.artifacts.evidence_count == 5
+    assert context.artifacts.distinct_evidence_source_count == 2
     assert [
         group.source.model_dump() for group in context.evidence_groups
     ] == [
@@ -428,17 +460,32 @@ def test_limits_visible_evidence_per_document() -> None:
     ]
 
     hidden_context = NewsPolicyContextBuilder(store, max_evidence_per_document=0).build(state)
-    assert hidden_context.evidence_groups == []
-    assert hidden_context.artifacts.evidence == 5
+    assert [
+        group.claim_previews for group in hidden_context.evidence_groups
+    ] == [[], []]
+    assert hidden_context.artifacts.evidence_count == 5
 
 
 def test_truncates_visible_text_without_modifying_artifacts() -> None:
     store = _populated_store()
+    store.put(
+        Document(
+            id="document-2",
+            title="Pending document",
+            url="https://example.com/document-2",
+            text="document body",
+        )
+    )
     state = AgentState(
         query=UserQuery(text="query"),
         search_results={"result-1": SearchResultState()},
         documents={
-            "document-1": DocumentState(evidence_ids=["evidence-1"])
+            "document-1": DocumentState(
+                extraction=ExtractProgress(attempt_count=1),
+                evidence_ids=["evidence-1"],
+                lifecycle_status="active",
+            ),
+            "document-2": DocumentState(),
         },
     )
     context = NewsPolicyContextBuilder(
@@ -460,6 +507,109 @@ def test_truncates_visible_text_without_modifying_artifacts() -> None:
     assert stored_result.snippet == "search snippet"
     assert stored_document.text == "document body"
     assert stored_evidence.claim == "evidence claim"
+
+
+def test_document_references_are_stable_and_titles_need_not_be_unique() -> None:
+    store = InMemoryArtifactStore()
+    state = AgentState(query=UserQuery(text="query"))
+    for document_id in ("document-a", "document-b"):
+        store.put(
+            Document(
+                id=document_id,
+                title="Repeated title",
+                url=f"https://example.com/{document_id}",
+                text="body",
+            )
+        )
+        state.documents[document_id] = DocumentState(
+            extraction=ExtractProgress(attempt_count=1),
+            lifecycle_status="unusable",
+        )
+
+    initial_refs, _ = document_reference_maps(state)
+    store.put(
+        Document(
+            id="document-c",
+            title="Repeated title",
+            url="https://example.com/document-c",
+            text="body",
+        )
+    )
+    state.documents["document-c"] = DocumentState()
+    updated_refs, _ = document_reference_maps(state)
+    context = NewsPolicyContextBuilder(store, max_documents=1).build(state)
+
+    assert initial_refs == {
+        "document-a": "D1",
+        "document-b": "D2",
+    }
+    assert updated_refs == {
+        "document-a": "D1",
+        "document-b": "D2",
+        "document-c": "D3",
+    }
+    assert [
+        (group.document_ref, group.document_title)
+        for group in context.evidence_groups
+    ] == [
+        ("D1", "Repeated title"),
+        ("D2", "Repeated title"),
+    ]
+
+
+def test_shelved_evidence_group_uses_the_configured_claim_limit() -> None:
+    store = InMemoryArtifactStore()
+    store.put(
+        Document(
+            id="document-1",
+            title="Document",
+            url="https://example.com/document",
+            text="body",
+        )
+    )
+    evidence_ids: list[str] = []
+    for index in range(3):
+        evidence = EvidenceItem(
+            id=f"evidence-{index}",
+            document_id="document-1",
+            claim=f"claim-{index}",
+            source_url="https://example.com/document",
+        )
+        store.put(evidence)
+        evidence_ids.append(evidence.id)
+    state = AgentState(
+        query=UserQuery(text="query"),
+        documents={
+            "document-1": DocumentState(
+                extraction=ExtractProgress(attempt_count=1),
+                evidence_ids=evidence_ids,
+                lifecycle_status="shelved",
+                lifecycle_reason="Duplicated stronger sources.",
+                lifecycle_updated_at_step=4,
+            )
+        },
+    )
+
+    context = NewsPolicyContextBuilder(
+        store,
+        max_evidence_per_document=3,
+    ).build(state)
+
+    group = context.evidence_groups[0]
+    assert group.claim_previews == ["claim-0", "claim-1", "claim-2"]
+    assert group.lifecycle_reason == "Duplicated stronger sources."
+    assert group.lifecycle_updated_at_step == 4
+    assert context.artifacts.model_dump() == {
+        "search_result_count": 0,
+        "document_count": 1,
+        "active_document_count": 0,
+        "shelved_document_count": 1,
+        "unusable_document_count": 0,
+        "evidence_count": 3,
+        "active_evidence_count": 0,
+        "shelved_evidence_count": 3,
+        "distinct_evidence_source_count": 1,
+    }
 
 
 @pytest.mark.parametrize(

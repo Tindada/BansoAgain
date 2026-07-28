@@ -4,6 +4,7 @@ from copy import deepcopy
 from typing import Protocol
 
 from banso.core.action import AgentAction, AgentActionType
+from banso.core.lifecycle import progress_status
 from banso.core.observation import Observation
 from banso.core.state import (
     ActionHistoryEntry,
@@ -41,9 +42,7 @@ def _apply_read_outcomes(state: AgentState, outcomes: object) -> None:
 
         result = state.search_results.get(result_id)
         if result is None:
-            raise ValueError(
-                f"read outcome contains an unknown search result: {result_id}"
-            )
+            raise ValueError(f"read outcome contains an unknown search result: {result_id}")
         attempt_count = result.attempt_count + 1
         document_id = outcome.get("document_id")
         failure = outcome.get("failure")
@@ -63,7 +62,11 @@ def _apply_read_outcomes(state: AgentState, outcomes: object) -> None:
         raise ValueError("read outcome must contain exactly one outcome")
 
 
-def _apply_extraction_outcomes(state: AgentState, outcomes: object) -> None:
+def _apply_extraction_outcomes(
+    state: AgentState,
+    outcomes: object,
+    step_index: int,
+) -> None:
     if not isinstance(outcomes, list):
         raise ValueError("extraction outcomes must be a list")
 
@@ -76,9 +79,7 @@ def _apply_extraction_outcomes(state: AgentState, outcomes: object) -> None:
 
         document = state.documents.get(document_id)
         if document is None:
-            raise ValueError(
-                f"extraction outcome contains an unknown document: {document_id}"
-            )
+            raise ValueError(f"extraction outcome contains an unknown document: {document_id}")
         previous = document.extraction
         attempt_count = previous.attempt_count + 1 if previous is not None else 1
         evidence_ids = outcome.get("evidence_ids")
@@ -89,15 +90,30 @@ def _apply_extraction_outcomes(state: AgentState, outcomes: object) -> None:
             if len(set(evidence_ids)) != len(evidence_ids):
                 raise ValueError("extraction evidence_ids must be unique")
             document.evidence_ids = list(evidence_ids)
-            document.extraction = ExtractProgress(
-                attempt_count=attempt_count,
-            )
+            document.extraction = ExtractProgress(attempt_count=attempt_count)
+            if evidence_ids:
+                document.lifecycle_status = "active"
+            else:
+                document.lifecycle_status = "unusable"
+                document.lifecycle_reason = "Evidence extraction completed without evidence."
+                document.lifecycle_updated_at_step = step_index
             continue
         if evidence_ids is None and isinstance(failure, dict):
+            extraction_failure = Failure.model_validate(failure)
             document.extraction = ExtractProgress(
                 attempt_count=attempt_count,
-                failure=Failure.model_validate(failure),
+                failure=extraction_failure,
             )
+            if (
+                progress_status(
+                    document.extraction,
+                    state.budget.max_extraction_attempts,
+                )
+                == "failed"
+            ):
+                document.lifecycle_status = "unusable"
+                document.lifecycle_reason = f"Evidence extraction failed: {extraction_failure.reason}"
+                document.lifecycle_updated_at_step = step_index
             continue
         raise ValueError("extraction outcome must contain exactly one outcome")
 
@@ -144,15 +160,11 @@ class DefaultStateReducer:
         if action.type == AgentActionType.SEARCH:
             search_result_ids = observation.data.get("search_result_ids", [])
             if not isinstance(search_result_ids, list) or not all(
-                isinstance(result_id, str)
-                for result_id in search_result_ids
+                isinstance(result_id, str) for result_id in search_result_ids
             ):
                 raise ValueError("search_result_ids must be a list of strings")
             for result_id in search_result_ids:
-                next_state.search_results.setdefault(
-                    result_id,
-                    SearchResultState(),
-                )
+                next_state.search_results.setdefault(result_id, SearchResultState())
             _update_index(
                 next_state.search_result_index,
                 observation.data.get("search_result_index_updates", {}),
@@ -160,10 +172,7 @@ class DefaultStateReducer:
             )
 
         if action.type == AgentActionType.READ_DOCUMENT:
-            _apply_read_outcomes(
-                next_state,
-                observation.data.get("read_outcomes"),
-            )
+            _apply_read_outcomes(next_state, observation.data.get("read_outcomes"))
             _update_index(
                 next_state.document_index,
                 observation.data.get("document_index_updates", {}),
@@ -174,7 +183,19 @@ class DefaultStateReducer:
             _apply_extraction_outcomes(
                 next_state,
                 observation.data.get("extraction_outcomes"),
+                state.current_step,
             )
+
+        if action.type == AgentActionType.CURATE_EVIDENCE:
+            for status, param_name in (
+                ("shelved", "shelve_document_ids"),
+                ("active", "reactivate_document_ids"),
+            ):
+                for document_id in action.params[param_name]:
+                    document = next_state.documents[document_id]
+                    document.lifecycle_status = status
+                    document.lifecycle_reason = action.rationale
+                    document.lifecycle_updated_at_step = state.current_step
 
         if action.type == AgentActionType.FINISH:
             final_answer = observation.data.get("final_answer")

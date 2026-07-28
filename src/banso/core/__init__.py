@@ -10,6 +10,7 @@ from banso.core.runtime import AgentRuntime, RuntimeExecutionError, RuntimeRunRe
 from banso.core.state import (
     ActionHistoryEntry,
     AgentState,
+    DocumentLifecycleStatus,
     DocumentState,
     ExecutionBudget,
     ExtractProgress,
@@ -29,6 +30,7 @@ __all__ = [
     "AgentRuntime",
     "AgentState",
     "DefaultStateReducer",
+    "DocumentLifecycleStatus",
     "DocumentState",
     "ExecutionBudget",
     "ExtractProgress",

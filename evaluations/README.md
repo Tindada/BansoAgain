@@ -26,6 +26,13 @@ Run a low-cost two-case check first:
 UV_CACHE_DIR=.uv-cache uv run python scripts/evaluate_news_runtime.py --limit 2
 ```
 
+Exercise LLM evidence curation with a cumulative budget of six documents and
+an active working set of three:
+
+```bash
+UV_CACHE_DIR=.uv-cache uv run python scripts/evaluate_news_runtime.py --max-documents-to-read 6 --max-active-documents 3
+```
+
 Run the full set:
 
 ```bash
@@ -37,6 +44,7 @@ so completed cases remain available if a later case fails or the process is
 interrupted. A sibling `.traces.jsonl` stores the completed `SpanRecord` list for
 each case that captured spans. `trace_id` links an evaluation result to that
 list, and the enclosing JSON object contains the evaluation case ID. The
-`.summary.json` records aggregate metrics, timestamps, output paths, the document
-budget, and configured model names. Aggregate search counts and action durations
+`.summary.json` records aggregate metrics, timestamps, output paths, the cumulative
+and active document budgets, and configured model names. Aggregate search counts,
+active/shelved/unusable document counts, curation actions, and action durations
 include every repeated action. API keys are never written to these outputs.

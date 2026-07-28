@@ -11,14 +11,16 @@ from banso.artifacts import ArtifactStore
 from banso.core.action import AgentActionType
 from banso.core.lifecycle import (
     LifecycleStatus,
+    active_document_count,
     eligible_extraction_document_ids,
     eligible_read_result_ids,
     progress_status,
-    remaining_document_count,
+    remaining_document_reads,
 )
 from banso.core.state import (
     ActionHistoryEntry,
     AgentState,
+    DocumentLifecycleStatus,
     ExtractProgress,
     SearchResultState,
     UserQuery,
@@ -51,6 +53,7 @@ class SearchResultCandidate(BaseModel):
 class DocumentCandidate(BaseModel):
     """One document actionable by the next extraction operation."""
 
+    document_ref: str
     title: str
     text_preview: str
     source: PolicySourceView
@@ -61,6 +64,10 @@ class DocumentCandidate(BaseModel):
 class EvidenceGroup(BaseModel):
     """Representative evidence claims grouped by source document."""
 
+    document_ref: str
+    lifecycle_status: DocumentLifecycleStatus
+    lifecycle_reason: str | None = None
+    lifecycle_updated_at_step: int | None = None
     document_title: str
     source: PolicySourceView
     published_at: datetime | None = None
@@ -82,7 +89,8 @@ class BudgetSummary(BaseModel):
 
     remaining_steps: int
     remaining_searches: int
-    remaining_document_slots: int
+    remaining_document_reads: int
+    max_active_documents: int
 
 
 class ResourceWorkSummary(BaseModel):
@@ -106,10 +114,15 @@ class WorkSummary(BaseModel):
 class ArtifactSummary(BaseModel):
     """Full collected-artifact totals independent of visible limits."""
 
-    search_results: int
-    documents: int
-    evidence: int
-    distinct_evidence_sources: int
+    search_result_count: int
+    document_count: int
+    active_document_count: int
+    shelved_document_count: int
+    unusable_document_count: int
+    evidence_count: int
+    active_evidence_count: int
+    shelved_evidence_count: int
+    distinct_evidence_source_count: int
 
 
 class NewsPolicyContext(BaseModel):
@@ -124,6 +137,15 @@ class NewsPolicyContext(BaseModel):
     candidate_results: list[SearchResultCandidate]
     candidate_documents: list[DocumentCandidate]
     evidence_groups: list[EvidenceGroup]
+
+
+def document_reference_maps(state: AgentState) -> tuple[dict[str, str], dict[str, str]]:
+    """Return stable rollout-local mappings between document IDs and LLM refs."""
+    id_to_ref = {
+        document_id: f"D{index}"
+        for index, document_id in enumerate(state.documents, start=1)
+    }
+    return id_to_ref, {document_ref: document_id for document_id, document_ref in id_to_ref.items()}
 
 
 class NewsPolicyContextBuilder:
@@ -164,10 +186,10 @@ class NewsPolicyContextBuilder:
         """Resolve state facts and artifacts into bounded decision context."""
         search_results = self._load_all(list(state.search_results), SearchResult)
         documents = self._load_all(list(state.documents), Document)
-        evidence_by_document_id: dict[str, list[EvidenceItem]] = {}
+        evidence_items_by_document_id: dict[str, list[EvidenceItem]] = {}
         for document_id, document_state in state.documents.items():
-            document_evidence = self._load_all(document_state.evidence_ids, EvidenceItem)
-            evidence_by_document_id[document_id] = document_evidence
+            evidence_items = self._load_all(document_state.evidence_ids, EvidenceItem)
+            evidence_items_by_document_id[document_id] = evidence_items
         search_result_by_id = {search_result.id: search_result for search_result in search_results}
         document_by_id = {document.id: document for document in documents}
         search_history = [
@@ -191,12 +213,13 @@ class NewsPolicyContextBuilder:
         }
         read_counts = Counter(read_statuses.values())
         extraction_counts = Counter(extraction_statuses.values())
-        evidence_counts = {
-            document_id: len(document_evidence)
-            for document_id, document_evidence in evidence_by_document_id.items()
+        evidence_count_by_document_id = {
+            document_id: len(evidence_items)
+            for document_id, evidence_items in evidence_items_by_document_id.items()
         }
-        remaining_document_slots = remaining_document_count(state)
-        actionable_read_ids = eligible_read_result_ids(state)[:remaining_document_slots]
+        id_to_document_ref, _ = document_reference_maps(state)
+        remaining_reads = remaining_document_reads(state)
+        actionable_read_ids = eligible_read_result_ids(state)[:remaining_reads]
         actionable_extraction_ids = eligible_extraction_document_ids(state)
         candidate_search_results = [
             search_result_by_id[search_result_id]
@@ -208,10 +231,22 @@ class NewsPolicyContextBuilder:
         ]
         evidence_domains = {
             domain
-            for document_evidence in evidence_by_document_id.values()
-            for item in document_evidence
+            for evidence_items in evidence_items_by_document_id.values()
+            for item in evidence_items
             if (domain := publisher_domain(item.source_url))
         }
+        active_count = active_document_count(state)
+        active_evidence_count = sum(
+            evidence_count_by_document_id[document_id]
+            for document_id, document in state.documents.items()
+            if document.lifecycle_status == "active"
+        )
+        shelved_evidence_count = sum(
+            evidence_count_by_document_id[document_id]
+            for document_id, document in state.documents.items()
+            if document.lifecycle_status == "shelved"
+        )
+        evidence_count = sum(evidence_count_by_document_id.values())
 
         return NewsPolicyContext(
             user_query=state.query.model_copy(deep=True),
@@ -219,7 +254,8 @@ class NewsPolicyContextBuilder:
             budget=BudgetSummary(
                 remaining_steps=max(state.budget.max_steps - state.current_step, 0),
                 remaining_searches=max(state.budget.max_searches - len(search_history), 0),
-                remaining_document_slots=remaining_document_slots,
+                remaining_document_reads=remaining_reads,
+                max_active_documents=state.budget.max_active_documents,
             ),
             search_history=search_history,
             work=WorkSummary(
@@ -246,25 +282,47 @@ class NewsPolicyContextBuilder:
                     ),
                 ),
                 extracted_without_evidence=sum(
-                    status == "succeeded" and evidence_counts[document_id] == 0
+                    status == "succeeded"
+                    and evidence_count_by_document_id[document_id] == 0
                     for document_id, status in extraction_statuses.items()
                 ),
             ),
             artifacts=ArtifactSummary(
-                search_results=len(search_results),
-                documents=len(documents),
-                evidence=sum(evidence_counts.values()),
-                distinct_evidence_sources=len(evidence_domains),
+                search_result_count=len(search_results),
+                document_count=len(documents),
+                active_document_count=active_count,
+                shelved_document_count=sum(
+                    document.lifecycle_status == "shelved"
+                    for document in state.documents.values()
+                ),
+                unusable_document_count=sum(
+                    document.lifecycle_status == "unusable"
+                    for document in state.documents.values()
+                ),
+                evidence_count=evidence_count,
+                active_evidence_count=active_evidence_count,
+                shelved_evidence_count=shelved_evidence_count,
+                distinct_evidence_source_count=len(evidence_domains),
             ),
             candidate_results=self._build_search_results(candidate_search_results, read_statuses),
-            candidate_documents=self._build_documents(candidate_documents, extraction_statuses),
+            candidate_documents=self._build_documents(
+                candidate_documents,
+                extraction_statuses,
+                id_to_document_ref,
+            ),
             evidence_groups=self._build_evidence_groups(
-                evidence_by_document_id,
+                state,
+                evidence_items_by_document_id,
                 document_by_id,
+                id_to_document_ref,
             ),
         )
 
-    def _build_search_results(self, search_results: list[SearchResult], statuses: dict[str, LifecycleStatus]) -> list[SearchResultCandidate]:
+    def _build_search_results(
+        self,
+        search_results: list[SearchResult],
+        statuses: dict[str, LifecycleStatus],
+    ) -> list[SearchResultCandidate]:
         return [
             SearchResultCandidate(
                 title=search_result.title,
@@ -280,13 +338,17 @@ class NewsPolicyContextBuilder:
             for search_result in search_results[: self.max_search_results]
         ]
 
-    def _build_documents(self, documents: list[Document], statuses: dict[str, LifecycleStatus]) -> list[DocumentCandidate]:
+    def _build_documents(
+        self,
+        documents: list[Document],
+        statuses: dict[str, LifecycleStatus],
+        id_to_document_ref: dict[str, str],
+    ) -> list[DocumentCandidate]:
         return [
             DocumentCandidate(
+                document_ref=id_to_document_ref[document.id],
                 title=document.title,
-                text_preview=document.text[
-                    : self.max_document_preview_chars
-                ],
+                text_preview=document.text[: self.max_document_preview_chars],
                 source=self._build_source(document.source, document.url),
                 published_at=document.published_at,
                 extraction_status=statuses[document.id],
@@ -296,25 +358,29 @@ class NewsPolicyContextBuilder:
 
     def _build_evidence_groups(
         self,
-        evidence_by_document_id: dict[str, list[EvidenceItem]],
+        state: AgentState,
+        evidence_items_by_document_id: dict[str, list[EvidenceItem]],
         document_by_id: dict[str, Document],
+        id_to_document_ref: dict[str, str],
     ) -> list[EvidenceGroup]:
         groups: list[EvidenceGroup] = []
-        for document_id, document_evidence in evidence_by_document_id.items():
-            visible_evidence = document_evidence[: self.max_evidence_per_document]
-            if not visible_evidence:
+        for document_id, document_state in state.documents.items():
+            if document_state.lifecycle_status is None:
                 continue
+            evidence_items = evidence_items_by_document_id[document_id]
+            visible_evidence = evidence_items[: self.max_evidence_per_document]
             document = document_by_id[document_id]
             groups.append(
                 EvidenceGroup(
+                    document_ref=id_to_document_ref[document_id],
+                    lifecycle_status=document_state.lifecycle_status,
+                    lifecycle_reason=document_state.lifecycle_reason,
+                    lifecycle_updated_at_step=document_state.lifecycle_updated_at_step,
                     document_title=document.title,
                     source=self._build_source(document.source, document.url),
                     published_at=document.published_at,
-                    evidence_count=len(document_evidence),
-                    claim_previews=[
-                        item.claim[: self.max_claim_chars]
-                        for item in visible_evidence
-                    ],
+                    evidence_count=len(evidence_items),
+                    claim_previews=[item.claim[: self.max_claim_chars] for item in visible_evidence],
                 )
             )
         return groups
@@ -330,11 +396,7 @@ class NewsPolicyContextBuilder:
 
     @staticmethod
     def _failure_reasons(progress_values: Iterable[SearchResultState | ExtractProgress]) -> dict[str, int]:
-        reasons = Counter(
-            progress.failure.reason
-            for progress in progress_values
-            if progress.failure is not None
-        )
+        reasons = Counter(progress.failure.reason for progress in progress_values if progress.failure is not None)
         return dict(sorted(reasons.items()))
 
     @staticmethod

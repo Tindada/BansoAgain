@@ -4,19 +4,24 @@ import pytest
 from pydantic import ValidationError
 
 from banso.core import (
+    AgentAction,
+    AgentActionType,
     AgentState,
+    DefaultStateReducer,
     DocumentState,
     ExecutionBudget,
     ExtractProgress,
     Failure,
+    Observation,
     SearchResultState,
     UserQuery,
 )
 from banso.core.lifecycle import (
+    curatable_document_ids,
     eligible_extraction_document_ids,
     eligible_read_result_ids,
     progress_status,
-    remaining_document_count,
+    remaining_document_reads,
 )
 from banso.documents import DocumentReadError, EvidenceExtractionError
 
@@ -88,7 +93,7 @@ def test_read_lifecycle_prioritizes_pending_results_before_retries() -> None:
         documents={"document": DocumentState()},
     )
 
-    assert remaining_document_count(state) == 1
+    assert remaining_document_reads(state) == 1
     assert eligible_read_result_ids(state) == ["pending", "retryable"]
 
 
@@ -108,8 +113,8 @@ def test_read_lifecycle_exhausts_retries_and_document_budget() -> None:
     assert eligible_read_result_ids(state) == ["pending"]
 
     state.documents["document"] = DocumentState()
-    assert remaining_document_count(state) == 0
-    assert eligible_read_result_ids(state) == []
+    assert remaining_document_reads(state) == 0
+    assert eligible_read_result_ids(state) == ["pending"]
 
 
 def test_extraction_lifecycle_distinguishes_empty_success_from_failures() -> None:
@@ -120,6 +125,11 @@ def test_extraction_lifecycle_distinguishes_empty_success_from_failures() -> Non
             "pending": DocumentState(),
             "empty": DocumentState(
                 extraction=ExtractProgress(attempt_count=1)
+            ),
+            "evidence": DocumentState(
+                extraction=ExtractProgress(attempt_count=1),
+                evidence_ids=["evidence"],
+                lifecycle_status="active",
             ),
             "retryable": DocumentState(
                 extraction=ExtractProgress(
@@ -137,6 +147,87 @@ def test_extraction_lifecycle_distinguishes_empty_success_from_failures() -> Non
     )
 
     assert eligible_extraction_document_ids(state) == ["pending", "retryable"]
+    assert curatable_document_ids(state) == ["evidence"]
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        {"document_id": "document", "evidence_ids": []},
+        {
+            "document_id": "document",
+            "failure": {"reason": "invalid_content", "retryable": False},
+        },
+    ],
+)
+def test_terminal_extraction_without_evidence_becomes_unusable(
+    outcome: dict[str, object],
+) -> None:
+    state = AgentState(
+        query=UserQuery(text="query"),
+        current_step=3,
+        documents={"document": DocumentState()},
+    )
+    action = AgentAction(type=AgentActionType.EXTRACT_EVIDENCE)
+    observation = Observation(data={"extraction_outcomes": [outcome]})
+    next_state = DefaultStateReducer().apply(state, action, observation)
+
+    document = next_state.documents["document"]
+    assert document.lifecycle_status == "unusable"
+    assert document.lifecycle_reason
+    assert document.lifecycle_updated_at_step == 3
+
+
+def test_retryable_extraction_becomes_unusable_only_after_exhaustion() -> None:
+    state = AgentState(
+        query=UserQuery(text="query"),
+        budget=ExecutionBudget(max_extraction_attempts=2),
+        documents={"document": DocumentState()},
+    )
+    action = AgentAction(type=AgentActionType.EXTRACT_EVIDENCE)
+    observation = Observation(
+        data={
+            "extraction_outcomes": [
+                {
+                    "document_id": "document",
+                    "failure": {"reason": "llm_error", "retryable": True},
+                }
+            ]
+        }
+    )
+
+    state = DefaultStateReducer().apply(state, action, observation)
+    assert state.documents["document"].lifecycle_status is None
+
+    state = DefaultStateReducer().apply(state, action, observation)
+    assert state.documents["document"].lifecycle_status == "unusable"
+    assert state.documents["document"].lifecycle_updated_at_step == 1
+
+
+def test_shelved_document_is_not_actionable_for_extraction() -> None:
+    state = AgentState(
+        query=UserQuery(text="test"),
+        documents={
+            "unprocessed": DocumentState(),
+            "shelved": DocumentState(lifecycle_status="shelved"),
+        },
+    )
+
+    assert eligible_extraction_document_ids(state) == ["unprocessed"]
+
+
+@pytest.mark.parametrize(
+    "budget",
+    [
+        {"max_documents_to_read": 3, "max_active_documents": 0},
+        {"max_documents_to_read": 3, "max_active_documents": 4},
+    ],
+)
+def test_execution_budget_rejects_invalid_active_document_limit(
+    budget: dict[str, int],
+) -> None:
+    with pytest.raises(ValidationError):
+        ExecutionBudget(**budget)
 
 
 def test_search_result_state_validates_pending_and_completed_outcomes() -> None:
