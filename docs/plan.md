@@ -1,4 +1,4 @@
-# News Agent 初步计划
+# News Agent 总体计划
 
 ## 背景
 
@@ -24,7 +24,8 @@
 已完成：
 
 - 已初始化 Python 项目结构，并使用 `uv` 管理依赖。
-- 已定义核心 runtime、state、action、policy、executor、reducer、result 等基础模块。
+- 已定义核心 runtime、state、action、policy、executor、reducer 等基础模块；
+  `AgentResult` 和 `RuntimeRunResult` 已集中到 runtime 模块。
 - 已实现最小 `AgentRuntime` 主循环，支持 policy 决策、executor 执行、reducer 更新状态和 trace 收集。
 - 已实现新闻场景的固定流程 policy：搜索、获取文档、抽取 evidence、生成总结。
 - 已实现最小 `LLMNewsPolicy`，由 LLM 根据有界 Policy Context、可用 action 和剩余
@@ -40,8 +41,9 @@
   Observation、Artifact 或外层 Span 中。
 - 已实现可替换的 retrieval、document fetcher、evidence extractor、synthesizer 和 LLM client 接口及部分实现。
 - 已接入 Tavily retrieval、HTTP document fetcher、OpenAI SDK LLM client、LLM evidence extractor 和 LLM synthesizer。
-- HTTP document fetcher 会在解析正文前校验响应 Content-Type，仅将 HTML/XHTML
-  交给现有 HTML 提取逻辑，其他类型作为明确的文档获取失败记录。
+- HTTP document fetcher 会在解析正文前校验响应 Content-Type，支持 HTML/XHTML
+  与带文本层的 PDF，其他类型作为明确的文档获取失败记录；HTML/PDF 解析已提取为
+  可复用的 `DocumentParser`，供后续后台摄取链路使用。
 - 已实现超长文档的分块 evidence extraction，并隔离单篇文档的 LLM 提取失败。
 - LLM evidence extraction 为单篇文档设置最大 chunk 数，超过上限时在调用 LLM 前
   将该文档记录为 `document_too_large`，避免异常文档无上限占用执行时间。
@@ -69,6 +71,10 @@
 - Runtime 已分别使用 Policy、Executor 和 Reducer 子 Span 记录耗时；失败 Span
   记录异常类型和信息，Trace 自身失败不会改变业务执行结果。
 - 已补充覆盖核心 runtime、新闻执行器、retrieval、document fetcher、LLM 配置和 LLM 组件的测试。
+- 当前最近的完整评估基线为 2026-07-28 的 v4：rule policy 完成 12/12、
+  minimums 通过 5/12、错误 0；LLM policy 的最终 v4.4 完成 12/12、
+  minimums 通过 12/12、错误 0。该基线早于本地语料检索接入，后续应保留为
+  Tavily-only 对照组。
 
 ## 阶段 1：系统架构设计
 
@@ -281,7 +287,55 @@ LLM Agent Policy 与固定流程 policy 应使用相同 evaluation cases 和指�
 自动评分和其他 evaluator 才能获得的信息应作为 rollout 完成后的训练标注保存，
 不能泄漏到生成当前 action 的 policy 输入中。
 
-## 阶段 7：LLM Policy RL 后训练预留
+## 阶段 7：官方来源后台摄取与本地检索
+
+目标：建立一套独立于 News Agent loop 的后台摄取系统，持续保存经过来源审查的
+官方与研究资料；Agent 在后续接入本地检索，并以 Tavily 作为覆盖缺口的 fallback。
+
+最终数据流：
+
+```text
+官方来源注册表
+    -> RSS/Atom 与 Sitemap 增量发现
+    -> robots 校验与受控页面获取
+    -> HTML/PDF 解析
+    -> SQLite 最新文档语料库
+    -> 段落感知分块
+    -> LanceDB BM25 索引
+    -> Agent 本地检索
+    -> Tavily fallback
+```
+
+边界与约束：
+
+- 官方来源注册表是摄取范围的权威配置，记录来源身份、允许域名、RSS/Sitemap
+  endpoint、路径规则、语言和主题；“已审查来源”表示 provenance 可信，不代表
+  单篇内容已经完成事实核验。
+- RSS/Atom 负责近期更新发现，Sitemap 负责站点 URL 清单与历史回填；只获取二者
+  明确发现且通过注册表范围校验的页面，不进行链接爬取。
+- 获取页面前遵守并按 origin 缓存 `robots.txt`；禁止访问的页面记录状态，但不获取
+  或索引正文。
+- SQLite 是权威存储，仅保留每个文档的最新正文；不可用内容保留记录并标为 inactive，
+  不进入检索结果。
+- LanceDB 是可重建的派生索引，第一版只使用段落感知 chunk 和 BM25；仅预留
+  `EmbeddingProvider` 接口，不在本阶段生成向量。
+- 后台同步先由手动 CLI 触发，不引入 scheduler；后台模型使用独立的 corpus 状态，
+  不复用 Agent rollout 内的 active/shelved/unusable 生命周期。
+- 在 Agent 接入前，依赖方向保持为后台模块复用现有 URL 工具和 `DocumentParser`，
+  现有 runtime、policy、executor 和 Tavily provider 不反向依赖后台模块，后台失败
+  不影响现有新闻命令。
+
+实施拆分：
+
+1. 完成与现有代码相交的兼容性重构：解析器复用、URL 工具集中和文档校准。
+2. 新增 JSON 官方来源注册表与 SQLite `CorpusStore`。
+3. 新增 RSS/Atom、Sitemap、robots 和增量同步服务。
+4. 新增段落感知分块、LanceDB BM25 索引和索引任务恢复。
+5. 新增语料管理 CLI、真实来源配置、端到端同步测试与运维文档。
+6. 将本地语料检索接入 Agent，并实现 Tavily fallback；这是首次改变现有 Agent
+   在线检索行为的步骤。
+
+## 阶段 8：LLM Policy RL 后训练预留
 
 目标：利用 agent rollout、结果评估和 reward 对 LLM Agent Policy 进行 RL 后训练，
 优化的对象是生成 `AgentAction` 的 LLM 参数，而不是引入一个独立的传统

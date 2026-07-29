@@ -1,37 +1,19 @@
 """HTTP-backed document fetcher."""
 
-import asyncio
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from io import BytesIO
 from typing import Any
 
 import httpx
-from bs4 import BeautifulSoup
-from bs4.element import Tag
-from pypdf import PdfReader
 
-from banso.documents.models import Document
 from banso.documents.fetcher import DocumentFetchError, DocumentFetchRequest
-
-
-_HTML_CONTENT_TYPES = {"application/xhtml+xml", "text/html"}
-_PDF_CONTENT_TYPE = "application/pdf"
-_SUPPORTED_CONTENT_TYPES = {*_HTML_CONTENT_TYPES, _PDF_CONTENT_TYPE}
-_DEFAULT_MAX_PDF_BYTES = 20 * 1024 * 1024
-_DEFAULT_MAX_PDF_PAGES = 200
-
-
-@dataclass(frozen=True)
-class _ContentExtraction:
-    title: str | None
-    text: str
-    strategy: str
-    metadata: dict[str, Any] = field(default_factory=dict)
-
-
-class _PDFPageLimitError(Exception):
-    """Raised when a PDF exceeds the configured page limit."""
+from banso.documents.models import Document
+from banso.documents.parser import (
+    HTML_CONTENT_TYPES,
+    SUPPORTED_CONTENT_TYPES,
+    DocumentParseError,
+    DocumentParser,
+    ParsedDocument,
+)
 
 
 class HTTPDocumentFetcher:
@@ -43,18 +25,11 @@ class HTTPDocumentFetcher:
         client: httpx.AsyncClient | None = None,
         timeout: float = 20.0,
         headers: dict[str, str] | None = None,
-        max_pdf_bytes: int = _DEFAULT_MAX_PDF_BYTES,
-        max_pdf_pages: int = _DEFAULT_MAX_PDF_PAGES,
+        parser: DocumentParser | None = None,
     ) -> None:
-        if max_pdf_bytes <= 0:
-            raise ValueError("max_pdf_bytes must be greater than zero")
-        if max_pdf_pages <= 0:
-            raise ValueError("max_pdf_pages must be greater than zero")
-
         self._client = client
         self._timeout = timeout
-        self._max_pdf_bytes = max_pdf_bytes
-        self._max_pdf_pages = max_pdf_pages
+        self._parser = parser or DocumentParser()
         self._headers = headers or {
             "User-Agent": "banso-news-agent/0.1",
             "Accept": "text/html,application/xhtml+xml,application/pdf",
@@ -106,7 +81,7 @@ class HTTPDocumentFetcher:
 
         content_type = response.headers.get("content-type")
         media_type = _media_type(content_type)
-        if media_type not in _SUPPORTED_CONTENT_TYPES:
+        if media_type not in SUPPORTED_CONTENT_TYPES:
             displayed_content_type = content_type or "<missing>"
             message = (
                 f"Unsupported content type {displayed_content_type!r} while fetching "
@@ -147,60 +122,24 @@ class HTTPDocumentFetcher:
         self,
         response: httpx.Response,
         media_type: str,
-    ) -> _ContentExtraction:
-        if media_type in _HTML_CONTENT_TYPES:
-            return _extract_html_content(response.text)
-
-        content = response.content
-        if len(content) > self._max_pdf_bytes:
-            message = (
-                "PDF exceeds the configured byte limit; "
-                f"max_pdf_bytes={self._max_pdf_bytes}; "
-                f"pdf_bytes={len(content)}; url={response.url}"
-            )
-            raise DocumentFetchError(
-                url=str(response.url),
-                status_code=response.status_code,
-                reason="document_too_large",
-                message=message,
-                source_error_type="PDFByteLimitExceeded",
-            )
-
+    ) -> ParsedDocument:
         try:
-            extraction = await asyncio.to_thread(
-                _extract_pdf_content,
-                content,
-                max_pages=self._max_pdf_pages,
+            return await self._parser.parse(
+                content=(
+                    response.text
+                    if media_type in HTML_CONTENT_TYPES
+                    else response.content
+                ),
+                media_type=media_type,
             )
-        except _PDFPageLimitError as error:
+        except DocumentParseError as error:
             raise DocumentFetchError(
                 url=str(response.url),
                 status_code=response.status_code,
-                reason="document_too_large",
-                message=f"{error}; url={response.url}",
-                source_error_type="PDFPageLimitExceeded",
+                reason=error.reason,
+                message=f"{error.message}; url={response.url}",
+                source_error_type=error.source_error_type,
             ) from error
-        except Exception as error:
-            detail = str(error) or "PDF parser failed"
-            message = f"{detail} while parsing PDF document: {response.url}"
-            raise DocumentFetchError(
-                url=str(response.url),
-                status_code=response.status_code,
-                reason="parse_error",
-                message=message,
-                source_error_type=type(error).__name__,
-            ) from error
-
-        if not extraction.text.strip():
-            message = f"PDF contains no extractable text: {response.url}"
-            raise DocumentFetchError(
-                url=str(response.url),
-                status_code=response.status_code,
-                reason="no_extractable_text",
-                message=message,
-                source_error_type="NoExtractableText",
-            )
-        return extraction
 
 
 def _media_type(content_type: str | None) -> str | None:
@@ -208,123 +147,3 @@ def _media_type(content_type: str | None) -> str | None:
         return None
     media_type = content_type.partition(";")[0].strip().casefold()
     return media_type or None
-
-
-_REMOVABLE_TAGS = ("script", "style", "noscript", "template", "svg")
-_CONTENT_NOISE_TAGS = ("nav", "aside", "form", "dialog")
-_TEXT_BLOCK_TAGS = (
-    "h1",
-    "h2",
-    "h3",
-    "h4",
-    "h5",
-    "h6",
-    "p",
-    "li",
-    "blockquote",
-    "pre",
-)
-
-
-def _extract_html_content(html: str) -> _ContentExtraction:
-    soup = BeautifulSoup(html, "html.parser")
-    title = soup.title.string.strip() if soup.title and soup.title.string else None
-
-    for tag in soup(_REMOVABLE_TAGS):
-        tag.decompose()
-
-    content_root, strategy = _select_content_root(soup)
-    _remove_content_noise(content_root, strategy=strategy)
-    text = _extract_block_text(content_root)
-
-    return _ContentExtraction(
-        title=title,
-        text=text,
-        strategy=strategy,
-        metadata={"raw_html_chars": len(html)},
-    )
-
-
-def _extract_pdf_content(content: bytes, *, max_pages: int) -> _ContentExtraction:
-    reader = PdfReader(BytesIO(content))
-    page_count = len(reader.pages)
-    if page_count > max_pages:
-        raise _PDFPageLimitError(
-            "PDF exceeds the configured page limit; "
-            f"max_pdf_pages={max_pages}; pdf_page_count={page_count}"
-        )
-
-    page_texts: list[str] = []
-    pages_with_text = 0
-    for page in reader.pages:
-        page_text = (page.extract_text() or "").strip()
-        if page_text:
-            page_texts.append(page_text)
-            pages_with_text += 1
-
-    metadata_title = reader.metadata.title if reader.metadata is not None else None
-    title = str(metadata_title).strip() if metadata_title else None
-    return _ContentExtraction(
-        title=title or None,
-        text="\n\n".join(page_texts),
-        strategy="pypdf",
-        metadata={
-            "raw_bytes": len(content),
-            "pdf_page_count": page_count,
-            "pdf_pages_with_text": pages_with_text,
-        },
-    )
-
-
-def _select_content_root(soup: BeautifulSoup) -> tuple[Tag, str]:
-    main = soup.find("main")
-    if isinstance(main, Tag):
-        return main, "main"
-
-    role_main = soup.find(attrs={"role": "main"})
-    if isinstance(role_main, Tag):
-        return role_main, "role_main"
-
-    articles = soup.find_all("article")
-    if articles:
-        return max(articles, key=_text_length), "article"
-
-    return soup.body or soup, "body"
-
-
-def _remove_content_noise(content_root: Tag, *, strategy: str) -> None:
-    for tag in content_root.find_all(_CONTENT_NOISE_TAGS):
-        tag.decompose()
-
-    if strategy == "body":
-        for tag in content_root.find_all(("header", "footer"), recursive=False):
-            tag.decompose()
-
-
-def _extract_block_text(content_root: Tag) -> str:
-    lines: list[str] = []
-
-    for block in content_root.find_all(_TEXT_BLOCK_TAGS):
-        if _has_block_ancestor(block, content_root):
-            continue
-        text = block.get_text(separator=" ", strip=True)
-        if text:
-            lines.append(text)
-
-    if lines:
-        return "\n".join(lines)
-
-    return content_root.get_text(separator=" ", strip=True)
-
-
-def _has_block_ancestor(block: Tag, content_root: Tag) -> bool:
-    for parent in block.parents:
-        if parent is content_root:
-            return False
-        if isinstance(parent, Tag) and parent.name in _TEXT_BLOCK_TAGS:
-            return True
-    return False
-
-
-def _text_length(tag: Tag) -> int:
-    return len(tag.get_text(separator=" ", strip=True))

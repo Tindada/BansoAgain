@@ -1,11 +1,12 @@
 """Search result filtering utilities."""
 
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field
 
 from banso.core.observation import RetrievalFilterReport
 from banso.retrieval.models import SearchResult
+from banso.retrieval.url_utils import normalize_url
 
 
 class RetrievalFilterConfig(BaseModel):
@@ -92,21 +93,3 @@ def _is_fetchable_http_url(url: str) -> bool:
         return parsed.scheme.lower() in {"http", "https"} and bool(parsed.hostname)
     except ValueError:
         return False
-
-
-def normalize_url(url: str, *, ignored_query_params: set[str] | None = None) -> str:
-    """Normalize URLs for duplicate detection."""
-
-    ignored_query_params = ignored_query_params or set()
-    parsed = urlsplit(url.strip())
-    scheme = parsed.scheme.lower()
-    netloc = parsed.netloc.lower()
-    path = parsed.path.rstrip("/") or "/"
-    query_pairs: list[tuple[str, str]] = [
-        (key, value)
-        for key, value in parse_qsl(parsed.query, keep_blank_values=True)
-        if key not in ignored_query_params
-    ]
-    query = urlencode(sorted(query_pairs))
-
-    return urlunsplit((scheme, netloc, path, query, ""))

@@ -6,7 +6,6 @@ from banso.retrieval.filter import (
     RetrievalFilterConfig,
     RetrievalFilterReport,
     RetrievalFilterResult,
-    normalize_url,
 )
 from banso.retrieval.llm_planner import LLMSearchQueryPlanner
 from banso.retrieval.models import SearchResult, Source, SourceType
@@ -24,6 +23,7 @@ from banso.retrieval.source_classifier import (
     SourceClassifierConfig,
 )
 from banso.retrieval.tavily_provider import TavilyRetrievalProvider
+from banso.retrieval.url_utils import normalize_url
 
 __all__ = [
     "FakeRetrievalProvider",

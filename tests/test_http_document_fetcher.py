@@ -10,73 +10,12 @@ from pypdf import PdfReader, PdfWriter
 from banso.documents import (
     DocumentFetchError,
     DocumentFetchRequest,
+    DocumentParseError,
+    DocumentParser,
     HTTPDocumentFetcher,
 )
-from banso.documents.http_fetcher import _extract_html_content, _extract_pdf_content
 from banso.retrieval import Source, SourceType
-
-
-def _pdf_string(value: str) -> str:
-    return value.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
-
-
-def _make_text_pdf(*page_texts: str, title: str | None = None) -> bytes:
-    page_count = len(page_texts)
-    font_id = 3 + page_count
-    content_start_id = font_id + 1
-    info_id = content_start_id + page_count if title is not None else None
-    page_ids = list(range(3, 3 + page_count))
-    objects: list[bytes] = [
-        b"<< /Type /Catalog /Pages 2 0 R >>",
-        (
-            f"<< /Type /Pages /Kids [{' '.join(f'{page_id} 0 R' for page_id in page_ids)}] "
-            f"/Count {page_count} >>"
-        ).encode(),
-    ]
-
-    for index, page_id in enumerate(page_ids):
-        objects.append(
-            (
-                f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
-                f"/Resources << /Font << /F1 {font_id} 0 R >> >> "
-                f"/Contents {content_start_id + index} 0 R >>"
-            ).encode()
-        )
-
-    objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
-    for page_text in page_texts:
-        stream = (
-            f"BT /F1 12 Tf 72 720 Td ({_pdf_string(page_text)}) Tj ET"
-        ).encode()
-        objects.append(
-            f"<< /Length {len(stream)} >>\nstream\n".encode()
-            + stream
-            + b"\nendstream"
-        )
-
-    if title is not None:
-        objects.append(f"<< /Title ({_pdf_string(title)}) >>".encode())
-
-    output = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
-    offsets = [0]
-    for object_id, body in enumerate(objects, start=1):
-        offsets.append(len(output))
-        output.extend(f"{object_id} 0 obj\n".encode())
-        output.extend(body)
-        output.extend(b"\nendobj\n")
-
-    xref_offset = len(output)
-    output.extend(f"xref\n0 {len(objects) + 1}\n".encode())
-    output.extend(b"0000000000 65535 f \n")
-    for offset in offsets[1:]:
-        output.extend(f"{offset:010d} 00000 n \n".encode())
-
-    trailer = f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R"
-    if info_id is not None:
-        trailer += f" /Info {info_id} 0 R"
-    trailer += f" >>\nstartxref\n{xref_offset}\n%%EOF\n"
-    output.extend(trailer.encode())
-    return bytes(output)
+from tests.pdf_fixtures import make_text_pdf
 
 
 def _encrypt_pdf(content: bytes) -> bytes:
@@ -295,108 +234,13 @@ def test_http_document_fetcher_rejects_unsupported_content_type(
     )
 
 
-def test_html_extraction_prefers_longest_article_and_removes_noise() -> None:
-    extraction = _extract_html_content(
-        """
-        <html>
-          <head><title>Page title</title></head>
-          <body>
-            <nav>Site navigation</nav>
-            <article><p>Short recommendation.</p></article>
-            <article>
-              <header><h1>Article headline</h1></header>
-              <p>OpenAI released <a href="/model">a new model</a> today.</p>
-              <p>Second article paragraph with more detail.</p>
-              <aside>Related stories</aside>
-            </article>
-          </body>
-        </html>
-        """
-    )
-
-    assert extraction.title == "Page title"
-    assert extraction.strategy == "article"
-    assert extraction.text == (
-        "Article headline\n"
-        "OpenAI released a new model today.\n"
-        "Second article paragraph with more detail."
-    )
-    assert "Site navigation" not in extraction.text
-    assert "Related stories" not in extraction.text
-    assert "Short recommendation" not in extraction.text
-
-
-def test_html_extraction_uses_main_then_role_main() -> None:
-    main_extraction = _extract_html_content(
-        "<body><main><h1>Main heading</h1><p>Main text.</p></main></body>"
-    )
-    role_extraction = _extract_html_content(
-        '<body><section role="main"><p>Role main text.</p></section></body>'
-    )
-
-    assert main_extraction.strategy == "main"
-    assert main_extraction.text == "Main heading\nMain text."
-    assert role_extraction.strategy == "role_main"
-    assert role_extraction.text == "Role main text."
-
-
-def test_html_extraction_prefers_main_over_article_cards() -> None:
-    extraction = _extract_html_content(
-        """
-        <body>
-          <main>
-            <h1>Year in review</h1>
-            <p>The main article contains the complete retrospective.</p>
-            <article><p>A comparatively long recommended story card.</p></article>
-            <article><p>Another recommendation.</p></article>
-          </main>
-        </body>
-        """
-    )
-
-    assert extraction.strategy == "main"
-    assert extraction.text.startswith(
-        "Year in review\nThe main article contains the complete retrospective."
-    )
-
-
-def test_html_extraction_falls_back_to_body_and_removes_page_chrome() -> None:
-    extraction = _extract_html_content(
-        """
-        <body>
-          <header>Site header</header>
-          <div><h1>Body heading</h1><p>Body text.</p></div>
-          <footer>Site footer</footer>
-        </body>
-        """
-    )
-
-    assert extraction.strategy == "body"
-    assert extraction.text == "Body heading\nBody text."
-
-
-def test_pdf_extraction_combines_pages_and_extracts_title() -> None:
-    content = _make_text_pdf("First page.", "Second page.", title="PDF title")
-
-    extraction = _extract_pdf_content(content, max_pages=10)
-
-    assert extraction.title == "PDF title"
-    assert extraction.text == "First page.\n\nSecond page."
-    assert extraction.strategy == "pypdf"
-    assert extraction.metadata == {
-        "raw_bytes": len(content),
-        "pdf_page_count": 2,
-        "pdf_pages_with_text": 2,
-    }
-
-
 async def _fetch_pdf(
     content: bytes,
     *,
     content_type: str = "Application/PDF; charset=binary",
     title: str | None = None,
-    max_pdf_bytes: int = 20 * 1024 * 1024,
-    max_pdf_pages: int = 200,
+    max_pdf_bytes: int | None = None,
+    max_pdf_pages: int | None = None,
 ):
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
@@ -407,10 +251,14 @@ async def _fetch_pdf(
         )
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    parser_options: dict[str, int] = {}
+    if max_pdf_bytes is not None:
+        parser_options["max_pdf_bytes"] = max_pdf_bytes
+    if max_pdf_pages is not None:
+        parser_options["max_pdf_pages"] = max_pdf_pages
     fetcher = HTTPDocumentFetcher(
         client=client,
-        max_pdf_bytes=max_pdf_bytes,
-        max_pdf_pages=max_pdf_pages,
+        parser=DocumentParser(**parser_options),
     )
     try:
         return await fetcher.fetch(
@@ -421,7 +269,7 @@ async def _fetch_pdf(
 
 
 def test_http_document_fetcher_extracts_pdf_and_prefers_request_title() -> None:
-    content = _make_text_pdf("Report body.", title="PDF title")
+    content = make_text_pdf("Report body.", title="PDF title")
 
     document = asyncio.run(_fetch_pdf(content, title="Search result title"))
 
@@ -437,7 +285,7 @@ def test_http_document_fetcher_extracts_pdf_and_prefers_request_title() -> None:
 
 def test_http_document_fetcher_uses_pdf_metadata_title() -> None:
     document = asyncio.run(
-        _fetch_pdf(_make_text_pdf("Report body.", title="PDF title"))
+        _fetch_pdf(make_text_pdf("Report body.", title="PDF title"))
     )
 
     assert document.title == "PDF title"
@@ -445,11 +293,12 @@ def test_http_document_fetcher_uses_pdf_metadata_title() -> None:
 
 def test_http_document_fetcher_reports_pdf_without_extractable_text() -> None:
     try:
-        asyncio.run(_fetch_pdf(_make_text_pdf("")))
+        asyncio.run(_fetch_pdf(make_text_pdf("")))
     except DocumentFetchError as error:
         assert error.reason == "no_extractable_text"
         assert error.status_code == 200
         assert error.source_error_type == "NoExtractableText"
+        assert isinstance(error.__cause__, DocumentParseError)
     else:
         raise AssertionError("expected DocumentFetchError")
 
@@ -460,54 +309,45 @@ def test_http_document_fetcher_reports_malformed_pdf() -> None:
     except DocumentFetchError as error:
         assert error.reason == "parse_error"
         assert error.status_code == 200
-        assert error.__cause__ is not None
+        assert isinstance(error.__cause__, DocumentParseError)
     else:
         raise AssertionError("expected DocumentFetchError")
 
 
 def test_http_document_fetcher_reports_password_protected_pdf() -> None:
-    encrypted = _encrypt_pdf(_make_text_pdf("Secret report."))
+    encrypted = _encrypt_pdf(make_text_pdf("Secret report."))
 
     try:
         asyncio.run(_fetch_pdf(encrypted))
     except DocumentFetchError as error:
         assert error.reason == "parse_error"
         assert error.status_code == 200
-        assert error.__cause__ is not None
+        assert isinstance(error.__cause__, DocumentParseError)
     else:
         raise AssertionError("expected DocumentFetchError")
 
 
 def test_http_document_fetcher_enforces_pdf_byte_limit() -> None:
-    content = _make_text_pdf("Report body.")
+    content = make_text_pdf("Report body.")
 
     try:
         asyncio.run(_fetch_pdf(content, max_pdf_bytes=len(content) - 1))
     except DocumentFetchError as error:
         assert error.reason == "document_too_large"
         assert error.source_error_type == "PDFByteLimitExceeded"
+        assert isinstance(error.__cause__, DocumentParseError)
     else:
         raise AssertionError("expected DocumentFetchError")
 
 
 def test_http_document_fetcher_enforces_pdf_page_limit() -> None:
-    content = _make_text_pdf("First page.", "Second page.")
+    content = make_text_pdf("First page.", "Second page.")
 
     try:
         asyncio.run(_fetch_pdf(content, max_pdf_pages=1))
     except DocumentFetchError as error:
         assert error.reason == "document_too_large"
         assert error.source_error_type == "PDFPageLimitExceeded"
-        assert error.__cause__ is not None
+        assert isinstance(error.__cause__, DocumentParseError)
     else:
         raise AssertionError("expected DocumentFetchError")
-
-
-def test_http_document_fetcher_validates_pdf_limits() -> None:
-    for kwargs in ({"max_pdf_bytes": 0}, {"max_pdf_pages": 0}):
-        try:
-            HTTPDocumentFetcher(**kwargs)
-        except ValueError:
-            pass
-        else:
-            raise AssertionError("expected ValueError")

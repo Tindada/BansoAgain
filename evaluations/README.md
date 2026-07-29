@@ -11,7 +11,7 @@ pipeline health only:
 - how completely search result sources are classified;
 - which source types and unknown domains appear;
 - which searches were planned and executed;
-- whether documents can be read;
+- whether documents can be fetched and parsed;
 - whether evidence and citations are produced;
 - action latency and per-case failures.
 
@@ -23,21 +23,27 @@ evaluation stage.
 Run a low-cost two-case check first:
 
 ```bash
-UV_CACHE_DIR=.uv-cache uv run python scripts/evaluate_news_runtime.py --limit 2
+BANSO_NEWS_POLICY=llm uv run python scripts/evaluate_news_runtime.py --limit 2
 ```
 
-Exercise LLM evidence curation with a cumulative budget of six documents and
-an active working set of three:
+Run both policies with their respective document budgets. The rule-based policy
+uses matching cumulative and active limits because it does not perform evidence
+curation; the LLM policy uses a smaller active working set than its cumulative
+fetch budget to exercise curation:
 
 ```bash
-UV_CACHE_DIR=.uv-cache uv run python scripts/evaluate_news_runtime.py --max-documents-to-read 6 --max-active-documents 3
+BANSO_NEWS_POLICY=rule_based uv run python scripts/evaluate_news_runtime.py --max-document-fetches 6 --max-active-documents 6
+BANSO_NEWS_POLICY=llm uv run python scripts/evaluate_news_runtime.py --max-document-fetches 10 --max-active-documents 6
 ```
 
 Run the full set:
 
 ```bash
-UV_CACHE_DIR=.uv-cache uv run python scripts/evaluate_news_runtime.py
+BANSO_NEWS_POLICY=llm uv run python scripts/evaluate_news_runtime.py
 ```
+
+Set `BANSO_NEWS_POLICY` to `llm` for the LLM policy or `rule_based` for the
+fixed-flow baseline.
 
 Results are written incrementally to `runs/news_evaluation_<timestamp>.jsonl`,
 so completed cases remain available if a later case fails or the process is
