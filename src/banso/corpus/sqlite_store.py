@@ -42,7 +42,8 @@ CREATE INDEX IF NOT EXISTS corpus_documents_status_idx
 CREATE TABLE IF NOT EXISTS discovery_endpoints (
     url TEXT PRIMARY KEY,
     etag TEXT,
-    last_modified TEXT
+    last_modified TEXT,
+    content BLOB
 );
 """
 
@@ -167,7 +168,11 @@ class SQLiteCorpusStore:
     ) -> DiscoveryEndpointState | None:
         canonical_url = _canonical_http_url(url)
         row = self._connection.execute(
-            "SELECT * FROM discovery_endpoints WHERE url = ?",
+            """
+            SELECT url, etag, last_modified
+            FROM discovery_endpoints
+            WHERE url = ?
+            """,
             (canonical_url,),
         ).fetchone()
         return (
@@ -179,24 +184,36 @@ class SQLiteCorpusStore:
     def upsert_discovery_endpoint(
         self,
         state: DiscoveryEndpointState,
+        *,
+        content: bytes | None = None,
     ) -> DiscoveryEndpointState:
         values = state.model_dump()
         values["url"] = _canonical_http_url(state.url)
+        values["content"] = content
         with self._connection:
             row = self._connection.execute(
                 """
-                INSERT INTO discovery_endpoints (url, etag, last_modified)
-                VALUES (:url, :etag, :last_modified)
+                INSERT INTO discovery_endpoints (url, etag, last_modified, content)
+                VALUES (:url, :etag, :last_modified, :content)
                 ON CONFLICT(url) DO UPDATE SET
                     etag = excluded.etag,
-                    last_modified = excluded.last_modified
-                RETURNING *
+                    last_modified = excluded.last_modified,
+                    content = COALESCE(excluded.content, discovery_endpoints.content)
+                RETURNING url, etag, last_modified
                 """,
                 values,
             ).fetchone()
         if row is None:
             raise RuntimeError(f"failed to store discovery endpoint: {state.url}")
         return DiscoveryEndpointState.model_validate(dict(row))
+
+    def get_discovery_content(self, url: str) -> bytes | None:
+        canonical_url = _canonical_http_url(url)
+        row = self._connection.execute(
+            "SELECT content FROM discovery_endpoints WHERE url = ?",
+            (canonical_url,),
+        ).fetchone()
+        return row["content"] if row is not None else None
 
 
 def _canonical_http_url(url: str) -> str:

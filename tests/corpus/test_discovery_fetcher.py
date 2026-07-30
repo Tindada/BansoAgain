@@ -33,6 +33,7 @@ async def _fetch_modified_then_not_modified() -> None:
         second = await fetcher.fetch(first.state)
 
     assert first.content == b"<rss />"
+    assert first.final_url == "https://example.org/feed.xml"
     assert first.state.etag == '"feed-v1"'
     assert first.state.last_modified == "Wed, 29 Jul 2026 08:00:00 GMT"
     assert second.content is None

@@ -136,7 +136,8 @@ def test_store_upserts_discovery_endpoint_validators(tmp_path: Path) -> None:
             DiscoveryEndpointState(
                 url="https://Example.org/feed.xml#fragment",
                 etag='"v1"',
-            )
+            ),
+            content=b"<rss />",
         )
         updated = store.upsert_discovery_endpoint(
             DiscoveryEndpointState(
@@ -149,6 +150,10 @@ def test_store_upserts_discovery_endpoint_validators(tmp_path: Path) -> None:
         assert updated == DiscoveryEndpointState(
             url="https://example.org/feed.xml",
             last_modified="Wed, 29 Jul 2026 08:00:00 GMT",
+        )
+        assert (
+            store.get_discovery_content("https://example.org/feed.xml")
+            == b"<rss />"
         )
 
     with SQLiteCorpusStore(database) as reopened:

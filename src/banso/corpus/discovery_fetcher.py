@@ -12,6 +12,7 @@ class DiscoveryFetchResult:
     """A fetched discovery document, or a not-modified response."""
 
     state: DiscoveryEndpointState
+    final_url: str
     content: bytes | None
 
 
@@ -61,6 +62,7 @@ class DiscoveryEndpointFetcher:
             response.raise_for_status()
         return DiscoveryFetchResult(
             state=_response_state(response, previous=state),
+            final_url=str(response.url),
             content=None if not_modified else response.content,
         )
 
