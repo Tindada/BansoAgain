@@ -332,8 +332,8 @@ LLM Agent Policy 与固定流程 policy 应使用相同 evaluation cases 和指�
 1. 已完成与现有代码相交的兼容性重构：解析器复用、URL 工具集中和文档校准。
 2. 已新增 JSON 官方来源注册表与 `SQLiteCorpusStore`。
 3. 正在实现 RSS/Atom、Sitemap、robots 和增量同步服务；纯发现解析、robots
-   校验以及基于 ETag / Last-Modified 的 discovery endpoint 条件请求已完成，
-   下一步是页面获取、解析与 SQLite 写入编排。
+   校验、discovery endpoint 条件请求以及内容页面的条件获取与解析已完成，
+   下一步是来源范围、robots、页面获取和 SQLite 写入编排。
 4. 新增段落感知分块、LanceDB BM25 索引和索引任务恢复。
 5. 新增语料管理 CLI、真实来源配置、端到端同步测试与运维文档。
 6. 将本地语料检索接入 Agent，并实现 Tavily fallback；这是首次改变现有 Agent

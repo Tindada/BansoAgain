@@ -16,6 +16,7 @@ from banso.corpus.models import (
     CorpusDocumentWrite,
     DiscoveryEndpointState,
 )
+from banso.corpus.page_fetcher import CorpusPageFetcher, PageFetchResult
 from banso.corpus.registry import SourceRegistry, SourceRegistryError, TrustedSource
 from banso.corpus.robots import RobotsChecker, RobotsDecision
 from banso.corpus.sqlite_store import SQLiteCorpusStore
@@ -24,10 +25,12 @@ __all__ = [
     "CorpusDocument",
     "CorpusDocumentStatus",
     "CorpusDocumentWrite",
+    "CorpusPageFetcher",
     "DiscoveryEndpointFetcher",
     "DiscoveryEndpointState",
     "DiscoveryFetchResult",
     "DiscoveryParseError",
+    "PageFetchResult",
     "RobotsChecker",
     "RobotsDecision",
     "SourceRegistry",
