@@ -44,6 +44,8 @@
 - HTTP document fetcher 会在解析正文前校验响应 Content-Type，支持 HTML/XHTML
   与带文本层的 PDF，其他类型作为明确的文档获取失败记录；HTML/PDF 解析已提取为
   可复用的 `DocumentParser`，供后续后台摄取链路使用。
+- 已新增经过严格校验的 JSON 官方来源注册表模型，以及按规范化 URL 保存最新文档
+  记录的 `SQLiteCorpusStore`；二者当前仅属于后台模块，尚未接入网络同步或 Agent。
 - 已实现超长文档的分块 evidence extraction，并隔离单篇文档的 LLM 提取失败。
 - LLM evidence extraction 为单篇文档设置最大 chunk 数，超过上限时在调用 LLM 前
   将该文档记录为 `document_too_large`，避免异常文档无上限占用执行时间。
@@ -327,9 +329,9 @@ LLM Agent Policy 与固定流程 policy 应使用相同 evaluation cases 和指�
 
 实施拆分：
 
-1. 完成与现有代码相交的兼容性重构：解析器复用、URL 工具集中和文档校准。
-2. 新增 JSON 官方来源注册表与 SQLite `CorpusStore`。
-3. 新增 RSS/Atom、Sitemap、robots 和增量同步服务。
+1. 已完成与现有代码相交的兼容性重构：解析器复用、URL 工具集中和文档校准。
+2. 已新增 JSON 官方来源注册表与 `SQLiteCorpusStore`。
+3. 下一步新增 RSS/Atom、Sitemap、robots 和增量同步服务。
 4. 新增段落感知分块、LanceDB BM25 索引和索引任务恢复。
 5. 新增语料管理 CLI、真实来源配置、端到端同步测试与运维文档。
 6. 将本地语料检索接入 Agent，并实现 Tavily fallback；这是首次改变现有 Agent
@@ -378,7 +380,7 @@ Rollout 必须保存 LLM 实际接收的 prompt/messages、原始 completion、�
 - Pydantic
 - asyncio
 - InMemory TraceSink
-- JSONL、SQLite 或 Postgres 作为后续持久化选项
+- SQLite 作为本地语料库的权威存储；Trace 等其他数据的持久化方案后续单独选择
 - 自研轻量 `AgentRuntime`
 
 外部 agent 框架暂不作为核心依赖。LangGraph、LangChain、LlamaIndex、Haystack 等后续可以作为 adapter 接入。
