@@ -319,8 +319,8 @@ LLM Agent Policy 与固定流程 policy 应使用相同 evaluation cases 和指�
   或索引正文。
 - SQLite 是权威存储，仅保留每个文档的最新正文；不可用内容保留记录并标为 inactive，
   不进入检索结果。
-- LanceDB 是可重建的派生索引，第一版只使用段落感知 chunk 和 BM25；仅预留
-  `EmbeddingProvider` 接口，不在本阶段生成向量。
+- LanceDB 是可从 SQLite 幂等重建的派生索引，当前只使用段落感知 chunk 和
+  BM25；不预留尚无调用方的向量或 embedding 接口。
 - 后台同步先由手动 CLI 触发，不引入 scheduler；后台模型使用独立的 corpus 状态，
   不复用 Agent rollout 内的 active/shelved/unusable 生命周期。
 - 在 Agent 接入前，依赖方向保持为后台模块复用现有 URL 工具和 `DocumentParser`，
@@ -333,7 +333,7 @@ LLM Agent Policy 与固定流程 policy 应使用相同 evaluation cases 和指�
 2. 已新增 JSON 官方来源注册表与 `SQLiteCorpusStore`。
 3. 已完成 RSS/Atom、Sitemap、robots 和增量同步服务，包括 discovery endpoint
    与内容页面条件请求、嵌套 Sitemap、来源范围校验以及 SQLite 写入编排。
-4. 新增段落感知分块、LanceDB BM25 索引和索引任务恢复。
+4. 已新增段落感知分块和可从 SQLite 幂等重建的 LanceDB BM25 索引。
 5. 新增语料管理 CLI、真实来源配置、CLI 端到端测试与运维文档。
 6. 将本地语料检索接入 Agent，并实现 Tavily fallback；这是首次改变现有 Agent
    在线检索行为的步骤。
