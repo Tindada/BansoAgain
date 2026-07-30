@@ -1,5 +1,11 @@
 """Authoritative local corpus storage."""
 
+from banso.corpus.discovery import (
+    DiscoveryParseError,
+    SitemapDiscovery,
+    parse_feed_urls,
+    parse_sitemap_urls,
+)
 from banso.corpus.models import (
     CorpusDocument,
     CorpusDocumentStatus,
@@ -12,8 +18,12 @@ __all__ = [
     "CorpusDocument",
     "CorpusDocumentStatus",
     "CorpusDocumentWrite",
+    "DiscoveryParseError",
     "SourceRegistry",
     "SourceRegistryError",
+    "SitemapDiscovery",
     "SQLiteCorpusStore",
     "TrustedSource",
+    "parse_feed_urls",
+    "parse_sitemap_urls",
 ]

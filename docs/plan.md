@@ -311,8 +311,8 @@ LLM Agent Policy 与固定流程 policy 应使用相同 evaluation cases 和指�
 边界与约束：
 
 - 官方来源注册表是摄取范围的权威配置，记录来源身份、允许域名、RSS/Sitemap
-  endpoint、路径规则、语言和主题；“已审查来源”表示 provenance 可信，不代表
-  单篇内容已经完成事实核验。
+  endpoint 和路径规则；“已审查来源”表示 provenance 可信，不代表单篇内容已经
+  完成事实核验。
 - RSS/Atom 负责近期更新发现，Sitemap 负责站点 URL 清单与历史回填；只获取二者
   明确发现且通过注册表范围校验的页面，不进行链接爬取。
 - 获取页面前遵守并按 origin 缓存 `robots.txt`；禁止访问的页面记录状态，但不获取
@@ -331,7 +331,8 @@ LLM Agent Policy 与固定流程 policy 应使用相同 evaluation cases 和指�
 
 1. 已完成与现有代码相交的兼容性重构：解析器复用、URL 工具集中和文档校准。
 2. 已新增 JSON 官方来源注册表与 `SQLiteCorpusStore`。
-3. 下一步新增 RSS/Atom、Sitemap、robots 和增量同步服务。
+3. 正在实现 RSS/Atom、Sitemap、robots 和增量同步服务；RSS/Atom 与 Sitemap
+   的纯解析和 URL 去重已完成，下一步是 robots 校验。
 4. 新增段落感知分块、LanceDB BM25 索引和索引任务恢复。
 5. 新增语料管理 CLI、真实来源配置、端到端同步测试与运维文档。
 6. 将本地语料检索接入 Agent，并实现 Tavily fallback；这是首次改变现有 Agent
