@@ -6,6 +6,32 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
+class DiscoveryEndpointState(BaseModel):
+    """HTTP validators saved for a discovery endpoint."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    url: str = Field(min_length=1)
+    etag: str | None = None
+    last_modified: str | None = None
+
+    @field_validator("url")
+    @classmethod
+    def _strip_url(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("url must not be blank")
+        return value
+
+    @field_validator("etag", "last_modified")
+    @classmethod
+    def _strip_validators(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
+
+
 class CorpusDocumentStatus(StrEnum):
     """Background-ingestion state, independent of Agent document lifecycle."""
 

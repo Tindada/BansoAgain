@@ -6,10 +6,15 @@ from banso.corpus.discovery import (
     parse_feed_urls,
     parse_sitemap_urls,
 )
+from banso.corpus.discovery_fetcher import (
+    DiscoveryEndpointFetcher,
+    DiscoveryFetchResult,
+)
 from banso.corpus.models import (
     CorpusDocument,
     CorpusDocumentStatus,
     CorpusDocumentWrite,
+    DiscoveryEndpointState,
 )
 from banso.corpus.registry import SourceRegistry, SourceRegistryError, TrustedSource
 from banso.corpus.robots import RobotsChecker, RobotsDecision
@@ -19,6 +24,9 @@ __all__ = [
     "CorpusDocument",
     "CorpusDocumentStatus",
     "CorpusDocumentWrite",
+    "DiscoveryEndpointFetcher",
+    "DiscoveryEndpointState",
+    "DiscoveryFetchResult",
     "DiscoveryParseError",
     "RobotsChecker",
     "RobotsDecision",

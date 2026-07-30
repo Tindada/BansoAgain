@@ -12,6 +12,7 @@ from banso.corpus.models import (
     CorpusDocument,
     CorpusDocumentStatus,
     CorpusDocumentWrite,
+    DiscoveryEndpointState,
 )
 from banso.retrieval.url_utils import normalize_url
 
@@ -37,6 +38,12 @@ CREATE TABLE IF NOT EXISTS corpus_documents (
 
 CREATE INDEX IF NOT EXISTS corpus_documents_status_idx
     ON corpus_documents (status);
+
+CREATE TABLE IF NOT EXISTS discovery_endpoints (
+    url TEXT PRIMARY KEY,
+    etag TEXT,
+    last_modified TEXT
+);
 """
 
 
@@ -63,7 +70,7 @@ class SQLiteCorpusStore:
         self._connection.close()
 
     def upsert(self, document: CorpusDocumentWrite) -> CorpusDocument:
-        canonical_url = _canonical_document_url(document.url)
+        canonical_url = _canonical_http_url(document.url)
         now = datetime.now(timezone.utc).isoformat()
         values = document.model_dump(mode="json")
         values.update(
@@ -132,7 +139,7 @@ class SQLiteCorpusStore:
         return _row_to_document(row) if row is not None else None
 
     def get_by_url(self, url: str) -> CorpusDocument | None:
-        canonical_url = _canonical_document_url(url)
+        canonical_url = _canonical_http_url(url)
         row = self._connection.execute(
             "SELECT * FROM corpus_documents WHERE canonical_url = ?",
             (canonical_url,),
@@ -154,12 +161,49 @@ class SQLiteCorpusStore:
         rows = self._connection.execute(query, values).fetchall()
         return [_row_to_document(row) for row in rows]
 
+    def get_discovery_endpoint(
+        self,
+        url: str,
+    ) -> DiscoveryEndpointState | None:
+        canonical_url = _canonical_http_url(url)
+        row = self._connection.execute(
+            "SELECT * FROM discovery_endpoints WHERE url = ?",
+            (canonical_url,),
+        ).fetchone()
+        return (
+            DiscoveryEndpointState.model_validate(dict(row))
+            if row is not None
+            else None
+        )
 
-def _canonical_document_url(url: str) -> str:
+    def upsert_discovery_endpoint(
+        self,
+        state: DiscoveryEndpointState,
+    ) -> DiscoveryEndpointState:
+        values = state.model_dump()
+        values["url"] = _canonical_http_url(state.url)
+        with self._connection:
+            row = self._connection.execute(
+                """
+                INSERT INTO discovery_endpoints (url, etag, last_modified)
+                VALUES (:url, :etag, :last_modified)
+                ON CONFLICT(url) DO UPDATE SET
+                    etag = excluded.etag,
+                    last_modified = excluded.last_modified
+                RETURNING *
+                """,
+                values,
+            ).fetchone()
+        if row is None:
+            raise RuntimeError(f"failed to store discovery endpoint: {state.url}")
+        return DiscoveryEndpointState.model_validate(dict(row))
+
+
+def _canonical_http_url(url: str) -> str:
     try:
         parsed = urlsplit(url.strip())
     except ValueError as error:
-        raise ValueError(f"invalid corpus document URL: {url!r}") from error
+        raise ValueError(f"invalid HTTP URL: {url!r}") from error
     if (
         parsed.scheme.lower() not in {"http", "https"}
         or not parsed.hostname
@@ -167,7 +211,7 @@ def _canonical_document_url(url: str) -> str:
         or parsed.username is not None
         or parsed.password is not None
     ):
-        raise ValueError(f"invalid corpus document URL: {url!r}")
+        raise ValueError(f"invalid HTTP URL: {url!r}")
     return normalize_url(url)
 
 

@@ -8,6 +8,7 @@ import pytest
 from banso.corpus import (
     CorpusDocumentStatus,
     CorpusDocumentWrite,
+    DiscoveryEndpointState,
     SQLiteCorpusStore,
 )
 
@@ -105,11 +106,11 @@ def test_store_filters_documents_and_survives_reopen(tmp_path: Path) -> None:
 
 def test_store_rejects_invalid_url(tmp_path: Path) -> None:
     with SQLiteCorpusStore(tmp_path / "corpus.db") as store:
-        with pytest.raises(ValueError, match="invalid corpus document URL"):
+        with pytest.raises(ValueError, match="invalid HTTP URL"):
             store.upsert(
                 CorpusDocumentWrite(source_id="source", url="/relative/report")
             )
-        with pytest.raises(ValueError, match="invalid corpus document URL"):
+        with pytest.raises(ValueError, match="invalid HTTP URL"):
             store.upsert(
                 CorpusDocumentWrite(
                     source_id="source",
@@ -124,4 +125,34 @@ def test_active_document_requires_text() -> None:
             source_id="source",
             url="https://example.org/report",
             status=CorpusDocumentStatus.ACTIVE,
+        )
+
+
+def test_store_upserts_discovery_endpoint_validators(tmp_path: Path) -> None:
+    database = tmp_path / "corpus.db"
+    with SQLiteCorpusStore(database) as store:
+        assert store.get_discovery_endpoint("https://example.org/feed.xml") is None
+        stored = store.upsert_discovery_endpoint(
+            DiscoveryEndpointState(
+                url="https://Example.org/feed.xml#fragment",
+                etag='"v1"',
+            )
+        )
+        updated = store.upsert_discovery_endpoint(
+            DiscoveryEndpointState(
+                url="https://example.org/feed.xml",
+                last_modified="Wed, 29 Jul 2026 08:00:00 GMT",
+            )
+        )
+
+        assert stored.url == "https://example.org/feed.xml"
+        assert updated == DiscoveryEndpointState(
+            url="https://example.org/feed.xml",
+            last_modified="Wed, 29 Jul 2026 08:00:00 GMT",
+        )
+
+    with SQLiteCorpusStore(database) as reopened:
+        assert (
+            reopened.get_discovery_endpoint("https://example.org/feed.xml")
+            == updated
         )
