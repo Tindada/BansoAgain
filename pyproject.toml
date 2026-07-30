@@ -8,6 +8,7 @@ dependencies = [
     "beautifulsoup4>=4.15.0",
     "httpx>=0.28.1",
     "openai>=2.44.0",
+    "protego>=0.6.2",
     "pydantic>=2.13.4",
     "pypdf>=6.14.2",
     "python-dotenv>=1.2.2",

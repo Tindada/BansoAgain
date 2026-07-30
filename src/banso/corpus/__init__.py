@@ -12,6 +12,7 @@ from banso.corpus.models import (
     CorpusDocumentWrite,
 )
 from banso.corpus.registry import SourceRegistry, SourceRegistryError, TrustedSource
+from banso.corpus.robots import RobotsChecker, RobotsDecision
 from banso.corpus.sqlite_store import SQLiteCorpusStore
 
 __all__ = [
@@ -19,6 +20,8 @@ __all__ = [
     "CorpusDocumentStatus",
     "CorpusDocumentWrite",
     "DiscoveryParseError",
+    "RobotsChecker",
+    "RobotsDecision",
     "SourceRegistry",
     "SourceRegistryError",
     "SitemapDiscovery",
