@@ -45,6 +45,13 @@ BANSO_NEWS_POLICY=llm uv run python scripts/evaluate_news_runtime.py
 Set `BANSO_NEWS_POLICY` to `llm` for the LLM policy or `rule_based` for the
 fixed-flow baseline.
 
+`BANSO_NEWS_RETRIEVAL_PROVIDER` selects an isolated retrieval path: `tavily`
+keeps the v4 baseline behavior and is the default, while `local` only searches
+the trusted corpus. Local runs can select `bm25`, `vector`, or `hybrid` through
+`BANSO_CORPUS_SEARCH_MODE`; the default is `hybrid`. Run Tavily-only and
+local-only evaluations separately. Cross-provider fallback and ranking are not
+implemented yet.
+
 Results are written incrementally to `runs/news_evaluation_<timestamp>.jsonl`,
 so completed cases remain available if a later case fails or the process is
 interrupted. A sibling `.traces.jsonl` stores the completed `SpanRecord` list for

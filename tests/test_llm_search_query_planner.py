@@ -2,11 +2,17 @@
 
 import asyncio
 from datetime import datetime, timezone
+from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
 from banso.apps import real_news
 from banso.artifacts import InMemoryArtifactStore
+from banso.corpus import (
+    CorpusAwareDocumentFetcher,
+    LocalCorpusRetrievalProvider,
+)
 from banso.core import (
     AgentActionType,
     AgentRuntime,
@@ -16,7 +22,11 @@ from banso.core import (
     UserQuery,
 )
 from banso.core.observation import PlanSearchObservation, SearchObservation
-from banso.documents import FakeDocumentFetcher, FakeEvidenceExtractor
+from banso.documents import (
+    FakeDocumentFetcher,
+    FakeEvidenceExtractor,
+    HTTPDocumentFetcher,
+)
 from banso.executors import NewsActionExecutor
 from banso.llm import FakeLLMClient, LLMMessageRole
 from banso.llm.tracing import TracingLLMClient
@@ -180,12 +190,11 @@ def test_news_runtime_executes_llm_generated_search_plan() -> None:
     }
 
 
-def test_real_news_runtime_defaults_to_rule_policy_and_reuses_llm_clients(
+def _patch_real_news_llm_clients(
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
+) -> tuple[FakeLLMClient, FakeLLMClient]:
     local_client = FakeLLMClient()
     external_client = FakeLLMClient()
-    monkeypatch.delenv("BANSO_NEWS_POLICY", raising=False)
     monkeypatch.setattr(
         real_news,
         "build_vllm_llm_client_from_env",
@@ -196,6 +205,15 @@ def test_real_news_runtime_defaults_to_rule_policy_and_reuses_llm_clients(
         "build_external_llm_client_from_env",
         lambda: external_client,
     )
+    return local_client, external_client
+
+
+def test_real_news_runtime_defaults_to_rule_policy_and_reuses_llm_clients(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    local_client, external_client = _patch_real_news_llm_clients(monkeypatch)
+    monkeypatch.delenv("BANSO_NEWS_POLICY", raising=False)
+    monkeypatch.delenv("BANSO_NEWS_RETRIEVAL_PROVIDER", raising=False)
     monkeypatch.setattr(
         real_news,
         "build_tavily_provider_from_env",
@@ -207,6 +225,7 @@ def test_real_news_runtime_defaults_to_rule_policy_and_reuses_llm_clients(
 
     assert isinstance(bundle.runtime.policy, NewsRuleBasedPolicy)
     assert isinstance(executor, NewsActionExecutor)
+    assert isinstance(executor.document_fetcher, HTTPDocumentFetcher)
     assert isinstance(executor.search_query_planner, LLMSearchQueryPlanner)
     assert executor.search_query_planner.client is executor.synthesizer.client
     assert isinstance(executor.search_query_planner.client, TracingLLMClient)
@@ -219,19 +238,9 @@ def test_real_news_runtime_defaults_to_rule_policy_and_reuses_llm_clients(
 def test_real_news_runtime_builds_llm_policy_with_shared_store_and_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    local_client = FakeLLMClient()
-    external_client = FakeLLMClient()
+    local_client, external_client = _patch_real_news_llm_clients(monkeypatch)
     monkeypatch.setenv("BANSO_NEWS_POLICY", "llm")
-    monkeypatch.setattr(
-        real_news,
-        "build_vllm_llm_client_from_env",
-        lambda: local_client,
-    )
-    monkeypatch.setattr(
-        real_news,
-        "build_external_llm_client_from_env",
-        lambda: external_client,
-    )
+    monkeypatch.delenv("BANSO_NEWS_RETRIEVAL_PROVIDER", raising=False)
     monkeypatch.setattr(
         real_news,
         "build_tavily_provider_from_env",
@@ -253,6 +262,54 @@ def test_real_news_runtime_builds_llm_policy_with_shared_store_and_client(
     assert executor.store is bundle.store
     assert isinstance(executor.synthesizer.client, TracingLLMClient)
     assert executor.synthesizer.client.client is external_client
+
+
+@pytest.mark.parametrize(
+    ("search_mode", "embedding_call_count"),
+    [("bm25", 0), ("hybrid", 1)],
+)
+def test_real_news_runtime_builds_local_corpus_components(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    search_mode: str,
+    embedding_call_count: int,
+) -> None:
+    registry_path = tmp_path / "sources.json"
+    registry_path.write_text(
+        '{"schema_version": 1, "sources": []}',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("BANSO_NEWS_RETRIEVAL_PROVIDER", "local")
+    monkeypatch.setenv("BANSO_CORPUS_SEARCH_MODE", search_mode)
+    monkeypatch.setenv("BANSO_CORPUS_REGISTRY_PATH", str(registry_path))
+    monkeypatch.setenv("BANSO_CORPUS_DATABASE_PATH", str(tmp_path / "corpus.sqlite3"))
+    monkeypatch.setenv("BANSO_CORPUS_INDEX_PATH", str(tmp_path / "corpus.lance"))
+    _patch_real_news_llm_clients(monkeypatch)
+    embedding_builder = Mock(return_value=object())
+    monkeypatch.setattr(
+        real_news,
+        "build_embedding_provider_from_env",
+        embedding_builder,
+    )
+
+    bundle = real_news.build_real_news_runtime()
+    executor = bundle.runtime.executor
+
+    assert isinstance(executor.retrieval_provider, LocalCorpusRetrievalProvider)
+    assert isinstance(executor.document_fetcher, CorpusAwareDocumentFetcher)
+    assert embedding_builder.call_count == embedding_call_count
+
+
+def test_real_news_runtime_rejects_unknown_retrieval_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BANSO_NEWS_RETRIEVAL_PROVIDER", "combined")
+
+    with pytest.raises(
+        RuntimeError,
+        match="BANSO_NEWS_RETRIEVAL_PROVIDER must be 'tavily' or 'local'",
+    ):
+        real_news.build_real_news_runtime()
 
 
 def test_real_news_runtime_rejects_unknown_policy_before_building_dependencies(

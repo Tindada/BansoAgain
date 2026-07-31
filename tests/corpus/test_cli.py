@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Sequence
 
 from banso.apps import corpus as corpus_app
+from banso.corpus import config as corpus_config
 from banso.corpus.ingestion.sync import CorpusSyncResult
 from banso.corpus.models import (
     CorpusDocumentStatus,
@@ -70,7 +71,7 @@ def test_sync_reindex_and_search_commands(
     index_path = tmp_path / "data" / "corpus.lance"
     monkeypatch.setattr(corpus_app, "CorpusSyncService", _FakeSyncService)
     monkeypatch.setattr(
-        corpus_app,
+        corpus_config,
         "OpenAIEmbeddingProvider",
         lambda **_kwargs: _FakeEmbeddingProvider(),
     )

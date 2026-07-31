@@ -15,10 +15,10 @@ from banso.corpus import (
     CorpusSearchMode,
     CorpusSyncService,
     LanceCorpusIndex,
-    OpenAIEmbeddingProvider,
     SQLiteCorpusStore,
     SourceRegistry,
 )
+from banso.corpus.config import build_embedding_provider_from_env
 from banso.corpus.ingestion.discovery_fetcher import DiscoveryEndpointFetcher
 from banso.corpus.ingestion.page_fetcher import CorpusPageFetcher
 from banso.corpus.ingestion.robots import RobotsChecker
@@ -36,12 +36,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     sync_parser.add_argument(
         "--registry",
         type=Path,
-        default=Path(os.getenv("BANSO_CORPUS_REGISTRY", DEFAULT_REGISTRY_PATH)),
+        default=Path(os.getenv("BANSO_CORPUS_REGISTRY_PATH", DEFAULT_REGISTRY_PATH)),
     )
     sync_parser.add_argument(
         "--database",
         type=Path,
-        default=Path(os.getenv("BANSO_CORPUS_DATABASE", DEFAULT_DATABASE_PATH)),
+        default=Path(os.getenv("BANSO_CORPUS_DATABASE_PATH", DEFAULT_DATABASE_PATH)),
     )
 
     reindex_parser = subparsers.add_parser(
@@ -51,12 +51,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     reindex_parser.add_argument(
         "--database",
         type=Path,
-        default=Path(os.getenv("BANSO_CORPUS_DATABASE", DEFAULT_DATABASE_PATH)),
+        default=Path(os.getenv("BANSO_CORPUS_DATABASE_PATH", DEFAULT_DATABASE_PATH)),
     )
     reindex_parser.add_argument(
         "--index",
         type=Path,
-        default=Path(os.getenv("BANSO_CORPUS_INDEX", DEFAULT_INDEX_PATH)),
+        default=Path(os.getenv("BANSO_CORPUS_INDEX_PATH", DEFAULT_INDEX_PATH)),
     )
 
     search_parser = subparsers.add_parser("search", help="search the local index")
@@ -64,7 +64,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     search_parser.add_argument(
         "--index",
         type=Path,
-        default=Path(os.getenv("BANSO_CORPUS_INDEX", DEFAULT_INDEX_PATH)),
+        default=Path(os.getenv("BANSO_CORPUS_INDEX_PATH", DEFAULT_INDEX_PATH)),
     )
     search_parser.add_argument(
         "--mode",
@@ -88,7 +88,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.index.parent.mkdir(parents=True, exist_ok=True)
         index = LanceCorpusIndex(
             args.index,
-            embedding_provider=_embedding_provider_from_env(),
+            embedding_provider=build_embedding_provider_from_env(),
         )
         with SQLiteCorpusStore(args.database) as store:
             chunk_count = index.rebuild(store)
@@ -100,7 +100,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         embedding_provider=(
             None
             if args.mode == CorpusSearchMode.BM25
-            else _embedding_provider_from_env()
+            else build_embedding_provider_from_env()
         ),
     )
     results = index.search(args.query, limit=args.limit, mode=args.mode)
@@ -157,21 +157,6 @@ async def _sync(registry_path: Path, database_path: Path) -> int:
         }
     )
     return 1 if failure_count else 0
-
-
-def _embedding_provider_from_env() -> OpenAIEmbeddingProvider:
-    model = os.getenv("BANSO_EMBEDDING_MODEL")
-    dimensions = os.getenv("BANSO_EMBEDDING_DIMENSIONS")
-    if model is None or dimensions is None:
-        raise RuntimeError(
-            "BANSO_EMBEDDING_MODEL and BANSO_EMBEDDING_DIMENSIONS are required"
-        )
-    return OpenAIEmbeddingProvider(
-        model=model,
-        dimensions=int(dimensions),
-        base_url=os.getenv("BANSO_EMBEDDING_BASE_URL"),
-        api_key=os.getenv("BANSO_EMBEDDING_API_KEY"),
-    )
 
 
 def _print_json(value: object) -> None:

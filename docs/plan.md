@@ -47,7 +47,8 @@
 - 已完成官方来源注册表、RSS/Atom 与 Sitemap 发现、robots 校验、条件请求、
   HTML/PDF 解析和 `SQLiteCorpusStore` 写入编排；该链路仍独立于 Agent。
 - 已新增段落感知分块和可从 SQLite 重建的 LanceDB 本地索引，支持按次选择
-  BM25、向量或混合检索；尚未接入 Agent。
+  BM25、向量或混合检索；真实 News Runtime 可在本地语料与 Tavily-only
+  两种隔离路径间切换。
 - 已实现超长文档的分块 evidence extraction，并隔离单篇文档的 LLM 提取失败。
 - LLM evidence extraction 为单篇文档设置最大 chunk 数，超过上限时在调用 LLM 前
   将该文档记录为 `document_too_large`，避免异常文档无上限占用执行时间。
@@ -340,8 +341,8 @@ LLM Agent Policy 与固定流程 policy 应使用相同 evaluation cases 和指�
    BM25/vector/hybrid 索引；未变化 chunk 可复用已有 embedding。
 5. 已新增语料管理 CLI、首个真实来源配置、CLI 端到端测试与运维文档；当前由
    OpenAI 官方 RSS 和 Sitemap 作为首个审查来源，后续来源仍需逐个核实后加入。
-6. 已新增本地语料到 Agent 检索与文档获取接口的适配层，但尚未接入真实运行入口；
-   下一步实现本地优先、Tavily 补齐并改变现有 Agent 在线检索行为。
+6. 已将适配层接入真实 News Runtime，可分别选择 local-only 或 Tavily-only；
+   跨 provider 补位与排序等待 trusted sources 完善及两组 evaluation 后决定。
 
 ## 阶段 8：LLM Policy RL 后训练预留
 
@@ -428,6 +429,9 @@ Rollout 必须保存 LLM 实际接收的 prompt/messages、原始 completion、�
 - BM25 与向量检索当前共用无重叠的简单段落分块；后续需要根据检索与端到端
   evaluation，在召回完整性、结果重复度和索引成本之间评估是否引入重叠、相邻
   chunk 扩展或更复杂的分块策略。
+- 本地 corpus 与 Tavily 当前只能分别使用。需要先完善 trusted sources，并比较
+  local-only 与 Tavily-only evaluation 的覆盖、来源多样性和端到端质量，再决定
+  是否采用结果缺口补位、并列候选检索以及跨 provider 排序。
 
 ### 来源分类
 

@@ -2,8 +2,18 @@
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 from banso.artifacts import InMemoryArtifactStore
+from banso.corpus import (
+    CorpusAwareDocumentFetcher,
+    CorpusSearchMode,
+    LanceCorpusIndex,
+    LocalCorpusRetrievalProvider,
+    SQLiteCorpusStore,
+    SourceRegistry,
+)
+from banso.corpus.config import build_embedding_provider_from_env
 from banso.core import AgentRuntime
 from banso.documents import HTTPDocumentFetcher, LLMEvidenceExtractor
 from banso.executors import NewsActionExecutor
@@ -55,6 +65,13 @@ def build_real_news_runtime() -> RealNewsRuntimeBundle:
             f"got {policy_name!r}"
         )
 
+    retrieval_provider_name = os.getenv("BANSO_NEWS_RETRIEVAL_PROVIDER", "tavily")
+    if retrieval_provider_name not in {"tavily", "local"}:
+        raise RuntimeError("BANSO_NEWS_RETRIEVAL_PROVIDER must be 'tavily' or 'local'")
+
+    if retrieval_provider_name == "local":
+        corpus_search_mode = CorpusSearchMode(os.getenv("BANSO_CORPUS_SEARCH_MODE", "hybrid"))
+
     local_llm_client = TracingLLMClient(
         ThinkingTagStrippingLLMClient(build_vllm_llm_client_from_env())
     )
@@ -69,12 +86,41 @@ def build_real_news_runtime() -> RealNewsRuntimeBundle:
         if policy_name == "llm"
         else NewsRuleBasedPolicy()
     )
+    if retrieval_provider_name == "tavily":
+        retrieval_provider = build_tavily_provider_from_env()
+        document_fetcher = HTTPDocumentFetcher()
+    else:
+        registry = SourceRegistry.load(
+            Path(os.getenv("BANSO_CORPUS_REGISTRY_PATH", "config/trusted_sources.json"))
+        )
+        index = LanceCorpusIndex(
+            Path(os.getenv("BANSO_CORPUS_INDEX_PATH", "data/corpus.lance")),
+            embedding_provider=(
+                None
+                if corpus_search_mode == CorpusSearchMode.BM25
+                else build_embedding_provider_from_env()
+            ),
+        )
+        corpus_store = SQLiteCorpusStore(
+            Path(os.getenv("BANSO_CORPUS_DATABASE_PATH", "data/corpus.sqlite3"))
+        )
+        retrieval_provider = LocalCorpusRetrievalProvider(
+            index,
+            corpus_store,
+            registry,
+            mode=corpus_search_mode,
+        )
+        document_fetcher = CorpusAwareDocumentFetcher(
+            corpus_store,
+            HTTPDocumentFetcher(),
+        )
+
     runtime = AgentRuntime(
         policy=policy,
         executor=NewsActionExecutor(
             store=store,
-            retrieval_provider=build_tavily_provider_from_env(),
-            document_fetcher=HTTPDocumentFetcher(),
+            retrieval_provider=retrieval_provider,
+            document_fetcher=document_fetcher,
             evidence_extractor=LLMEvidenceExtractor(client=local_llm_client),
             synthesizer=LLMSynthesizer(client=external_llm_client),
             search_query_planner=LLMSearchQueryPlanner(client=external_llm_client),

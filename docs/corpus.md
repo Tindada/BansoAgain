@@ -1,6 +1,6 @@
 # 本地语料库运维
 
-本地语料库独立于 News Agent 运行。SQLite 保存最新文档正文，LanceDB 索引可随时
+后台同步独立于 News Agent 运行。SQLite 保存最新文档正文，LanceDB 索引可随时
 从 SQLite 重建。
 
 ## 配置
@@ -18,9 +18,9 @@ data/corpus.lance
 可以通过以下环境变量覆盖：
 
 ```text
-BANSO_CORPUS_REGISTRY
-BANSO_CORPUS_DATABASE
-BANSO_CORPUS_INDEX
+BANSO_CORPUS_REGISTRY_PATH
+BANSO_CORPUS_DATABASE_PATH
+BANSO_CORPUS_INDEX_PATH
 ```
 
 重建向量索引以及 vector/hybrid 检索还需要 OpenAI-compatible embedding 配置：
