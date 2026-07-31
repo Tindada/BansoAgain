@@ -295,7 +295,7 @@ LLM Agent Policy 与固定流程 policy 应使用相同 evaluation cases 和指�
 ## 阶段 7：官方来源后台摄取与本地检索
 
 目标：建立一套独立于 News Agent loop 的后台摄取系统，持续保存经过来源审查的
-官方与研究资料；Agent 在后续接入本地检索，并以 Tavily 作为覆盖缺口的 fallback。
+官方与研究资料；Agent 可选择本地检索，后续再以 Tavily 补充覆盖缺口。
 
 最终数据流：
 
@@ -308,7 +308,7 @@ LLM Agent Policy 与固定流程 policy 应使用相同 evaluation cases 和指�
     -> 段落感知分块
     -> LanceDB BM25/vector/hybrid 索引
     -> Agent 本地检索
-    -> Tavily fallback
+    -> Tavily fallback（后续）
 ```
 
 边界与约束：
@@ -327,9 +327,9 @@ LLM Agent Policy 与固定流程 policy 应使用相同 evaluation cases 和指�
   cosine flat vector search，达到需要 ANN 的规模后再增加 HNSW，不改变检索接口。
 - 后台同步先由手动 CLI 触发，不引入 scheduler；后台模型使用独立的 corpus 状态，
   不复用 Agent rollout 内的 active/shelved/unusable 生命周期。
-- 在 Agent 接入前，依赖方向保持为后台模块复用现有 URL 工具和 `DocumentParser`，
-  现有 runtime、policy、executor 和 Tavily provider 不反向依赖后台模块，后台失败
-  不影响现有新闻命令。
+- 后台摄取流程复用现有 URL 工具和 `DocumentParser`，可独立于 Agent 运行。Tavily-only
+  runtime 不依赖 corpus；local-only runtime 显式依赖已准备好的 corpus。后台失败不影响
+  Tavily-only runtime。
 
 实施拆分：
 
