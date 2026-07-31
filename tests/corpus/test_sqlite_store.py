@@ -5,12 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from banso.corpus import (
+from banso.corpus.models import (
     CorpusDocumentStatus,
     CorpusDocumentWrite,
     DiscoveryEndpointState,
-    SQLiteCorpusStore,
 )
+from banso.corpus.sqlite_store import SQLiteCorpusStore
 
 
 def _active_document(**overrides: object) -> CorpusDocumentWrite:

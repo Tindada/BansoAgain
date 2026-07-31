@@ -11,8 +11,8 @@ import pyarrow as pa
 from lancedb.index import FTS
 from lancedb.rerankers import RRFReranker
 
-from banso.corpus.chunking import CorpusChunk, chunk_document
-from banso.corpus.embeddings import EmbeddingProvider
+from banso.corpus.indexing.chunking import CorpusChunk, chunk_document
+from banso.corpus.indexing.embeddings import EmbeddingProvider
 from banso.corpus.models import CorpusDocumentStatus
 from banso.corpus.sqlite_store import SQLiteCorpusStore
 

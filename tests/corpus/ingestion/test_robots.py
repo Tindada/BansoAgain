@@ -5,7 +5,7 @@ import asyncio
 import httpx
 import pytest
 
-from banso.corpus import RobotsChecker, RobotsDecision
+from banso.corpus.ingestion.robots import RobotsChecker, RobotsDecision
 
 
 async def _check_rules_and_cache() -> None:

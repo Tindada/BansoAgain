@@ -4,7 +4,7 @@ from collections.abc import Callable
 
 import pytest
 
-from banso.corpus import (
+from banso.corpus.ingestion.discovery import (
     DiscoveryParseError,
     SitemapDiscovery,
     parse_feed_urls,

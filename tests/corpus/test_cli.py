@@ -5,10 +5,10 @@ from pathlib import Path
 from typing import Sequence
 
 from banso.apps import corpus as corpus_app
-from banso.corpus import (
+from banso.corpus.ingestion.sync import CorpusSyncResult
+from banso.corpus.models import (
     CorpusDocumentStatus,
     CorpusDocumentWrite,
-    CorpusSyncResult,
 )
 
 

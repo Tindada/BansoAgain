@@ -1,0 +1,1 @@
+"""Trusted-source corpus ingestion."""

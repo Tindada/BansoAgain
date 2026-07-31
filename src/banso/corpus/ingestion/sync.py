@@ -5,24 +5,24 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from banso.corpus.discovery import (
+from banso.corpus.ingestion.discovery import (
     DiscoveryParseError,
     parse_feed_urls,
     parse_sitemap_urls,
 )
-from banso.corpus.discovery_fetcher import (
+from banso.corpus.ingestion.discovery_fetcher import (
     DiscoveryEndpointFetcher,
     DiscoveryFetchResult,
 )
+from banso.corpus.ingestion.page_fetcher import CorpusPageFetcher
+from banso.corpus.ingestion.registry import TrustedSource
+from banso.corpus.ingestion.robots import RobotsChecker, RobotsDecision
 from banso.corpus.models import (
     CorpusDocument,
     CorpusDocumentStatus,
     CorpusDocumentWrite,
     DiscoveryEndpointState,
 )
-from banso.corpus.page_fetcher import CorpusPageFetcher
-from banso.corpus.registry import TrustedSource
-from banso.corpus.robots import RobotsChecker, RobotsDecision
 from banso.corpus.sqlite_store import SQLiteCorpusStore
 from banso.documents.parser import DocumentParseError
 

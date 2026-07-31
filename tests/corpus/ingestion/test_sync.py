@@ -5,16 +5,16 @@ from pathlib import Path
 import httpx
 import pytest
 
-from banso.corpus import (
+from banso.corpus.ingestion.discovery_fetcher import DiscoveryEndpointFetcher
+from banso.corpus.ingestion.page_fetcher import CorpusPageFetcher
+from banso.corpus.ingestion.registry import TrustedSource
+from banso.corpus.ingestion.robots import RobotsChecker
+from banso.corpus.ingestion.sync import CorpusSyncService
+from banso.corpus.models import (
     CorpusDocumentStatus,
     CorpusDocumentWrite,
-    CorpusPageFetcher,
-    CorpusSyncService,
-    DiscoveryEndpointFetcher,
-    RobotsChecker,
-    SQLiteCorpusStore,
-    TrustedSource,
 )
+from banso.corpus.sqlite_store import SQLiteCorpusStore
 
 
 def _source(**overrides: object) -> TrustedSource:

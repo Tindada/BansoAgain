@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from banso.corpus import OpenAIEmbeddingProvider
+from banso.corpus.indexing.embeddings import OpenAIEmbeddingProvider
 
 
 class _FakeEmbeddings:

@@ -6,15 +6,14 @@ from typing import Sequence
 
 import pytest
 
-from banso.corpus import (
+from banso.corpus.indexing.chunking import chunk_document
+from banso.corpus.indexing.index import CorpusSearchMode, LanceCorpusIndex
+from banso.corpus.models import (
     CorpusDocument,
     CorpusDocumentStatus,
     CorpusDocumentWrite,
-    CorpusSearchMode,
-    LanceCorpusIndex,
-    SQLiteCorpusStore,
-    chunk_document,
 )
+from banso.corpus.sqlite_store import SQLiteCorpusStore
 
 
 class _FakeEmbeddingProvider:

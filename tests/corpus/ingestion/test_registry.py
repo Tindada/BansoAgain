@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from banso.corpus import SourceRegistry, SourceRegistryError
+from banso.corpus.ingestion.registry import SourceRegistry, SourceRegistryError
 
 
 def _write_registry(path: Path, sources: list[dict[str, object]]) -> Path:

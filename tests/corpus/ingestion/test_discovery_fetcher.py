@@ -5,7 +5,8 @@ import asyncio
 import httpx
 import pytest
 
-from banso.corpus import DiscoveryEndpointFetcher, DiscoveryEndpointState
+from banso.corpus.ingestion.discovery_fetcher import DiscoveryEndpointFetcher
+from banso.corpus.models import DiscoveryEndpointState
 
 
 async def _fetch_modified_then_not_modified() -> None:

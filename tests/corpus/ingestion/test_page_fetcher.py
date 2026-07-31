@@ -3,7 +3,7 @@
 import httpx
 import pytest
 
-from banso.corpus import CorpusPageFetcher
+from banso.corpus.ingestion.page_fetcher import CorpusPageFetcher
 
 
 @pytest.mark.anyio
