@@ -20,6 +20,9 @@ dependencies = [
 requires = ["uv_build>=0.8.0,<0.9.0"]
 build-backend = "uv_build"
 
+[project.scripts]
+banso-corpus = "banso.apps.corpus:main"
+
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",

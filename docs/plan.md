@@ -338,7 +338,8 @@ LLM Agent Policy 与固定流程 policy 应使用相同 evaluation cases 和指�
    与内容页面条件请求、嵌套 Sitemap、来源范围校验以及 SQLite 写入编排。
 4. 已新增段落感知分块和可从 SQLite 幂等重建的 LanceDB
    BM25/vector/hybrid 索引；未变化 chunk 可复用已有 embedding。
-5. 新增语料管理 CLI、真实来源配置、CLI 端到端测试与运维文档。
+5. 已新增语料管理 CLI、首个真实来源配置、CLI 端到端测试与运维文档；当前由
+   OpenAI 官方 RSS 和 Sitemap 作为首个审查来源，后续来源仍需逐个核实后加入。
 6. 将本地语料检索接入 Agent，并实现 Tavily fallback；这是首次改变现有 Agent
    在线检索行为的步骤。
 

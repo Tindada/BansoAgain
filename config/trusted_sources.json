@@ -1,4 +1,22 @@
 {
   "schema_version": 1,
-  "sources": []
+  "sources": [
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "enabled": true,
+      "allowed_domains": [
+        "openai.com"
+      ],
+      "allowed_path_prefixes": [
+        "/index"
+      ],
+      "feeds": [
+        "https://openai.com/news/rss.xml"
+      ],
+      "sitemaps": [
+        "https://openai.com/sitemap.xml"
+      ]
+    }
+  ]
 }
