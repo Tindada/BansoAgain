@@ -44,8 +44,10 @@
 - HTTP document fetcher 会在解析正文前校验响应 Content-Type，支持 HTML/XHTML
   与带文本层的 PDF，其他类型作为明确的文档获取失败记录；HTML/PDF 解析已提取为
   可复用的 `DocumentParser`，供后续后台摄取链路使用。
-- 已新增经过严格校验的 JSON 官方来源注册表模型，以及按规范化 URL 保存最新文档
-  记录的 `SQLiteCorpusStore`；二者当前仅属于后台模块，尚未接入网络同步或 Agent。
+- 已完成官方来源注册表、RSS/Atom 与 Sitemap 发现、robots 校验、条件请求、
+  HTML/PDF 解析和 `SQLiteCorpusStore` 写入编排；该链路仍独立于 Agent。
+- 已新增段落感知分块和可从 SQLite 重建的 LanceDB 本地索引，支持按次选择
+  BM25、向量或混合检索；尚未接入 Agent。
 - 已实现超长文档的分块 evidence extraction，并隔离单篇文档的 LLM 提取失败。
 - LLM evidence extraction 为单篇文档设置最大 chunk 数，超过上限时在调用 LLM 前
   将该文档记录为 `document_too_large`，避免异常文档无上限占用执行时间。
@@ -303,7 +305,7 @@ LLM Agent Policy 与固定流程 policy 应使用相同 evaluation cases 和指�
     -> HTML/PDF 解析
     -> SQLite 最新文档语料库
     -> 段落感知分块
-    -> LanceDB BM25 索引
+    -> LanceDB BM25/vector/hybrid 索引
     -> Agent 本地检索
     -> Tavily fallback
 ```
@@ -319,8 +321,9 @@ LLM Agent Policy 与固定流程 policy 应使用相同 evaluation cases 和指�
   或索引正文。
 - SQLite 是权威存储，仅保留每个文档的最新正文；不可用内容保留记录并标为 inactive，
   不进入检索结果。
-- LanceDB 是可从 SQLite 幂等重建的派生索引，当前只使用段落感知 chunk 和
-  BM25；不预留尚无调用方的向量或 embedding 接口。
+- LanceDB 是可从 SQLite 幂等重建的派生索引，保存段落感知 chunk、全文索引和
+  embedding；查询可按次选择 BM25、精确向量或 RRF 混合检索。当前语料规模先使用
+  cosine flat vector search，达到需要 ANN 的规模后再增加 HNSW，不改变检索接口。
 - 后台同步先由手动 CLI 触发，不引入 scheduler；后台模型使用独立的 corpus 状态，
   不复用 Agent rollout 内的 active/shelved/unusable 生命周期。
 - 在 Agent 接入前，依赖方向保持为后台模块复用现有 URL 工具和 `DocumentParser`，
@@ -333,7 +336,8 @@ LLM Agent Policy 与固定流程 policy 应使用相同 evaluation cases 和指�
 2. 已新增 JSON 官方来源注册表与 `SQLiteCorpusStore`。
 3. 已完成 RSS/Atom、Sitemap、robots 和增量同步服务，包括 discovery endpoint
    与内容页面条件请求、嵌套 Sitemap、来源范围校验以及 SQLite 写入编排。
-4. 已新增段落感知分块和可从 SQLite 幂等重建的 LanceDB BM25 索引。
+4. 已新增段落感知分块和可从 SQLite 幂等重建的 LanceDB
+   BM25/vector/hybrid 索引；未变化 chunk 可复用已有 embedding。
 5. 新增语料管理 CLI、真实来源配置、CLI 端到端测试与运维文档。
 6. 将本地语料检索接入 Agent，并实现 Tavily fallback；这是首次改变现有 Agent
    在线检索行为的步骤。
@@ -417,6 +421,12 @@ Rollout 必须保存 LLM 实际接收的 prompt/messages、原始 completion、�
 
 - `PlannedSearch.intent` 当前仅保存在计划、Action 参数和 Trace 中，不会影响
   实际发送给 retrieval provider 的检索请求。
+
+### 本地语料检索
+
+- BM25 与向量检索当前共用无重叠的简单段落分块；后续需要根据检索与端到端
+  evaluation，在召回完整性、结果重复度和索引成本之间评估是否引入重叠、相邻
+  chunk 扩展或更复杂的分块策略。
 
 ### 来源分类
 

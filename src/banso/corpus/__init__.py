@@ -11,7 +11,12 @@ from banso.corpus.discovery_fetcher import (
     DiscoveryEndpointFetcher,
     DiscoveryFetchResult,
 )
-from banso.corpus.index import CorpusSearchResult, LanceCorpusIndex
+from banso.corpus.embeddings import EmbeddingProvider, OpenAIEmbeddingProvider
+from banso.corpus.index import (
+    CorpusSearchMode,
+    CorpusSearchResult,
+    LanceCorpusIndex,
+)
 from banso.corpus.models import (
     CorpusDocument,
     CorpusDocumentStatus,
@@ -34,6 +39,7 @@ __all__ = [
     "CorpusDocumentStatus",
     "CorpusDocumentWrite",
     "CorpusPageFetcher",
+    "CorpusSearchMode",
     "CorpusSearchResult",
     "CorpusSyncFailure",
     "CorpusSyncResult",
@@ -42,7 +48,9 @@ __all__ = [
     "DiscoveryEndpointState",
     "DiscoveryFetchResult",
     "DiscoveryParseError",
+    "EmbeddingProvider",
     "LanceCorpusIndex",
+    "OpenAIEmbeddingProvider",
     "PageFetchResult",
     "RobotsChecker",
     "RobotsDecision",
