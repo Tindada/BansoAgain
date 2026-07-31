@@ -8,6 +8,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Sequence
 
+import httpx
 from dotenv import load_dotenv
 
 from banso.corpus import (
@@ -18,6 +19,9 @@ from banso.corpus import (
     SQLiteCorpusStore,
     SourceRegistry,
 )
+from banso.corpus.ingestion.discovery_fetcher import DiscoveryEndpointFetcher
+from banso.corpus.ingestion.page_fetcher import CorpusPageFetcher
+from banso.corpus.ingestion.robots import RobotsChecker
 
 DEFAULT_REGISTRY_PATH = Path("config/trusted_sources.json")
 DEFAULT_DATABASE_PATH = Path("data/corpus.sqlite3")
@@ -122,22 +126,28 @@ async def _sync(registry_path: Path, database_path: Path) -> int:
     document_count = 0
     failure_count = 0
 
-    with SQLiteCorpusStore(database_path) as store:
-        service = CorpusSyncService(store)
-        for source in registry.enabled_sources():
-            result = await service.sync_source(source)
-            document_count += len(result.documents)
-            failure_count += len(result.failures)
-            summaries.append(
-                {
-                    "source_id": source.id,
-                    "documents": len(result.documents),
-                    "failures": [
-                        {"url": failure.url, "reason": failure.reason}
-                        for failure in result.failures
-                    ],
-                }
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+        with SQLiteCorpusStore(database_path) as store:
+            service = CorpusSyncService(
+                store,
+                discovery_fetcher=DiscoveryEndpointFetcher(client=client),
+                robots_checker=RobotsChecker(client=client),
+                page_fetcher=CorpusPageFetcher(client=client),
             )
+            for source in registry.enabled_sources():
+                result = await service.sync_source(source)
+                document_count += len(result.documents)
+                failure_count += len(result.failures)
+                summaries.append(
+                    {
+                        "source_id": source.id,
+                        "documents": len(result.documents),
+                        "failures": [
+                            {"url": failure.url, "reason": failure.reason}
+                            for failure in result.failures
+                        ],
+                    }
+                )
 
     _print_json(
         {
@@ -162,6 +172,7 @@ def _embedding_provider_from_env() -> OpenAIEmbeddingProvider:
         base_url=os.getenv("BANSO_EMBEDDING_BASE_URL"),
         api_key=os.getenv("BANSO_EMBEDDING_API_KEY"),
     )
+
 
 def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, default=str))

@@ -51,6 +51,31 @@ def test_checker_applies_specific_group_and_caches_by_origin() -> None:
     asyncio.run(_check_rules_and_cache())
 
 
+def test_checker_shares_an_in_flight_policy_request() -> None:
+    async def run() -> int:
+        request_count = 0
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal request_count
+            request_count += 1
+            await asyncio.sleep(0.01)
+            return httpx.Response(404, request=request)
+
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler)
+        ) as client:
+            checker = RobotsChecker(client=client)
+            decisions = await asyncio.gather(
+                checker.check("https://example.org/reports/1"),
+                checker.check("https://example.org/reports/2"),
+                checker.check("https://example.org/reports/3"),
+            )
+        assert decisions == [RobotsDecision.ALLOWED] * 3
+        return request_count
+
+    assert asyncio.run(run()) == 1
+
+
 async def _check_longest_rule_and_allow_tie() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(

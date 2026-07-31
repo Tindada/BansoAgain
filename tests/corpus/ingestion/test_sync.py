@@ -1,5 +1,6 @@
 """End-to-end tests for trusted-source corpus synchronization."""
 
+import asyncio
 from pathlib import Path
 
 import httpx
@@ -33,12 +34,15 @@ def _source(**overrides: object) -> TrustedSource:
 def _service(
     store: SQLiteCorpusStore,
     client: httpx.AsyncClient,
+    *,
+    max_page_concurrency: int = 4,
 ) -> CorpusSyncService:
     return CorpusSyncService(
         store,
         discovery_fetcher=DiscoveryEndpointFetcher(client=client),
         robots_checker=RobotsChecker(client=client),
         page_fetcher=CorpusPageFetcher(client=client),
+        max_page_concurrency=max_page_concurrency,
     )
 
 
@@ -123,6 +127,52 @@ async def test_syncs_feed_and_nested_sitemap_into_corpus(tmp_path: Path) -> None
     assert second.failures == ()
     assert sum(request.url.path == "/robots.txt" for request in requests) == 1
     assert sum(request.url.path.startswith("/reports/") for request in requests) == 4
+
+
+@pytest.mark.anyio
+async def test_bounds_page_fetch_concurrency_per_origin(tmp_path: Path) -> None:
+    active_pages = 0
+    peak_active_pages = 0
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        nonlocal active_pages, peak_active_pages
+        if request.url.path == "/feed.xml":
+            links = "".join(
+                f"<item><link>https://example.org/reports/{number}</link></item>"
+                for number in range(4)
+            )
+            return httpx.Response(
+                200,
+                text=f"<rss><channel>{links}</channel></rss>",
+                request=request,
+            )
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404, request=request)
+
+        active_pages += 1
+        peak_active_pages = max(peak_active_pages, active_pages)
+        await asyncio.sleep(0.01)
+        active_pages -= 1
+        return httpx.Response(
+            200,
+            text="<main><p>Official report.</p></main>",
+            headers={"Content-Type": "text/html"},
+            request=request,
+        )
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(respond),
+    ) as client:
+        with SQLiteCorpusStore(tmp_path / "corpus.db") as store:
+            result = await _service(
+                store,
+                client,
+                max_page_concurrency=2,
+            ).sync_source(_source(sitemaps=()))
+
+    assert len(result.documents) == 4
+    assert result.failures == ()
+    assert peak_active_pages == 2
 
 
 @pytest.mark.anyio

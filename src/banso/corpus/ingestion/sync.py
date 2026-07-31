@@ -1,5 +1,6 @@
 """Background synchronization for one trusted corpus source."""
 
+import asyncio
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
@@ -53,11 +54,15 @@ class CorpusSyncService:
         discovery_fetcher: DiscoveryEndpointFetcher | None = None,
         robots_checker: RobotsChecker | None = None,
         page_fetcher: CorpusPageFetcher | None = None,
+        max_page_concurrency: int = 4,
     ) -> None:
+        if max_page_concurrency <= 0:
+            raise ValueError("max_page_concurrency must be greater than zero")
         self._store = store
         self._discovery_fetcher = discovery_fetcher or DiscoveryEndpointFetcher()
         self._robots_checker = robots_checker or RobotsChecker()
         self._page_fetcher = page_fetcher or CorpusPageFetcher()
+        self._max_page_concurrency = max_page_concurrency
 
     async def sync_source(self, source: TrustedSource) -> CorpusSyncResult:
         """Discover and ingest changed pages for one enabled source."""
@@ -111,11 +116,27 @@ class CorpusSyncService:
             except (httpx.HTTPError, DiscoveryParseError, ValueError) as error:
                 failures.append(_failure(endpoint, error))
 
-        documents: list[CorpusDocument] = []
+        origin_limits: dict[tuple[str, str, int | None], asyncio.Semaphore] = {}
+        page_requests: list[tuple[str, asyncio.Semaphore]] = []
         for url in urls:
             if not source.contains_url(url):
                 continue
-            document, failure = await self._ingest_page(source, url)
+            origin = _origin(url)
+            limit = origin_limits.get(origin)
+            if limit is None:
+                limit = asyncio.Semaphore(self._max_page_concurrency)
+                origin_limits[origin] = limit
+            page_requests.append((url, limit))
+
+        page_results = await asyncio.gather(
+            *(
+                self._ingest_page_with_limit(source, url, limit)
+                for url, limit in page_requests
+            )
+        )
+
+        documents: list[CorpusDocument] = []
+        for document, failure in page_results:
             if document is not None:
                 documents.append(document)
             if failure is not None:
@@ -125,6 +146,15 @@ class CorpusSyncService:
             documents=tuple(documents),
             failures=tuple(failures),
         )
+
+    async def _ingest_page_with_limit(
+        self,
+        source: TrustedSource,
+        url: str,
+        limit: asyncio.Semaphore,
+    ) -> tuple[CorpusDocument | None, CorpusSyncFailure | None]:
+        async with limit:
+            return await self._ingest_page(source, url)
 
     async def _fetch_discovery(
         self,
@@ -252,6 +282,11 @@ class CorpusSyncService:
 
 def _source_domain_contains(source: TrustedSource, url: str) -> bool:
     return urlsplit(url).hostname in source.allowed_domains
+
+
+def _origin(url: str) -> tuple[str, str, int | None]:
+    parsed = urlsplit(url)
+    return parsed.scheme, parsed.hostname or "", parsed.port
 
 
 def _failure(url: str, error: Exception) -> CorpusSyncFailure:

@@ -1,5 +1,6 @@
 """robots.txt access checks for background corpus ingestion."""
 
+import asyncio
 from enum import StrEnum
 
 import httpx
@@ -31,6 +32,7 @@ class RobotsChecker:
             tuple[str, str, int | None],
             Protego | RobotsDecision,
         ] = {}
+        self._locks: dict[tuple[str, str, int | None], asyncio.Lock] = {}
 
     async def check(self, url: str) -> RobotsDecision:
         """Return whether robots policy allows fetching a content URL."""
@@ -39,10 +41,19 @@ class RobotsChecker:
         origin = (target.scheme, target.host, target.port)
         policy = self._cache.get(origin)
         if policy is None:
-            policy = await self._load_policy(
-                target.copy_with(path="/robots.txt", query=None, fragment=None)
-            )
-            self._cache[origin] = policy
+            if origin not in self._locks:
+                self._locks[origin] = asyncio.Lock()
+            async with self._locks[origin]:
+                policy = self._cache.get(origin)
+                if policy is None:
+                    policy = await self._load_policy(
+                        target.copy_with(
+                            path="/robots.txt",
+                            query=None,
+                            fragment=None,
+                        )
+                    )
+                    self._cache[origin] = policy
 
         if isinstance(policy, RobotsDecision):
             return policy

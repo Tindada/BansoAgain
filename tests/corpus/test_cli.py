@@ -13,7 +13,7 @@ from banso.corpus.models import (
 
 
 class _FakeSyncService:
-    def __init__(self, store) -> None:
+    def __init__(self, store, **_components) -> None:
         self._store = store
 
     async def sync_source(self, source) -> CorpusSyncResult:
@@ -43,7 +43,7 @@ class _FakeEmbeddingProvider:
         return (1.0, 0.0)
 
 
-def test_sync_rebuild_and_search_commands(
+def test_sync_reindex_and_search_commands(
     tmp_path: Path,
     monkeypatch,
     capsys,
