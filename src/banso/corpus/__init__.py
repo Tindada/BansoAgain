@@ -1,5 +1,9 @@
 """Public interfaces for the trusted-source local corpus."""
 
+from banso.corpus.agent import (
+    CorpusAwareDocumentFetcher,
+    LocalCorpusRetrievalProvider,
+)
 from banso.corpus.indexing.embeddings import (
     EmbeddingProvider,
     OpenAIEmbeddingProvider,
@@ -19,6 +23,7 @@ from banso.corpus.models import (
 from banso.corpus.sqlite_store import SQLiteCorpusStore
 
 __all__ = [
+    "CorpusAwareDocumentFetcher",
     "CorpusDocument",
     "CorpusDocumentStatus",
     "CorpusDocumentWrite",
@@ -27,6 +32,7 @@ __all__ = [
     "CorpusSyncService",
     "EmbeddingProvider",
     "LanceCorpusIndex",
+    "LocalCorpusRetrievalProvider",
     "OpenAIEmbeddingProvider",
     "SourceRegistry",
     "SQLiteCorpusStore",

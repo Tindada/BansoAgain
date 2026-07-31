@@ -340,8 +340,8 @@ LLM Agent Policy 与固定流程 policy 应使用相同 evaluation cases 和指�
    BM25/vector/hybrid 索引；未变化 chunk 可复用已有 embedding。
 5. 已新增语料管理 CLI、首个真实来源配置、CLI 端到端测试与运维文档；当前由
    OpenAI 官方 RSS 和 Sitemap 作为首个审查来源，后续来源仍需逐个核实后加入。
-6. 将本地语料检索接入 Agent，并实现 Tavily fallback；这是首次改变现有 Agent
-   在线检索行为的步骤。
+6. 已新增本地语料到 Agent 检索与文档获取接口的适配层，但尚未接入真实运行入口；
+   下一步实现本地优先、Tavily 补齐并改变现有 Agent 在线检索行为。
 
 ## 阶段 8：LLM Policy RL 后训练预留
 
