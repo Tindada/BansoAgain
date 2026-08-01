@@ -1,22 +1,261 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "sources": [
     {
       "id": "openai",
       "name": "OpenAI",
+      "source_type": "official",
       "enabled": true,
+      "allowed_domains": ["openai.com"],
+      "allowed_path_prefixes": ["/index"],
+      "feeds": ["https://openai.com/news/rss.xml"],
+      "sitemaps": []
+    },
+    {
+      "id": "anthropic",
+      "name": "Anthropic",
+      "source_type": "official",
+      "enabled": true,
+      "allowed_domains": ["anthropic.com", "www.anthropic.com"],
+      "allowed_path_prefixes": ["/news", "/research"],
+      "feeds": [],
+      "sitemaps": ["https://anthropic.com/sitemap.xml"]
+    },
+    {
+      "id": "google-deepmind",
+      "name": "Google DeepMind",
+      "source_type": "official",
+      "enabled": true,
+      "allowed_domains": ["deepmind.google"],
+      "allowed_path_prefixes": ["/discover/blog", "/research"],
+      "feeds": [],
+      "sitemaps": ["https://deepmind.google/sitemap.xml"]
+    },
+    {
+      "id": "meta-ai",
+      "name": "Meta AI",
+      "source_type": "official",
+      "enabled": false,
+      "allowed_domains": ["ai.meta.com"],
+      "allowed_path_prefixes": ["/blog"],
+      "feeds": [],
+      "sitemaps": []
+    },
+    {
+      "id": "microsoft-ai",
+      "name": "Microsoft AI",
+      "source_type": "official",
+      "enabled": true,
+      "allowed_domains": ["microsoft.com", "www.microsoft.com"],
+      "allowed_path_prefixes": ["/en-us/ai"],
+      "feeds": [],
+      "sitemaps": ["https://www.microsoft.com/sitemaps/ai/sitemapindex.xml"]
+    },
+    {
+      "id": "nvidia-ai",
+      "name": "NVIDIA AI",
+      "source_type": "official",
+      "enabled": true,
+      "allowed_domains": ["nvidia.com", "www.nvidia.com"],
+      "allowed_path_prefixes": ["/en-us/ai-data-science"],
+      "feeds": [],
+      "sitemaps": ["https://www.nvidia.com/sitemap_index.xml"]
+    },
+    {
+      "id": "mistral-ai",
+      "name": "Mistral AI",
+      "source_type": "official",
+      "enabled": false,
+      "allowed_domains": ["mistral.ai"],
+      "allowed_path_prefixes": ["/news"],
+      "feeds": [],
+      "sitemaps": []
+    },
+    {
+      "id": "xai",
+      "name": "xAI",
+      "source_type": "official",
+      "enabled": false,
+      "allowed_domains": ["x.ai"],
+      "allowed_path_prefixes": ["/news"],
+      "feeds": [],
+      "sitemaps": []
+    },
+    {
+      "id": "arxiv",
+      "name": "arXiv",
+      "source_type": "research",
+      "enabled": true,
+      "allowed_domains": ["arxiv.org", "rss.arxiv.org"],
+      "allowed_path_prefixes": ["/abs", "/html"],
+      "feeds": ["https://rss.arxiv.org/rss/cs.AI"],
+      "sitemaps": []
+    },
+    {
+      "id": "openreview",
+      "name": "OpenReview",
+      "source_type": "research",
+      "enabled": false,
+      "allowed_domains": ["openreview.net"],
+      "allowed_path_prefixes": ["/forum", "/pdf"],
+      "feeds": [],
+      "sitemaps": []
+    },
+    {
+      "id": "acl-anthology",
+      "name": "ACL Anthology",
+      "source_type": "research",
+      "enabled": false,
+      "allowed_domains": ["aclanthology.org"],
+      "allowed_path_prefixes": ["/"],
+      "feeds": [],
+      "sitemaps": []
+    },
+    {
+      "id": "pmlr",
+      "name": "Proceedings of Machine Learning Research",
+      "source_type": "research",
+      "enabled": false,
+      "allowed_domains": ["proceedings.mlr.press"],
+      "allowed_path_prefixes": ["/"],
+      "feeds": [],
+      "sitemaps": []
+    },
+    {
+      "id": "other-official-ai",
+      "name": "Other Official AI Publishers",
+      "source_type": "official",
+      "enabled": false,
       "allowed_domains": [
-        "openai.com"
+        "about.fb.com",
+        "ai.google",
+        "ai.google.dev",
+        "aws.amazon.com",
+        "blog.google",
+        "cloud.google.com",
+        "cloudflare.com",
+        "cohere.com",
+        "databricks.com",
+        "ibm.com",
+        "research.google",
+        "salesforce.com",
+        "stability.ai"
       ],
-      "allowed_path_prefixes": [
-        "/index"
+      "allowed_path_prefixes": ["/"],
+      "feeds": [],
+      "sitemaps": []
+    },
+    {
+      "id": "policy-and-regulators",
+      "name": "Government and Regulatory Publishers",
+      "source_type": "official",
+      "enabled": false,
+      "allowed_domains": [
+        "bis.gov",
+        "canada.ca",
+        "commerce.gov",
+        "congress.gov",
+        "europa.eu",
+        "federalregister.gov",
+        "ftc.gov",
+        "gov.uk",
+        "legislation.gov.uk",
+        "nist.gov",
+        "whitehouse.gov"
       ],
-      "feeds": [
-        "https://openai.com/news/rss.xml"
+      "allowed_path_prefixes": ["/"],
+      "feeds": [],
+      "sitemaps": []
+    },
+    {
+      "id": "other-research-publishers",
+      "name": "Other Research Publishers",
+      "source_type": "research",
+      "enabled": false,
+      "allowed_domains": [
+        "aaai.org",
+        "dl.acm.org",
+        "icml.cc",
+        "ieee.org",
+        "jmlr.org",
+        "nature.com",
+        "neurips.cc",
+        "science.org"
       ],
-      "sitemaps": [
-        "https://openai.com/sitemap.xml"
-      ]
+      "allowed_path_prefixes": ["/"],
+      "feeds": [],
+      "sitemaps": []
+    },
+    {
+      "id": "ai-leaderboards",
+      "name": "AI Leaderboards",
+      "source_type": "leaderboard",
+      "enabled": false,
+      "allowed_domains": ["lmarena.ai", "swebench.com"],
+      "allowed_path_prefixes": ["/"],
+      "feeds": [],
+      "sitemaps": []
+    },
+    {
+      "id": "professional-news",
+      "name": "Professional News Publishers",
+      "source_type": "news",
+      "enabled": false,
+      "allowed_domains": [
+        "apnews.com",
+        "arstechnica.com",
+        "axios.com",
+        "bbc.co.uk",
+        "bbc.com",
+        "bloomberg.com",
+        "cnbc.com",
+        "cnn.com",
+        "ft.com",
+        "nytimes.com",
+        "reuters.com",
+        "semafor.com",
+        "techcrunch.com",
+        "technologyreview.com",
+        "theguardian.com",
+        "theverge.com",
+        "washingtonpost.com",
+        "wired.com",
+        "wsj.com"
+      ],
+      "allowed_path_prefixes": ["/"],
+      "feeds": [],
+      "sitemaps": []
+    },
+    {
+      "id": "social-platforms",
+      "name": "Social Platforms",
+      "source_type": "social",
+      "enabled": false,
+      "allowed_domains": [
+        "facebook.com",
+        "instagram.com",
+        "linkedin.com",
+        "medium.com",
+        "quora.com",
+        "reddit.com",
+        "substack.com",
+        "twitter.com",
+        "x.com",
+        "youtube.com"
+      ],
+      "allowed_path_prefixes": ["/"],
+      "feeds": [],
+      "sitemaps": []
+    },
+    {
+      "id": "news-aggregators",
+      "name": "News Aggregators",
+      "source_type": "aggregator",
+      "enabled": false,
+      "allowed_domains": ["news.google.com", "newser.com"],
+      "allowed_path_prefixes": ["/"],
+      "feeds": [],
+      "sitemaps": []
     }
   ]
 }

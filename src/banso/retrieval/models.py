@@ -1,24 +1,12 @@
 """Retrieval domain models."""
 
 from datetime import datetime, timezone
-from enum import StrEnum
 from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
-
-class SourceType(StrEnum):
-    """High-level source category."""
-
-    NEWS = "news"
-    OFFICIAL = "official"
-    RESEARCH = "research"
-    LEADERBOARD = "leaderboard"
-    BLOG = "blog"
-    SOCIAL = "social"
-    AGGREGATOR = "aggregator"
-    UNKNOWN = "unknown"
+from banso.source_types import SourceType
 
 
 class Source(BaseModel):

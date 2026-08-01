@@ -10,7 +10,7 @@ from banso.corpus.ingestion.registry import SourceRegistry, SourceRegistryError
 
 def _write_registry(path: Path, sources: list[dict[str, object]]) -> Path:
     path.write_text(
-        json.dumps({"schema_version": 1, "sources": sources}),
+        json.dumps({"schema_version": 2, "sources": sources}),
         encoding="utf-8",
     )
     return path
@@ -20,6 +20,7 @@ def _source(**overrides: object) -> dict[str, object]:
     values: dict[str, object] = {
         "id": "example-research",
         "name": "Example Research",
+        "source_type": "research",
         "allowed_domains": ["research.example.org"],
         "allowed_path_prefixes": ["/publications"],
         "feeds": ["https://research.example.org/feed.xml"],
@@ -38,6 +39,7 @@ def test_registry_loads_and_matches_only_approved_content_scope(
 
     source = registry.get("example-research")
     assert source is not None
+    assert source.source_type.value == "research"
     assert source.allowed_domains == ("research.example.org",)
     assert registry.match_url(
         "https://research.example.org/publications/report"
@@ -48,19 +50,40 @@ def test_registry_loads_and_matches_only_approved_content_scope(
 
 def test_registry_ignores_disabled_sources(tmp_path: Path) -> None:
     registry = SourceRegistry.load(
-        _write_registry(tmp_path / "sources.json", [_source(enabled=False)])
+        _write_registry(
+            tmp_path / "sources.json",
+            [
+                _source(
+                    enabled=False,
+                    allowed_domains=["www.research.example.org"],
+                    feeds=[],
+                    sitemaps=[],
+                )
+            ],
+        )
     )
 
     assert registry.enabled_sources() == ()
-    assert (
-        registry.match_url("https://research.example.org/publications/report") is None
-    )
+    assert registry.match_url("https://www.research.example.org/publications/report") is None
+    assert registry.source_type_by_domain() == {"research.example.org": "research"}
 
 
 @pytest.mark.parametrize(
     "sources, expected_message",
     [
         ([_source(), _source(name="Duplicate")], "source ids must be unique"),
+        (
+            [
+                _source(),
+                _source(
+                    id="other-research",
+                    allowed_domains=["www.research.example.org"],
+                    feeds=[],
+                    sitemaps=[],
+                ),
+            ],
+            "classification domains must not be shared",
+        ),
         (
             [_source(feeds=["https://feeds.example.org/research.xml"])],
             "outside allowed_domains",
@@ -77,6 +100,7 @@ def test_registry_ignores_disabled_sources(tmp_path: Path) -> None:
             [_source(allowed_domains=["research.example.org."])],
             "invalid domain",
         ),
+        ([_source(source_type="unknown")], "source_type must not be unknown"),
     ],
 )
 def test_registry_rejects_invalid_scope_configuration(
@@ -95,4 +119,12 @@ def test_registry_wraps_invalid_json(tmp_path: Path) -> None:
     path.write_text("{", encoding="utf-8")
 
     with pytest.raises(SourceRegistryError, match="not valid JSON"):
+        SourceRegistry.load(path)
+
+
+def test_registry_rejects_schema_v1(tmp_path: Path) -> None:
+    path = tmp_path / "sources.json"
+    path.write_text('{"schema_version":1,"sources":[]}', encoding="utf-8")
+
+    with pytest.raises(SourceRegistryError, match="schema_version"):
         SourceRegistry.load(path)

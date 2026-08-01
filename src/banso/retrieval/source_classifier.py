@@ -2,123 +2,31 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from banso.core.observation import (
     SourceClassificationRecord,
     SourceClassificationReport,
 )
-from banso.retrieval.models import SearchResult, Source, SourceType
+from banso.retrieval.models import SearchResult, Source
 from banso.retrieval.url_utils import publisher_domain, publisher_home_url
-
-
-def _default_source_domains() -> dict[str, SourceType]:
-    """Return the AI-news-focused source registry."""
-
-    official = {
-        "about.fb.com",
-        "ai.google",
-        "ai.google.dev",
-        "ai.meta.com",
-        "anthropic.com",
-        "aws.amazon.com",
-        "blog.google",
-        "cloud.google.com",
-        "cloudflare.com",
-        "cohere.com",
-        "databricks.com",
-        "deepmind.google",
-        "ibm.com",
-        "microsoft.com",
-        "mistral.ai",
-        "nvidia.com",
-        "openai.com",
-        "research.google",
-        "salesforce.com",
-        "stability.ai",
-        "x.ai",
-        # Government and regulator publications use the existing OFFICIAL type.
-        "bis.gov",
-        "canada.ca",
-        "commerce.gov",
-        "congress.gov",
-        "europa.eu",
-        "federalregister.gov",
-        "ftc.gov",
-        "gov.uk",
-        "legislation.gov.uk",
-        "nist.gov",
-        "whitehouse.gov",
-    }
-    research = {
-        "aaai.org",
-        "aclanthology.org",
-        "arxiv.org",
-        "dl.acm.org",
-        "icml.cc",
-        "ieee.org",
-        "jmlr.org",
-        "nature.com",
-        "neurips.cc",
-        "openreview.net",
-        "proceedings.mlr.press",
-        "science.org",
-    }
-    leaderboard = {"lmarena.ai", "swebench.com"}
-    news = {
-        "apnews.com",
-        "arstechnica.com",
-        "axios.com",
-        "bbc.co.uk",
-        "bbc.com",
-        "bloomberg.com",
-        "cnbc.com",
-        "cnn.com",
-        "ft.com",
-        "nytimes.com",
-        "reuters.com",
-        "semafor.com",
-        "techcrunch.com",
-        "technologyreview.com",
-        "theguardian.com",
-        "theverge.com",
-        "washingtonpost.com",
-        "wired.com",
-        "wsj.com",
-    }
-    social = {
-        "facebook.com",
-        "instagram.com",
-        "linkedin.com",
-        "medium.com",
-        "quora.com",
-        "reddit.com",
-        "substack.com",
-        "twitter.com",
-        "x.com",
-        "youtube.com",
-    }
-    aggregators = {"news.google.com", "newser.com"}
-
-    registry: dict[str, SourceType] = {}
-    for domains, source_type in (
-        (official, SourceType.OFFICIAL),
-        (research, SourceType.RESEARCH),
-        (leaderboard, SourceType.LEADERBOARD),
-        (news, SourceType.NEWS),
-        (social, SourceType.SOCIAL),
-        (aggregators, SourceType.AGGREGATOR),
-    ):
-        registry.update(dict.fromkeys(domains, source_type))
-    return registry
+from banso.source_types import SourceType
 
 
 class SourceClassifierConfig(BaseModel):
     """Configuration for domain-based source classification."""
 
-    source_domains: dict[str, SourceType] = Field(
-        default_factory=_default_source_domains
-    )
+    source_domains: dict[str, SourceType] = Field(default_factory=dict)
+
+    @field_validator("source_domains")
+    @classmethod
+    def _normalize_domains(
+        cls, values: dict[str, SourceType]
+    ) -> dict[str, SourceType]:
+        return {
+            domain.strip().lower().removeprefix("www."): source_type
+            for domain, source_type in values.items()
+        }
 
 
 class SourceClassification(BaseModel):
@@ -204,9 +112,9 @@ class SourceClassifier:
     def _source_classification(
         self, result: SearchResult, domain: str
     ) -> tuple[SourceType, Literal["domain", "provider", "unknown"]]:
-        for configured_domain, source_type in self.config.source_domains.items():
-            if self._domain_matches(domain, configured_domain):
-                return source_type, "domain"
+        source_type = self.config.source_domains.get(domain)
+        if source_type is not None:
+            return source_type, "domain"
         if result.source is not None and result.source.type != SourceType.UNKNOWN:
             return result.source.type, "provider"
         return SourceType.UNKNOWN, "unknown"
@@ -222,7 +130,3 @@ class SourceClassifier:
         )
         source = source.model_copy(update={"type": classification.source_type})
         return result.model_copy(update={"source": source})
-
-    @staticmethod
-    def _domain_matches(domain: str, candidate: str) -> bool:
-        return domain == candidate or domain.endswith(f".{candidate}")

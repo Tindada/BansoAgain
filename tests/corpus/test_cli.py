@@ -53,11 +53,12 @@ def test_sync_reindex_and_search_commands(
     registry_path.write_text(
         json.dumps(
             {
-                "schema_version": 1,
+                "schema_version": 2,
                 "sources": [
                     {
                         "id": "example",
                         "name": "Example",
+                        "source_type": "research",
                         "allowed_domains": ["example.org"],
                         "allowed_path_prefixes": ["/reports"],
                         "feeds": ["https://example.org/feed.xml"],

@@ -16,7 +16,9 @@ def test_classifier_enriches_recognized_source() -> None:
         metadata={"provider": "tavily", "score": 0.9},
     )
 
-    output = SourceClassifier().apply([result])
+    output = SourceClassifier(
+        SourceClassifierConfig(source_domains={"openai.com": SourceType.OFFICIAL})
+    ).apply([result])
 
     assert len(output.results) == 1
     assert output.results[0].source is not None
@@ -35,7 +37,14 @@ def test_classifier_retains_aggregator_unknown_and_social_results() -> None:
         SearchResult(title="Post", url="https://x.com/someone/status/1"),
     ]
 
-    output = SourceClassifier().apply(results)
+    output = SourceClassifier(
+        SourceClassifierConfig(
+            source_domains={
+                "newser.com": SourceType.AGGREGATOR,
+                "x.com": SourceType.SOCIAL,
+            }
+        )
+    ).apply(results)
 
     assert [result.title for result in output.results] == [
         "Summary",
@@ -51,15 +60,16 @@ def test_classifier_retains_aggregator_unknown_and_social_results() -> None:
     assert output.unknown_count == 1
 
 
-def test_classifier_supports_configured_source_registry() -> None:
+def test_classifier_uses_exact_configured_domains() -> None:
     classifier = SourceClassifier(
         SourceClassifierConfig(
             source_domains={"lab.example": SourceType.RESEARCH},
         )
     )
     results = [
-        SearchResult(title="First", url="https://lab.example/first"),
-        SearchResult(title="Second", url="https://sub.lab.example/second"),
+        SearchResult(title="Outside path", url="https://lab.example/jobs"),
+        SearchResult(title="WWW", url="https://www.lab.example/second"),
+        SearchResult(title="Subdomain", url="https://sub.lab.example/third"),
     ]
 
     output = classifier.apply(results)
@@ -67,46 +77,30 @@ def test_classifier_supports_configured_source_registry() -> None:
     assert [result.source.type for result in output.results if result.source] == [
         SourceType.RESEARCH,
         SourceType.RESEARCH,
+        SourceType.UNKNOWN,
     ]
     assert all(
         item.classification_source == "domain"
-        for item in output.classifications
+        for item in output.classifications[:2]
+    )
+    assert output.classifications[2].classification_source == "unknown"
+
+
+def test_classifier_uses_configured_domain_before_provider_type() -> None:
+    result = SearchResult(
+        title="Official release",
+        url="https://official.example/release",
+        source=Source(name="Provider", type=SourceType.BLOG),
     )
 
+    output = SourceClassifier(
+        SourceClassifierConfig(
+            source_domains={"official.example": SourceType.OFFICIAL}
+        )
+    ).apply([result])
 
-def test_classifier_uses_expanded_registry_before_provider_type() -> None:
-    results = [
-        SearchResult(
-            title="Google Cloud release",
-            url="https://cloud.google.com/blog/products/ai-machine-learning/release",
-            source=Source(name="Google", type=SourceType.BLOG),
-        ),
-        SearchResult(
-            title="Meta AI release",
-            url="https://ai.meta.com/blog/model-release/",
-        ),
-        SearchResult(
-            title="Microsoft documentation",
-            url="https://learn.microsoft.com/en-us/azure/ai-services/update",
-        ),
-        SearchResult(
-            title="EU policy",
-            url="https://consilium.europa.eu/en/policies/ai/",
-        ),
-    ]
-
-    output = SourceClassifier().apply(results)
-
-    assert [item.source_type for item in output.classifications] == [
-        SourceType.OFFICIAL,
-        SourceType.OFFICIAL,
-        SourceType.OFFICIAL,
-        SourceType.OFFICIAL,
-    ]
-    assert all(
-        item.classification_source == "domain"
-        for item in output.classifications
-    )
+    assert output.classifications[0].source_type == SourceType.OFFICIAL
+    assert output.classifications[0].classification_source == "domain"
 
 
 def test_classifier_uses_provider_type_for_unregistered_domain() -> None:

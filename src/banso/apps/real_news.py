@@ -28,7 +28,12 @@ from banso.policies import (
     NewsPolicyContextBuilder,
     NewsRuleBasedPolicy,
 )
-from banso.retrieval import LLMSearchQueryPlanner, TavilyRetrievalProvider
+from banso.retrieval import (
+    LLMSearchQueryPlanner,
+    SourceClassifier,
+    SourceClassifierConfig,
+    TavilyRetrievalProvider,
+)
 from banso.synthesis import LLMSynthesizer
 from banso.tracing import InMemoryTraceSink, Tracer
 
@@ -72,6 +77,13 @@ def build_real_news_runtime() -> RealNewsRuntimeBundle:
     if retrieval_provider_name == "local":
         corpus_search_mode = CorpusSearchMode(os.getenv("BANSO_CORPUS_SEARCH_MODE", "hybrid"))
 
+    registry = SourceRegistry.load(
+        Path(os.getenv("BANSO_CORPUS_REGISTRY_PATH", "config/trusted_sources.json"))
+    )
+    source_classifier = SourceClassifier(
+        SourceClassifierConfig(source_domains=registry.source_type_by_domain())
+    )
+
     local_llm_client = TracingLLMClient(
         ThinkingTagStrippingLLMClient(build_vllm_llm_client_from_env())
     )
@@ -90,9 +102,6 @@ def build_real_news_runtime() -> RealNewsRuntimeBundle:
         retrieval_provider = build_tavily_provider_from_env()
         document_fetcher = HTTPDocumentFetcher()
     else:
-        registry = SourceRegistry.load(
-            Path(os.getenv("BANSO_CORPUS_REGISTRY_PATH", "config/trusted_sources.json"))
-        )
         index = LanceCorpusIndex(
             Path(os.getenv("BANSO_CORPUS_INDEX_PATH", "data/corpus.lance")),
             embedding_provider=(
@@ -124,6 +133,7 @@ def build_real_news_runtime() -> RealNewsRuntimeBundle:
             evidence_extractor=LLMEvidenceExtractor(client=local_llm_client),
             synthesizer=LLMSynthesizer(client=external_llm_client),
             search_query_planner=LLMSearchQueryPlanner(client=external_llm_client),
+            source_classifier=source_classifier,
             max_extraction_concurrency=int(
                 os.getenv("BANSO_MAX_EXTRACTION_CONCURRENCY", "3")
             ),

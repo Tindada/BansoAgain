@@ -22,6 +22,7 @@ def _source(**overrides: object) -> TrustedSource:
     values: dict[str, object] = {
         "id": "example-official",
         "name": "Example Official",
+        "source_type": "official",
         "allowed_domains": ("example.org",),
         "allowed_path_prefixes": ("/reports",),
         "feeds": ("https://example.org/feed.xml",),

@@ -15,6 +15,8 @@ from pydantic import (
     model_validator,
 )
 
+from banso.source_types import SourceType
+
 
 _DOMAIN_PATTERN = re.compile(
     r"(?=.{1,253}\Z)"
@@ -28,12 +30,17 @@ class SourceRegistryError(ValueError):
 
 
 class TrustedSource(BaseModel):
-    """A reviewed source and the URL scope approved for ingestion."""
+    """A classified source and its optional ingestion scope.
+
+    ``enabled`` controls ingestion only; every record participates in source
+    classification.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     id: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]*$")
     name: str = Field(min_length=1)
+    source_type: SourceType
     enabled: bool = True
     allowed_domains: tuple[str, ...] = Field(min_length=1)
     allowed_path_prefixes: tuple[str, ...] = ("/",)
@@ -88,6 +95,8 @@ class TrustedSource(BaseModel):
 
     @model_validator(mode="after")
     def _validate_endpoint_domains(self) -> "TrustedSource":
+        if self.source_type == SourceType.UNKNOWN:
+            raise ValueError("source_type must not be unknown")
         for endpoint in (*self.feeds, *self.sitemaps):
             if _parse_http_url(endpoint).hostname not in self.allowed_domains:
                 raise ValueError("discovery endpoint is outside allowed_domains")
@@ -115,14 +124,24 @@ class SourceRegistry(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: Literal[1]
+    schema_version: Literal[2]
     sources: tuple[TrustedSource, ...]
 
     @model_validator(mode="after")
-    def _reject_duplicate_source_ids(self) -> "SourceRegistry":
+    def _reject_registry_conflicts(self) -> "SourceRegistry":
         source_ids = [source.id for source in self.sources]
         if len(source_ids) != len(set(source_ids)):
             raise ValueError("source ids must be unique")
+
+        source_id_by_domain_key: dict[str, str] = {}
+        for source in self.sources:
+            for domain in source.allowed_domains:
+                domain_key = _classification_domain_key(domain)
+                source_id = source_id_by_domain_key.setdefault(domain_key, source.id)
+                if source_id != source.id:
+                    raise ValueError(
+                        "classification domains must not be shared across sources"
+                    )
         return self
 
     @classmethod
@@ -156,6 +175,15 @@ class SourceRegistry(BaseModel):
 
         return tuple(source for source in self.sources if source.enabled)
 
+    def source_type_by_domain(self) -> dict[str, SourceType]:
+        """Map classification domain keys to their reviewed source types."""
+
+        return {
+            _classification_domain_key(domain): source.source_type
+            for source in self.sources
+            for domain in source.allowed_domains
+        }
+
     def match_url(self, url: str) -> TrustedSource | None:
         """Return the first enabled source whose approved scope contains the URL."""
 
@@ -183,3 +211,7 @@ def _parse_http_url(url: str):
     ):
         raise ValueError("expected an absolute HTTP(S) URL")
     return parsed
+
+
+def _classification_domain_key(domain: str) -> str:
+    return domain.removeprefix("www.")

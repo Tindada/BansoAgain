@@ -106,11 +106,12 @@ async def test_local_provider_returns_only_current_approved_documents() -> None:
     store = Mock(spec=SQLiteCorpusStore)
     store.get.side_effect = documents.get
     registry = SourceRegistry(
-        schema_version=1,
+        schema_version=2,
         sources=(
             TrustedSource(
                 id="example",
                 name="Example Institute",
+                source_type="research",
                 allowed_domains=("example.org",),
                 allowed_path_prefixes=("/reports",),
             ),

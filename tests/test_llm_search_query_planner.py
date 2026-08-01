@@ -264,6 +264,32 @@ def test_real_news_runtime_builds_llm_policy_with_shared_store_and_client(
     assert executor.synthesizer.client.client is external_client
 
 
+def test_real_news_runtime_uses_registry_for_tavily_classification(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry_path = tmp_path / "sources.json"
+    registry_path.write_text(
+        '{"schema_version":2,"sources":[{'
+        '"id":"reviewed","name":"Reviewed","source_type":"research",'
+        '"enabled":false,"allowed_domains":["reviewed.example"],'
+        '"allowed_path_prefixes":["/papers"],"feeds":[],"sitemaps":[]}]}'
+    )
+    monkeypatch.setenv("BANSO_CORPUS_REGISTRY_PATH", str(registry_path))
+    monkeypatch.delenv("BANSO_NEWS_RETRIEVAL_PROVIDER", raising=False)
+    monkeypatch.setattr(
+        real_news,
+        "build_tavily_provider_from_env",
+        FakeRetrievalProvider,
+    )
+    _patch_real_news_llm_clients(monkeypatch)
+
+    bundle = real_news.build_real_news_runtime()
+    assert bundle.runtime.executor.source_classifier.config.source_domains == {
+        "reviewed.example": "research"
+    }
+
+
 @pytest.mark.parametrize(
     ("search_mode", "embedding_call_count"),
     [("bm25", 0), ("hybrid", 1)],
@@ -276,7 +302,7 @@ def test_real_news_runtime_builds_local_corpus_components(
 ) -> None:
     registry_path = tmp_path / "sources.json"
     registry_path.write_text(
-        '{"schema_version": 1, "sources": []}',
+        '{"schema_version": 2, "sources": []}',
         encoding="utf-8",
     )
     monkeypatch.setenv("BANSO_NEWS_RETRIEVAL_PROVIDER", "local")
