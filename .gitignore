@@ -5,3 +5,4 @@ __pycache__/
 .env
 scratch_*.py
 runs/
+data/

@@ -16,8 +16,8 @@
       "name": "Anthropic",
       "source_type": "official",
       "enabled": true,
-      "allowed_domains": ["anthropic.com", "www.anthropic.com"],
-      "allowed_path_prefixes": ["/news", "/research"],
+      "allowed_domains": ["anthropic.com", "www.anthropic.com", "claude.com", "www.claude.com"],
+      "allowed_path_prefixes": ["/news", "/research", "/engineering", "/blog"],
       "feeds": [],
       "sitemaps": ["https://anthropic.com/sitemap.xml"]
     },
