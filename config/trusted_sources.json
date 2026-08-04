@@ -37,8 +37,18 @@
       "source_type": "official",
       "enabled": false,
       "allowed_domains": ["ai.meta.com"],
-      "allowed_path_prefixes": ["/blog"],
+      "allowed_path_prefixes": ["/blog", "/research"],
       "feeds": [],
+      "sitemaps": []
+    },
+    {
+      "id": "meta-newsroom-ai",
+      "name": "Meta Newsroom AI",
+      "source_type": "official",
+      "enabled": true,
+      "allowed_domains": ["about.fb.com"],
+      "allowed_path_prefixes": ["/news"],
+      "feeds": ["https://about.fb.com/news/tag/ai/feed/"],
       "sitemaps": []
     },
     {
@@ -46,29 +56,29 @@
       "name": "Microsoft AI",
       "source_type": "official",
       "enabled": true,
-      "allowed_domains": ["microsoft.com", "www.microsoft.com"],
-      "allowed_path_prefixes": ["/en-us/ai"],
-      "feeds": [],
-      "sitemaps": ["https://www.microsoft.com/sitemaps/ai/sitemapindex.xml"]
+      "allowed_domains": ["microsoft.com", "www.microsoft.com", "news.microsoft.com", "blogs.microsoft.com"],
+      "allowed_path_prefixes": ["/source", "/signal", "/blog"],
+      "feeds": ["https://news.microsoft.com/source/topics/ai/feed/"],
+      "sitemaps": []
     },
     {
       "id": "nvidia-ai",
       "name": "NVIDIA AI",
       "source_type": "official",
       "enabled": true,
-      "allowed_domains": ["nvidia.com", "www.nvidia.com"],
-      "allowed_path_prefixes": ["/en-us/ai-data-science"],
-      "feeds": [],
-      "sitemaps": ["https://www.nvidia.com/sitemap_index.xml"]
+      "allowed_domains": ["nvidia.com", "www.nvidia.com", "developer.nvidia.com"],
+      "allowed_path_prefixes": ["/blog"],
+      "feeds": ["https://developer.nvidia.com/blog/category/generative-ai/feed/"],
+      "sitemaps": []
     },
     {
       "id": "mistral-ai",
       "name": "Mistral AI",
       "source_type": "official",
-      "enabled": false,
+      "enabled": true,
       "allowed_domains": ["mistral.ai"],
       "allowed_path_prefixes": ["/news"],
-      "feeds": [],
+      "feeds": ["https://mistral.ai/rss.xml"],
       "sitemaps": []
     },
     {
@@ -78,6 +88,16 @@
       "enabled": false,
       "allowed_domains": ["x.ai"],
       "allowed_path_prefixes": ["/news"],
+      "feeds": [],
+      "sitemaps": []
+    },
+    {
+      "id": "xai-reports",
+      "name": "xAI Reports",
+      "source_type": "official",
+      "enabled": false,
+      "allowed_domains": ["data.x.ai"],
+      "allowed_path_prefixes": ["/"],
       "feeds": [],
       "sitemaps": []
     },
@@ -105,10 +125,10 @@
       "id": "acl-anthology",
       "name": "ACL Anthology",
       "source_type": "research",
-      "enabled": false,
+      "enabled": true,
       "allowed_domains": ["aclanthology.org"],
       "allowed_path_prefixes": ["/"],
-      "feeds": [],
+      "feeds": ["https://aclanthology.org/papers/index.xml"],
       "sitemaps": []
     },
     {
@@ -127,7 +147,6 @@
       "source_type": "official",
       "enabled": false,
       "allowed_domains": [
-        "about.fb.com",
         "ai.google",
         "ai.google.dev",
         "aws.amazon.com",
