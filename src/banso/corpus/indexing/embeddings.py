@@ -1,7 +1,7 @@
 """Embedding providers used by the local corpus index."""
 
 from math import isfinite
-from typing import Any, Protocol, Sequence
+from typing import Any, Literal, Protocol, Sequence
 
 from openai import OpenAI
 
@@ -64,7 +64,10 @@ class OpenAIEmbeddingProvider:
         vectors: list[tuple[float, ...]] = []
         for start in range(0, len(texts), self.batch_size):
             vectors.extend(
-                self._embed_batch(texts[start : start + self.batch_size])
+                self._embed_batch(
+                    texts[start : start + self.batch_size],
+                    role="document",
+                )
             )
         return tuple(vectors)
 
@@ -73,11 +76,13 @@ class OpenAIEmbeddingProvider:
 
         if not text.strip():
             raise ValueError("embedding query must not be blank")
-        return self._embed_batch((text,))[0]
+        return self._embed_batch((text,), role="query")[0]
 
     def _embed_batch(
         self,
         texts: Sequence[str],
+        *,
+        role: Literal["document", "query"],
     ) -> tuple[tuple[float, ...], ...]:
         if not texts:
             return ()
@@ -87,6 +92,8 @@ class OpenAIEmbeddingProvider:
         response = self._client.embeddings.create(
             model=self.model,
             input=list(texts),
+            dimensions=self.dimensions,
+            **self._request_options(role=role),
         )
         items = sorted(response.data, key=lambda item: item.index)
         if [item.index for item in items] != list(range(len(texts))):
@@ -95,6 +102,27 @@ class OpenAIEmbeddingProvider:
             _validate_vector(item.embedding, dimensions=self.dimensions)
             for item in items
         )
+
+    def _request_options(
+        self,
+        *,
+        role: Literal["document", "query"],
+    ) -> dict[str, object]:
+        """Return provider-specific embedding request options."""
+
+        return {}
+
+
+class JinaEmbeddingProvider(OpenAIEmbeddingProvider):
+    """Jina embedding provider using its OpenAI-compatible transport."""
+
+    def _request_options(
+        self,
+        *,
+        role: Literal["document", "query"],
+    ) -> dict[str, object]:
+        task = "retrieval.query" if role == "query" else "retrieval.passage"
+        return {"extra_body": {"task": task}}
 
 
 def _validate_vector(

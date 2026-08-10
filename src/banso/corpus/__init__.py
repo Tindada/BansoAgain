@@ -6,6 +6,7 @@ from banso.corpus.agent import (
 )
 from banso.corpus.indexing.embeddings import (
     EmbeddingProvider,
+    JinaEmbeddingProvider,
     OpenAIEmbeddingProvider,
 )
 from banso.corpus.indexing.index import (
@@ -31,6 +32,7 @@ __all__ = [
     "CorpusSearchResult",
     "CorpusSyncService",
     "EmbeddingProvider",
+    "JinaEmbeddingProvider",
     "LanceCorpusIndex",
     "LocalCorpusRetrievalProvider",
     "OpenAIEmbeddingProvider",

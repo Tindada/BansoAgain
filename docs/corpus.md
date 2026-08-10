@@ -27,11 +27,26 @@ BANSO_CORPUS_INDEX_PATH
 重建向量索引以及 vector/hybrid 检索还需要 OpenAI-compatible embedding 配置：
 
 ```text
+BANSO_EMBEDDING_PROVIDER       # openai（默认）或 jina
 BANSO_EMBEDDING_MODEL
 BANSO_EMBEDDING_DIMENSIONS
 BANSO_EMBEDDING_BASE_URL       # 可选
-BANSO_EMBEDDING_API_KEY        # 可选
+BANSO_EMBEDDING_API_KEY        # 取决于 endpoint
 ```
+
+使用 Jina 托管的 `jina-embeddings-v5-text-small` 时可配置为：
+
+```text
+BANSO_EMBEDDING_PROVIDER=jina
+BANSO_EMBEDDING_MODEL=jina-embeddings-v5-text-small
+BANSO_EMBEDDING_DIMENSIONS=1024
+BANSO_EMBEDDING_BASE_URL=https://api.jina.ai/v1
+BANSO_EMBEDDING_API_KEY=<Jina API key>
+```
+
+Jina provider 为索引文档发送 `retrieval.passage` task，为检索查询发送
+`retrieval.query` task；返回向量仍使用配置的维度进行校验。官方托管 API 需要
+配置上述 base URL 和 API key。
 
 ## 运行
 

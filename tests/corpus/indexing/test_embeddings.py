@@ -4,7 +4,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from banso.corpus.indexing.embeddings import OpenAIEmbeddingProvider
+from banso.corpus.indexing.embeddings import (
+    JinaEmbeddingProvider,
+    OpenAIEmbeddingProvider,
+)
 
 
 class _FakeEmbeddings:
@@ -38,9 +41,9 @@ def test_openai_embedding_provider_batches_and_restores_response_order() -> None
     )
     assert provider.embed_query("query") == (1.0, 1.0)
     assert embeddings.calls == [
-        {"model": "embedding-model", "input": ["one", "two"]},
-        {"model": "embedding-model", "input": ["three"]},
-        {"model": "embedding-model", "input": ["query"]},
+        {"model": "embedding-model", "input": ["one", "two"], "dimensions": 2},
+        {"model": "embedding-model", "input": ["three"], "dimensions": 2},
+        {"model": "embedding-model", "input": ["query"], "dimensions": 2},
     ]
 
 
@@ -70,3 +73,29 @@ def test_openai_embedding_provider_rejects_invalid_vectors(
 
     with pytest.raises(ValueError, match=message):
         provider.embed_query("query")
+
+
+def test_jina_embedding_provider_sends_retrieval_tasks() -> None:
+    embeddings = _FakeEmbeddings()
+    provider = JinaEmbeddingProvider(
+        model="jina-embeddings-v5-text-small",
+        dimensions=2,
+        client=SimpleNamespace(embeddings=embeddings),
+    )
+
+    assert provider.embed_documents(("document",)) == ((1.0, 1.0),)
+    assert provider.embed_query("query") == (1.0, 1.0)
+    assert embeddings.calls == [
+        {
+            "model": "jina-embeddings-v5-text-small",
+            "input": ["document"],
+            "dimensions": 2,
+            "extra_body": {"task": "retrieval.passage"},
+        },
+        {
+            "model": "jina-embeddings-v5-text-small",
+            "input": ["query"],
+            "dimensions": 2,
+            "extra_body": {"task": "retrieval.query"},
+        },
+    ]
