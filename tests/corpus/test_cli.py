@@ -76,6 +76,7 @@ def test_sync_reindex_and_search_commands(
         "OpenAIEmbeddingProvider",
         lambda **_kwargs: _FakeEmbeddingProvider(),
     )
+    monkeypatch.setenv("BANSO_EMBEDDING_PROVIDER", "openai")
     monkeypatch.setenv("BANSO_EMBEDDING_MODEL", "test-embedding")
     monkeypatch.setenv("BANSO_EMBEDDING_DIMENSIONS", "2")
 
