@@ -35,7 +35,7 @@ class OpenAIEmbeddingProvider:
         base_url: str | None = None,
         api_key: str | None = None,
         timeout: float = 60.0,
-        batch_size: int = 64,
+        batch_size: int = 10,
         client: Any | None = None,
     ) -> None:
         model = model.strip()
