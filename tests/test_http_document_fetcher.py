@@ -38,6 +38,7 @@ async def _run_http_document_fetcher_extracts_html_document() -> None:
             <html>
               <head>
                 <title>Page title</title>
+                <meta property="article:published_time" content="2026-08-10T08:00:00Z">
                 <style>.hidden { display: none; }</style>
                 <script>console.log("ignore");</script>
               </head>
@@ -74,6 +75,8 @@ async def _run_http_document_fetcher_extracts_html_document() -> None:
     assert document.title == "Page title"
     assert document.source is not None
     assert document.source.name == "Example News"
+    assert document.published_at is not None
+    assert document.published_at.isoformat() == "2026-08-10T08:00:00+00:00"
     assert document.text == "Article heading\nFirst paragraph.\nSecond paragraph."
     assert "console.log" not in document.text
     assert document.metadata["fetcher"] == "http"

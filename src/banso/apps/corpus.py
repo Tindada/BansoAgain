@@ -12,6 +12,7 @@ import httpx
 from dotenv import load_dotenv
 
 from banso.corpus import (
+    CorpusDocumentStatus,
     CorpusSearchMode,
     CorpusSyncService,
     LanceCorpusIndex,
@@ -124,6 +125,7 @@ async def _sync(registry_path: Path, database_path: Path) -> int:
     database_path.parent.mkdir(parents=True, exist_ok=True)
     summaries: list[dict[str, object]] = []
     document_count = 0
+    published_document_count = 0
     failure_count = 0
 
     async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
@@ -137,11 +139,18 @@ async def _sync(registry_path: Path, database_path: Path) -> int:
             for source in registry.enabled_sources():
                 result = await service.sync_source(source)
                 document_count += len(result.documents)
+                source_published_document_count = sum(
+                    document.status == CorpusDocumentStatus.ACTIVE
+                    and document.published_at is not None
+                    for document in result.documents
+                )
+                published_document_count += source_published_document_count
                 failure_count += len(result.failures)
                 summaries.append(
                     {
                         "source_id": source.id,
                         "documents": len(result.documents),
+                        "published_documents": source_published_document_count,
                         "failures": [
                             {"url": failure.url, "reason": failure.reason}
                             for failure in result.failures
@@ -153,6 +162,7 @@ async def _sync(registry_path: Path, database_path: Path) -> int:
         {
             "sources": summaries,
             "documents": document_count,
+            "published_documents": published_document_count,
             "failures": failure_count,
         }
     )

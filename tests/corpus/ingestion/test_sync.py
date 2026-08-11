@@ -1,6 +1,7 @@
 """End-to-end tests for trusted-source corpus synchronization."""
 
 import asyncio
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
@@ -58,8 +59,11 @@ async def test_syncs_feed_and_nested_sitemap_into_corpus(tmp_path: Path) -> None
 
         responses = {
             "/feed.xml": (
-                '<rss><channel><item><link>https://example.org/reports/1'
-                "</link></item><item><link>https://outside.example/report"
+                '<rss><channel><item><link>https://example.org/reports/1</link>'
+                "<pubDate>Sat, 08 Aug 2026 10:00:00 GMT</pubDate></item>"
+                "<item><link>https://example.org/reports/2</link>"
+                "<pubDate>Sun, 09 Aug 2026 11:00:00 GMT</pubDate></item>"
+                "<item><link>https://outside.example/report"
                 "</link></item></channel></rss>"
             ),
             "/sitemap.xml": (
@@ -86,9 +90,18 @@ async def test_syncs_feed_and_nested_sitemap_into_corpus(tmp_path: Path) -> None
             )
         if request.url.path in {"/reports/1", "/reports/2"}:
             number = request.url.path.rsplit("/", 1)[-1]
+            metadata = (
+                '<script type="application/ld+json">'
+                '{"datePublished":"2026-08-10T12:00:00Z"}</script>'
+                if number == "1"
+                else ""
+            )
             return httpx.Response(
                 200,
-                text=f"<main><h1>Report {number}</h1><p>Body {number}.</p></main>",
+                text=(
+                    f"<head>{metadata}</head><main><h1>Report {number}</h1>"
+                    f"<p>Body {number}.</p></main>"
+                ),
                 headers={
                     "Content-Type": "text/html",
                     "ETag": f'"page-{number}"',
@@ -116,6 +129,12 @@ async def test_syncs_feed_and_nested_sitemap_into_corpus(tmp_path: Path) -> None
                 CorpusDocumentStatus.ACTIVE,
                 CorpusDocumentStatus.INACTIVE,
             ]
+            assert documents[0].published_at == datetime(
+                2026, 8, 10, 12, tzinfo=timezone.utc
+            )
+            assert documents[1].published_at == datetime(
+                2026, 8, 9, 11, tzinfo=timezone.utc
+            )
             assert documents[2].failure_reason == "robots_disallowed"
             assert store.get_by_url("https://outside.example/report") is None
             assert store.get_discovery_endpoint(
@@ -238,3 +257,44 @@ async def test_page_failure_preserves_existing_active_document(
             assert result.documents == (existing,)
             assert len(result.failures) == 1
             assert store.get(existing.id) == existing
+
+
+@pytest.mark.anyio
+async def test_sync_ignores_implausible_future_publication_date(
+    tmp_path: Path,
+) -> None:
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/feed.xml":
+            return httpx.Response(
+                200,
+                text=(
+                    "<rss><channel><item>"
+                    "<link>https://example.org/reports/1</link>"
+                    "<pubDate>Mon, 10 Aug 2999 08:00:00 GMT</pubDate>"
+                    "</item></channel></rss>"
+                ),
+                request=request,
+            )
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404, request=request)
+        return httpx.Response(
+            200,
+            text=(
+                '<meta property="article:published_time" '
+                'content="2026-08-10T08:00:00">'
+                "<main><p>Official report.</p></main>"
+            ),
+            headers={"Content-Type": "text/html"},
+            request=request,
+        )
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(respond),
+    ) as client:
+        with SQLiteCorpusStore(tmp_path / "corpus.db") as store:
+            result = await _service(store, client).sync_source(
+                _source(sitemaps=())
+            )
+
+    assert len(result.documents) == 1
+    assert result.documents[0].published_at is None

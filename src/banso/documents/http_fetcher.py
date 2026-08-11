@@ -114,6 +114,7 @@ class HTTPDocumentFetcher:
             title=resolved_title,
             text=extraction.text,
             source=request.source,
+            published_at=extraction.published_at,
             retrieved_at=datetime.now(timezone.utc),
             metadata=metadata,
         )

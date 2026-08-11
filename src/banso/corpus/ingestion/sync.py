@@ -2,11 +2,13 @@
 
 import asyncio
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
 import httpx
 
 from banso.corpus.ingestion.discovery import (
+    DiscoveredURL,
     DiscoveryParseError,
     parse_feed_urls,
     parse_sitemap_urls,
@@ -70,17 +72,17 @@ class CorpusSyncService:
         if not source.enabled:
             raise ValueError(f"cannot sync disabled source: {source.id}")
 
-        urls: dict[str, None] = {}
+        urls: dict[str, DiscoveredURL] = {}
         failures: list[CorpusSyncFailure] = []
 
         for endpoint in source.feeds:
             try:
                 result, content = await self._fetch_discovery(endpoint, source)
-                for url in parse_feed_urls(
+                for discovered in parse_feed_urls(
                     content,
-                    document_url=result.final_url,
+                    discovery_url=result.final_url,
                 ):
-                    urls.setdefault(url, None)
+                    _remember_discovered_url(urls, discovered)
                 self._store.upsert_discovery_endpoint(
                     result.state,
                     content=content,
@@ -99,14 +101,14 @@ class CorpusSyncService:
                 result, content = await self._fetch_discovery(endpoint, source)
                 discovery = parse_sitemap_urls(
                     content,
-                    document_url=result.final_url,
+                    discovery_url=result.final_url,
                 )
                 self._store.upsert_discovery_endpoint(
                     result.state,
                     content=content,
                 )
-                for url in discovery.content_urls:
-                    urls.setdefault(url, None)
+                for discovered in discovery.content_urls:
+                    _remember_discovered_url(urls, discovered)
                 sitemap_queue.extend(
                     url
                     for url in discovery.sitemap_urls
@@ -117,21 +119,21 @@ class CorpusSyncService:
                 failures.append(_failure(endpoint, error))
 
         origin_limits: dict[tuple[str, str, int | None], asyncio.Semaphore] = {}
-        page_requests: list[tuple[str, asyncio.Semaphore]] = []
-        for url in urls:
-            if not source.contains_url(url):
+        page_requests: list[tuple[DiscoveredURL, asyncio.Semaphore]] = []
+        for discovered in urls.values():
+            if not source.contains_url(discovered.url):
                 continue
-            origin = _origin(url)
+            origin = _origin(discovered.url)
             limit = origin_limits.get(origin)
             if limit is None:
                 limit = asyncio.Semaphore(self._max_page_concurrency)
                 origin_limits[origin] = limit
-            page_requests.append((url, limit))
+            page_requests.append((discovered, limit))
 
         page_results = await asyncio.gather(
             *(
-                self._ingest_page_with_limit(source, url, limit)
-                for url, limit in page_requests
+                self._ingest_page_with_limit(source, discovered, limit)
+                for discovered, limit in page_requests
             )
         )
 
@@ -150,11 +152,11 @@ class CorpusSyncService:
     async def _ingest_page_with_limit(
         self,
         source: TrustedSource,
-        url: str,
+        discovered: DiscoveredURL,
         limit: asyncio.Semaphore,
     ) -> tuple[CorpusDocument | None, CorpusSyncFailure | None]:
         async with limit:
-            return await self._ingest_page(source, url)
+            return await self._ingest_page(source, discovered)
 
     async def _fetch_discovery(
         self,
@@ -176,8 +178,9 @@ class CorpusSyncService:
     async def _ingest_page(
         self,
         source: TrustedSource,
-        url: str,
+        discovered: DiscoveredURL,
     ) -> tuple[CorpusDocument | None, CorpusSyncFailure | None]:
+        url = discovered.url
         existing = self._store.get_by_url(url)
         robots = await self._robots_checker.check(url)
         if robots == RobotsDecision.DEFERRED:
@@ -250,8 +253,13 @@ class CorpusSyncService:
                     or (existing.title if existing is not None else None),
                     text=result.document.text,
                     media_type=result.media_type,
-                    published_at=(
-                        existing.published_at if existing is not None else None
+                    published_at=_select_published_at(
+                        page_published_at=result.document.published_at,
+                        discovery_published_at=discovered.published_at,
+                        existing_published_at=(
+                            existing.published_at if existing is not None else None
+                        ),
+                        fetched_at=result.fetched_at,
                     ),
                     fetched_at=result.fetched_at,
                     etag=result.etag,
@@ -294,3 +302,35 @@ def _failure(url: str, error: Exception) -> CorpusSyncFailure:
         url=url,
         reason=str(error) or type(error).__name__,
     )
+
+
+def _remember_discovered_url(
+    urls: dict[str, DiscoveredURL],
+    discovered: DiscoveredURL,
+) -> None:
+    existing = urls.get(discovered.url)
+    if existing is None or (
+        existing.published_at is None and discovered.published_at is not None
+    ):
+        urls[discovered.url] = discovered
+
+
+def _select_published_at(
+    *,
+    page_published_at: datetime | None,
+    discovery_published_at: datetime | None,
+    existing_published_at: datetime | None,
+    fetched_at: datetime,
+) -> datetime | None:
+    latest_allowed = fetched_at + timedelta(hours=24)
+    for candidate in (
+        page_published_at,
+        discovery_published_at,
+        existing_published_at,
+    ):
+        if candidate is None or candidate.tzinfo is None:
+            continue
+        candidate = candidate.astimezone(timezone.utc)
+        if candidate <= latest_allowed:
+            return candidate
+    return None

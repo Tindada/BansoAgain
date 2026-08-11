@@ -1,6 +1,7 @@
 """Tests for reusable HTML and PDF document parsing."""
 
 import asyncio
+from datetime import datetime, timezone
 
 from banso.documents import DocumentParser
 from tests.pdf_fixtures import make_text_pdf
@@ -93,6 +94,42 @@ def test_html_extraction_falls_back_to_body_and_removes_page_chrome() -> None:
 
     assert extraction.strategy == "body"
     assert extraction.text == "Body heading\nBody text."
+
+
+def test_html_extraction_reads_json_ld_publication_date_before_open_graph() -> None:
+    extraction = _parse_html(
+        """
+        <html>
+          <head>
+            <meta property="article:published_time" content="2026-08-01T00:00:00Z">
+            <script type="application/ld+json">
+              [{"@graph": [{"@type": "NewsArticle", "datePublished": "2026-08-10"}]}]
+            </script>
+          </head>
+          <body><main><p>Article body.</p></main></body>
+        </html>
+        """
+    )
+
+    assert extraction.published_at == datetime(2026, 8, 10, tzinfo=timezone.utc)
+
+
+def test_html_extraction_uses_valid_open_graph_publication_date() -> None:
+    extraction = _parse_html(
+        """
+        <html>
+          <head>
+            <script type="application/ld+json">{"datePublished": "not-a-date"}</script>
+            <meta property="article:published_time" content="2026-08-09T18:00:00-04:00">
+          </head>
+          <body><main><p>Article body.</p></main></body>
+        </html>
+        """
+    )
+
+    assert extraction.published_at == datetime(
+        2026, 8, 9, 22, tzinfo=timezone.utc
+    )
 
 
 def test_pdf_extraction_combines_pages_and_extracts_title() -> None:

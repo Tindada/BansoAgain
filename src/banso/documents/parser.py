@@ -1,13 +1,17 @@
 """Reusable HTML and PDF document parsing."""
 
 import asyncio
+import json
 from dataclasses import dataclass, field
+from datetime import datetime
 from io import BytesIO
 from typing import Any, Literal
 
 from bs4 import BeautifulSoup
 from bs4.element import Tag
 from pypdf import PdfReader
+
+from banso.datetime_utils import parse_external_datetime
 
 
 HTML_CONTENT_TYPES = frozenset({"application/xhtml+xml", "text/html"})
@@ -30,6 +34,7 @@ class ParsedDocument:
     title: str | None
     text: str
     strategy: str
+    published_at: datetime | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -149,6 +154,7 @@ _TEXT_BLOCK_TAGS = (
 def _extract_html_content(html: str) -> ParsedDocument:
     soup = BeautifulSoup(html, "html.parser")
     title = soup.title.string.strip() if soup.title and soup.title.string else None
+    published_at = _extract_html_published_at(soup)
 
     for tag in soup(_REMOVABLE_TAGS):
         tag.decompose()
@@ -161,8 +167,54 @@ def _extract_html_content(html: str) -> ParsedDocument:
         title=title,
         text=text,
         strategy=strategy,
+        published_at=published_at,
         metadata={"raw_html_chars": len(html)},
     )
+
+
+def _extract_html_published_at(soup: BeautifulSoup) -> datetime | None:
+    for script in soup.find_all("script"):
+        script_type = script.get("type")
+        if (
+            not isinstance(script_type, str)
+            or script_type.strip().casefold() != "application/ld+json"
+        ):
+            continue
+        try:
+            payload = json.loads(script.string or script.get_text())
+        except (TypeError, ValueError):
+            continue
+        published_at = _find_json_ld_published_at(payload)
+        if published_at is not None:
+            return published_at
+
+    for meta in soup.find_all("meta"):
+        property_name = meta.get("property")
+        if not isinstance(property_name, str):
+            continue
+        if property_name.strip().casefold() != "article:published_time":
+            continue
+        published_at = parse_external_datetime(meta.get("content"))
+        if published_at is not None:
+            return published_at
+    return None
+
+
+def _find_json_ld_published_at(value: object) -> datetime | None:
+    if isinstance(value, dict):
+        published_at = parse_external_datetime(value.get("datePublished"))
+        if published_at is not None:
+            return published_at
+        for nested in value.values():
+            published_at = _find_json_ld_published_at(nested)
+            if published_at is not None:
+                return published_at
+    elif isinstance(value, list):
+        for nested in value:
+            published_at = _find_json_ld_published_at(nested)
+            if published_at is not None:
+                return published_at
+    return None
 
 
 def _extract_pdf_content(content: bytes, *, max_pages: int) -> ParsedDocument:

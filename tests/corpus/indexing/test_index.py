@@ -88,6 +88,7 @@ def test_chunking_is_paragraph_aware_bounded_and_stable(tmp_path: Path) -> None:
         f"{document.id}:2",
         f"{document.id}:3",
     ]
+    assert all(chunk.published_at == document.published_at for chunk in chunks)
     assert chunk_document(document, max_chars=20) == chunks
 
 

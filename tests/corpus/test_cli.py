@@ -1,6 +1,7 @@
 """End-to-end coverage for local corpus management commands."""
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
 
@@ -25,6 +26,7 @@ class _FakeSyncService:
                 status=CorpusDocumentStatus.ACTIVE,
                 title="Official update",
                 text="The official laboratory released a new agentic AI system.",
+                published_at=datetime(2026, 8, 10, tzinfo=timezone.utc),
             )
         )
         return CorpusSyncResult(documents=(document,), failures=())
@@ -89,7 +91,10 @@ def test_sync_reindex_and_search_commands(
             str(database_path),
         ]
     ) == 0
-    assert json.loads(capsys.readouterr().out)["documents"] == 1
+    sync_output = json.loads(capsys.readouterr().out)
+    assert sync_output["documents"] == 1
+    assert sync_output["published_documents"] == 1
+    assert sync_output["sources"][0]["published_documents"] == 1
 
     assert corpus_app.main(
         [

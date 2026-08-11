@@ -41,6 +41,7 @@ async def test_fetches_parsed_page_then_uses_http_validators() -> None:
     assert result.final_url == "https://example.org/report"
     assert result.document.title == "Report"
     assert result.document.text == "Official update."
+    assert result.document.published_at is None
     assert result.media_type == "text/html"
     assert result.etag == '"v1"'
     assert result.last_modified == "Wed, 29 Jul 2026 08:00:00 GMT"

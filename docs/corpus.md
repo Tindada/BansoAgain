@@ -72,7 +72,9 @@ uv run banso-corpus search "agentic AI" --mode bm25 --limit 5
 
 BM25 检索不调用 embedding provider，因此只使用已有索引时无需 embedding 环境变量。
 命令输出为 JSON；`sync` 遇到任一可恢复抓取失败时仍会完成其他来源，但退出码为 1，
-并在输出中列出失败 URL 和原因。
+并在输出中列出失败 URL 和原因。同步会从 RSS/Atom 的明确发布时间以及页面
+JSON-LD/OpenGraph 发布字段补充 `published_at`；无法可靠解析的日期保持为空。
+输出中的 `published_documents` 分别给出各来源及本次同步总计的发布日期覆盖数。
 
 ## 待完成：白名单直达与 HTML 索引发现
 
