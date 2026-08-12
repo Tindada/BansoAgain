@@ -13,20 +13,20 @@ import os
 from dotenv import load_dotenv
 
 from banso.artifacts import InMemoryArtifactStore
-from banso.core import AgentRuntime, AgentState, UserQuery
+from banso.core import AgentRuntime, AgentState, RetrievalRoute, UserQuery
 from banso.documents import (
     Document,
     DocumentFetchRequest,
     EvidenceItem,
     LLMEvidenceExtractor,
 )
-from banso.executors import NewsActionExecutor
+from banso.executors import NewsActionExecutor, ResearchRouteComponents
 from banso.llm import (
     ThinkingTagStrippingLLMClient,
     build_external_llm_client_from_env,
     build_vllm_llm_client_from_env,
 )
-from banso.policies import NewsRuleBasedPolicy
+from banso.policies import LLMNewsPolicy, NewsPolicyContextBuilder
 from banso.retrieval import FakeRetrievalProvider
 from banso.synthesis import LLMSynthesizer
 from banso.tracing import InMemoryTraceSink, Tracer
@@ -59,16 +59,24 @@ async def main() -> None:
     external_llm_client = build_external_llm_client_from_env()
     store = InMemoryArtifactStore()
     trace_sink = InMemoryTraceSink()
+    tracer = Tracer(trace_sink)
     runtime = AgentRuntime(
-        policy=NewsRuleBasedPolicy(),
+        policy=LLMNewsPolicy(
+            evidence_llm_client,
+            NewsPolicyContextBuilder(store, [RetrievalRoute.WEB]),
+        ),
         executor=NewsActionExecutor(
             store=store,
-            retrieval_provider=FakeRetrievalProvider(),
-            document_fetcher=SampleNewsDocumentFetcher(),
+            research_routes={
+                RetrievalRoute.WEB: ResearchRouteComponents(
+                    retrieval_provider=FakeRetrievalProvider(),
+                    document_fetcher=SampleNewsDocumentFetcher(),
+                )
+            },
             evidence_extractor=LLMEvidenceExtractor(client=evidence_llm_client),
             synthesizer=LLMSynthesizer(client=external_llm_client),
         ),
-        tracer=Tracer(trace_sink),
+        tracer=tracer,
     )
 
     output = await runtime.run(AgentState(query=UserQuery(text=query)))

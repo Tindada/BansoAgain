@@ -14,12 +14,10 @@ from banso.core import (
     RuntimeRunResult,
 )
 from banso.core.observation import (
-    ExtractEvidenceObservation,
     ExtractionFailure,
-    FetchDocumentsObservation,
     FetchFailure,
     Observation,
-    SearchObservation,
+    ResearchObservation,
     validate_observation,
 )
 from banso.retrieval import SearchResult
@@ -133,7 +131,7 @@ def extract_evaluation_result(
             **outcome.failure.model_dump(mode="json"),
         }
         for _, observation in steps
-        if isinstance(observation, FetchDocumentsObservation)
+        if isinstance(observation, ResearchObservation)
         for outcome in observation.fetch_outcomes
         if isinstance(outcome, FetchFailure)
     ]
@@ -143,7 +141,7 @@ def extract_evaluation_result(
             **outcome.failure.model_dump(mode="json"),
         }
         for _, observation in steps
-        if isinstance(observation, ExtractEvidenceObservation)
+        if isinstance(observation, ResearchObservation)
         for outcome in observation.extraction_outcomes
         if isinstance(outcome, ExtractionFailure)
     ]
@@ -168,7 +166,7 @@ def extract_evaluation_result(
     unknown_source_count = 0
     source_classifications: list[dict[str, Any]] = []
     for _, observation in steps:
-        if not isinstance(observation, SearchObservation):
+        if not isinstance(observation, ResearchObservation):
             continue
         filter_report = observation.retrieval_filter_report
         classification_report = observation.source_classification_report

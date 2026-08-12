@@ -2,11 +2,10 @@
 
 import asyncio
 from collections.abc import Awaitable
-from datetime import datetime, timezone
 from typing import Any
 
 from banso.artifacts import InMemoryArtifactStore
-from banso.core import AgentActionType, AgentState, UserQuery
+from banso.core import AgentActionType, AgentState, RetrievalRoute, UserQuery
 from banso.documents import (
     Document,
     EvidenceExtractionRequest,
@@ -20,17 +19,9 @@ from banso.llm import (
     ThinkingTagStrippingLLMClient,
     TracingLLMClient,
 )
-from banso.policies import LLMNewsPolicy, NewsPolicyContextBuilder
-from banso.retrieval import (
-    LLMSearchQueryPlanner,
-    SearchPlanningError,
-    SearchPlanningRequest,
-)
+from banso.policies import LLMNewsPolicy, LLMPolicyError, NewsPolicyContextBuilder
 from banso.synthesis import LLMSynthesizer, SynthesisRequest
 from banso.tracing import InMemoryTraceSink, SpanRecord, Tracer
-
-REFERENCE_TIME = datetime(2026, 7, 24, 8, 30, tzinfo=timezone.utc)
-
 
 class StaticResponseClient:
     def __init__(self, response: LLMResponse) -> None:
@@ -74,27 +65,15 @@ async def _run_successful_calls() -> list[SpanRecord]:
                 '{"type":"stop","params":{},"rationale":"Done."}',
                 "policy-call",
             ),
-            NewsPolicyContextBuilder(InMemoryArtifactStore()),
+            NewsPolicyContextBuilder(
+                InMemoryArtifactStore(),
+                [RetrievalRoute.WEB],
+            ),
         )
         action = await policy.select_action(
             AgentState(query=UserQuery(text="What happened?"))
         )
         assert action.type == AgentActionType.STOP
-
-        planner = LLMSearchQueryPlanner(
-            _client(
-                '{"searches":[{"query":"AI news","intent":"latest"}]}',
-                "planner-call",
-            )
-        )
-        plan = await planner.plan(
-            SearchPlanningRequest(
-                query=UserQuery(text="Latest AI news"),
-                reference_time=REFERENCE_TIME,
-                max_searches=1,
-            )
-        )
-        assert plan.searches[0].query == "AI news"
 
         document = Document(
             id="doc-trace",
@@ -140,7 +119,6 @@ def test_llm_clients_record_only_complete_model_io() -> None:
 
     assert set(calls) == {
         "news_policy.select_action",
-        "search_query_planner.plan",
         "evidence_extractor.extract",
         "synthesizer.synthesize",
     }
@@ -228,44 +206,48 @@ async def _run_with_trace(
 
 
 def test_parse_failure_keeps_successful_llm_call_separate() -> None:
-    planner = LLMSearchQueryPlanner(_client("not json", "invalid-call"))
+    policy = LLMNewsPolicy(
+        _client("not json", "invalid-call"),
+        NewsPolicyContextBuilder(
+            InMemoryArtifactStore(),
+            [RetrievalRoute.WEB],
+        ),
+    )
     error, llm_span, root_span = asyncio.run(
         _run_with_trace(
-            planner.plan(
-                SearchPlanningRequest(
-                    query=UserQuery(text="Latest AI news"),
-                    reference_time=REFERENCE_TIME,
-                    max_searches=1,
-                )
+            policy.select_action(
+                AgentState(query=UserQuery(text="Latest AI news"))
             )
         )
     )
 
-    assert isinstance(error, SearchPlanningError)
+    assert isinstance(error, LLMPolicyError)
     assert llm_span.status == "ok"
     assert llm_span.output["completion"] == "not json"
     assert llm_span.output["provider_response"]["id"] == "invalid-call"
     assert llm_span.output["usage"]["total_tokens"] == 18
     assert root_span.status == "error"
     assert root_span.error is not None
-    assert root_span.error.error_type == "SearchPlanningError"
+    assert root_span.error.error_type == "LLMPolicyError"
 
 
 def test_provider_failure_marks_llm_call_as_error_and_keeps_prompt() -> None:
-    planner = LLMSearchQueryPlanner(TracingLLMClient(FailingClient()))
+    policy = LLMNewsPolicy(
+        TracingLLMClient(FailingClient()),
+        NewsPolicyContextBuilder(
+            InMemoryArtifactStore(),
+            [RetrievalRoute.WEB],
+        ),
+    )
     error, llm_span, root_span = asyncio.run(
         _run_with_trace(
-            planner.plan(
-                SearchPlanningRequest(
-                    query=UserQuery(text="Latest AI news"),
-                    reference_time=REFERENCE_TIME,
-                    max_searches=1,
-                )
+            policy.select_action(
+                AgentState(query=UserQuery(text="Latest AI news"))
             )
         )
     )
 
-    assert isinstance(error, LLMError)
+    assert isinstance(error, LLMPolicyError)
     assert llm_span.status == "error"
     assert "Latest AI news" in llm_span.input["request"]["messages"][1]["content"]
     assert llm_span.output is None

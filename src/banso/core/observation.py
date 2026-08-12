@@ -4,37 +4,13 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
-from banso.core.action import AgentActionType
+from banso.core.action import AgentActionType, RetrievalRoute
 
 
 class ObservationModel(BaseModel):
     """Strict base model for values crossing the executor boundary."""
 
     model_config = ConfigDict(extra="forbid")
-
-
-# Shared value objects
-
-
-class PlannedSearch(ObservationModel):
-    """One query in an ordered search plan."""
-
-    query: str
-    intent: str = "general"
-
-
-class SearchPlan(ObservationModel):
-    """Searches planned for one user query."""
-
-    searches: list[PlannedSearch] = Field(default_factory=list)
-
-
-class Failure(ObservationModel):
-    """A resource-processing failure relevant to future decisions."""
-
-    reason: str
-    retryable: bool
-    status_code: int | None = None
 
 
 # Search reports
@@ -78,6 +54,40 @@ class SourceClassificationReport(ObservationModel):
     classifications: list[SourceClassificationRecord] = Field(default_factory=list)
 
 
+class SearchResultSelectionReport(ObservationModel):
+    """How one research action partitioned its ordered result candidates."""
+
+    candidate_ids: list[str]
+    selected_ids: list[str]
+    deferred_ids: list[str]
+
+    @model_validator(mode="after")
+    def validate_partition(self) -> "SearchResultSelectionReport":
+        groups = {
+            "candidate_ids": self.candidate_ids,
+            "selected_ids": self.selected_ids,
+            "deferred_ids": self.deferred_ids,
+        }
+        for name, values in groups.items():
+            if len(set(values)) != len(values):
+                raise ValueError(f"{name} must contain unique IDs")
+
+        partition = [*self.selected_ids, *self.deferred_ids]
+        if len(partition) != len(set(partition)):
+            raise ValueError("selection groups must be disjoint")
+        if set(partition) != set(self.candidate_ids):
+            raise ValueError("selection groups must partition candidate_ids")
+        candidate_order = {
+            candidate_id: index
+            for index, candidate_id in enumerate(self.candidate_ids)
+        }
+        for name in ("selected_ids", "deferred_ids"):
+            values = groups[name]
+            if values != sorted(values, key=candidate_order.__getitem__):
+                raise ValueError(f"{name} must preserve candidate order")
+        return self
+
+
 # Document fetch outcomes
 
 
@@ -85,7 +95,6 @@ class DocumentFetchFailure(ObservationModel):
     """Diagnostic details for a failed document fetch."""
 
     reason: str
-    retryable: bool
     status_code: int | None = None
     url: str
     message: str
@@ -98,6 +107,7 @@ class FetchSuccess(ObservationModel):
     status: Literal["success"] = "success"
     search_result_id: str
     document_id: str
+    attempt_count: int = Field(default=1, ge=0)
 
 
 class FetchFailure(ObservationModel):
@@ -106,6 +116,7 @@ class FetchFailure(ObservationModel):
     status: Literal["failure"] = "failure"
     search_result_id: str
     failure: DocumentFetchFailure
+    attempt_count: int = Field(default=1, ge=1)
 
 
 FetchOutcome = Annotated[
@@ -121,7 +132,6 @@ class EvidenceExtractionFailure(ObservationModel):
     """Diagnostic details for a failed evidence extraction."""
 
     reason: str
-    retryable: bool
     url: str
     message: str
 
@@ -132,6 +142,7 @@ class ExtractionSuccess(ObservationModel):
     status: Literal["success"] = "success"
     document_id: str
     evidence_ids: list[str]
+    attempt_count: int = Field(default=1, ge=1)
 
     @model_validator(mode="after")
     def validate_unique_evidence_ids(self) -> "ExtractionSuccess":
@@ -146,6 +157,7 @@ class ExtractionFailure(ObservationModel):
     status: Literal["failure"] = "failure"
     document_id: str
     failure: EvidenceExtractionFailure
+    attempt_count: int = Field(default=1, ge=1)
 
 
 ExtractionOutcome = Annotated[
@@ -157,38 +169,21 @@ ExtractionOutcome = Annotated[
 # Action observations
 
 
-class PlanSearchObservation(ObservationModel):
-    """Result of planning searches."""
+class ResearchObservation(ObservationModel):
+    """Combined retrieval, selection, fetch, and extraction result."""
 
-    type: Literal[AgentActionType.PLAN_SEARCH] = AgentActionType.PLAN_SEARCH
-    search_plan: SearchPlan
-
-
-class SearchObservation(ObservationModel):
-    """Result of executing one search."""
-
-    type: Literal[AgentActionType.SEARCH] = AgentActionType.SEARCH
-    search_queries: list[str]
+    type: Literal[AgentActionType.RESEARCH] = AgentActionType.RESEARCH
+    query: str = Field(min_length=1)
+    route: RetrievalRoute
     search_result_ids: list[str]
-    search_result_index_updates: dict[str, str]
-    search_result_merge_report: SearchResultMergeReport
     retrieval_filter_report: RetrievalFilterReport
     source_classification_report: SourceClassificationReport
-
-
-class FetchDocumentsObservation(ObservationModel):
-    """Result of fetching eligible search results."""
-
-    type: Literal[AgentActionType.FETCH_DOCUMENTS] = AgentActionType.FETCH_DOCUMENTS
+    search_result_merge_report: SearchResultMergeReport
+    selection_report: SearchResultSelectionReport
     fetch_outcomes: list[FetchOutcome]
-    document_index_updates: dict[str, str]
-
-
-class ExtractEvidenceObservation(ObservationModel):
-    """Result of extracting evidence from eligible documents."""
-
-    type: Literal[AgentActionType.EXTRACT_EVIDENCE] = AgentActionType.EXTRACT_EVIDENCE
     extraction_outcomes: list[ExtractionOutcome]
+    search_result_index_updates: dict[str, str]
+    document_index_updates: dict[str, str]
 
 
 class CurateEvidenceObservation(ObservationModel):
@@ -215,10 +210,7 @@ class StopObservation(ObservationModel):
 
 
 Observation = Annotated[
-    PlanSearchObservation
-    | SearchObservation
-    | FetchDocumentsObservation
-    | ExtractEvidenceObservation
+    ResearchObservation
     | CurateEvidenceObservation
     | FinishObservation
     | StopObservation,

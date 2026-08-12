@@ -20,9 +20,10 @@ from banso.core import (
 )
 from banso.core.observation import (
     Observation,
+    ResearchObservation,
     RetrievalFilterReport,
-    SearchObservation,
     SearchResultMergeReport,
+    SearchResultSelectionReport,
     SourceClassificationReport,
     StopObservation,
 )
@@ -47,7 +48,10 @@ class RaisingPolicy:
 
 class ContinuePolicy:
     async def select_action(self, state: AgentState) -> AgentAction:
-        return AgentAction(type=AgentActionType.SEARCH)
+        return AgentAction(
+            type=AgentActionType.RESEARCH,
+            params={"query": state.query.text, "route": "web"},
+        )
 
 
 class StopExecutor:
@@ -58,8 +62,9 @@ class StopExecutor:
     ) -> Observation:
         if action.type == AgentActionType.STOP:
             return StopObservation()
-        return SearchObservation(
-            search_queries=[state.query.text],
+        return ResearchObservation(
+            query=state.query.text,
+            route="web",
             search_result_ids=[],
             search_result_index_updates={},
             search_result_merge_report=SearchResultMergeReport(
@@ -76,6 +81,14 @@ class StopExecutor:
                 recognized_count=0,
                 unknown_count=0,
             ),
+            selection_report=SearchResultSelectionReport(
+                candidate_ids=[],
+                selected_ids=[],
+                deferred_ids=[],
+            ),
+            fetch_outcomes=[],
+            document_index_updates={},
+            extraction_outcomes=[],
         )
 
 
@@ -231,7 +244,7 @@ def test_runtime_rejects_mismatched_action_and_observation_types() -> None:
     spans = sink.get_trace(error.trace_id)
 
     assert isinstance(error.original_error, ValueError)
-    assert str(error.original_error) == "search action returned stop observation"
+    assert str(error.original_error) == "research action returned stop observation"
     failure = _failed_span(spans, "agent.action.execute")
     assert failure.error is not None
     assert failure.error.error_type == "ValueError"

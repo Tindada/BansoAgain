@@ -1,276 +1,178 @@
-"""Tests for objective news evaluation result extraction."""
+"""Tests for news runtime evaluation extraction."""
 
 import asyncio
-
-import pytest
+import json
 
 from banso.apps.news_evaluation import (
     NewsEvaluationCase,
+    NewsEvaluationResult,
     extract_evaluation_result,
     load_evaluation_cases,
     summarize_evaluation_results,
 )
 from banso.artifacts import InMemoryArtifactStore
-from banso.core import (
-    AgentRuntime,
-    AgentState,
-    ExecutionBudget,
-    PlannedSearch,
-    SearchPlan,
-    UserQuery,
+from banso.core import AgentAction, AgentActionType, AgentRuntime, AgentState, UserQuery
+from banso.core.observation import (
+    FinishObservation,
+    ResearchObservation,
+    RetrievalFilterReport,
+    SearchResultMergeReport,
+    SearchResultSelectionReport,
+    SourceClassificationReport,
 )
-from banso.documents import FakeDocumentFetcher, FakeEvidenceExtractor
-from banso.executors import NewsActionExecutor
-from banso.policies import NewsRuleBasedPolicy
-from banso.retrieval import (
-    FakeRetrievalProvider,
-    SearchPlanningRequest,
-    SearchRequest,
-    SearchResult,
-)
-from banso.synthesis import FakeSynthesizer
+from banso.documents import Document, EvidenceItem
+from banso.retrieval import SearchResult, Source, SourceType
 from banso.tracing import InMemoryTraceSink, Tracer
 
 
 def test_load_evaluation_cases(tmp_path) -> None:
     path = tmp_path / "cases.jsonl"
     path.write_text(
-        '{"id":"case-1","category":"research","query":"Recent research?"}\n'
+        json.dumps({"id": "case", "category": "news", "query": "question"})
+        + "\n"
     )
 
     cases = load_evaluation_cases(path)
 
-    assert len(cases) == 1
-    assert cases[0].id == "case-1"
-    assert cases[0].min_documents == 1
+    assert cases == [
+        NewsEvaluationCase(id="case", category="news", query="question")
+    ]
 
 
-async def _extract_successful_evaluation_result():
+class Policy:
+    async def select_action(self, state: AgentState) -> AgentAction:
+        if state.current_step == 0:
+            return AgentAction(
+                type=AgentActionType.RESEARCH,
+                params={"query": "focused", "route": "web"},
+            )
+        return AgentAction(type=AgentActionType.FINISH)
+
+
+class Executor:
+    async def execute(self, action: AgentAction, state: AgentState):
+        if action.type == AgentActionType.FINISH:
+            return FinishObservation(
+                final_answer="answer",
+                citations=["https://example.com/article"],
+            )
+        return ResearchObservation(
+            query="focused",
+            route="web",
+            search_result_ids=["result"],
+            search_result_index_updates={"https://example.com/article": "result"},
+            search_result_merge_report=SearchResultMergeReport(
+                candidate_count=1,
+                new_result_count=1,
+                reused_result_count=0,
+            ),
+            retrieval_filter_report=RetrievalFilterReport(
+                input_count=2,
+                output_count=1,
+                dropped_invalid_url=1,
+            ),
+            source_classification_report=SourceClassificationReport(
+                input_count=1,
+                recognized_count=1,
+                unknown_count=0,
+            ),
+            selection_report=SearchResultSelectionReport(
+                candidate_ids=["result"],
+                selected_ids=["result"],
+                deferred_ids=[],
+            ),
+            fetch_outcomes=[
+                {
+                    "status": "success",
+                    "search_result_id": "result",
+                    "document_id": "document",
+                }
+            ],
+            document_index_updates={"https://example.com/article": "document"},
+            extraction_outcomes=[
+                {
+                    "status": "success",
+                    "document_id": "document",
+                    "evidence_ids": ["evidence"],
+                }
+            ],
+        )
+
+
+def test_extract_evaluation_result_reads_composite_research_observation() -> None:
+    store = InMemoryArtifactStore()
+    source = Source(name="Example", type=SourceType.NEWS)
+    store.put(
+        SearchResult(
+            id="result",
+            title="Result",
+            url="https://example.com/article",
+            source=source,
+        )
+    )
+    store.put(
+        Document(
+            id="document",
+            title="Document",
+            url="https://example.com/article",
+            text="body",
+            source=source,
+        )
+    )
+    store.put(
+        EvidenceItem(
+            id="evidence",
+            document_id="document",
+            claim="claim",
+            source_url="https://example.com/article",
+        )
+    )
+    sink = InMemoryTraceSink()
+    runtime = AgentRuntime(Policy(), Executor(), tracer=Tracer(sink))
+    output = asyncio.run(runtime.run(AgentState(query=UserQuery(text="question"))))
     case = NewsEvaluationCase(
-        id="case-1",
-        category="model_release",
-        query="latest AI news",
+        id="case",
+        category="news",
+        query="question",
         preferred_source_types=["news"],
     )
-    store = InMemoryArtifactStore()
-    trace_sink = InMemoryTraceSink()
-    runtime = AgentRuntime(
-        policy=NewsRuleBasedPolicy(),
-        executor=NewsActionExecutor(
-            store=store,
-            retrieval_provider=FakeRetrievalProvider(),
-            document_fetcher=FakeDocumentFetcher(),
-            evidence_extractor=FakeEvidenceExtractor(),
-            synthesizer=FakeSynthesizer(),
-        ),
-        tracer=Tracer(trace_sink),
+
+    result = extract_evaluation_result(
+        case,
+        output,
+        store,
+        sink.get_trace(output.trace_id),
     )
-    output = await runtime.run(AgentState(query=UserQuery(text=case.query)))
 
-    spans = trace_sink.get_trace(output.trace_id)
-    return extract_evaluation_result(case, output, store, spans)
-
-
-def test_extract_evaluation_result() -> None:
-    result = asyncio.run(_extract_successful_evaluation_result())
-
-    assert result.completed is True
     assert result.passed_minimums is True
-    assert result.trace_id is not None
-    assert result.retrieved_result_count == 1
+    assert result.retrieved_result_count == 2
     assert result.filtered_result_count == 1
     assert result.classified_result_count == 1
-    assert result.recognized_source_count == 1
-    assert result.unknown_source_count == 0
-    assert result.classification_coverage == 1.0
     assert result.document_count == 1
-    assert result.active_document_count == 1
-    assert result.shelved_document_count == 0
-    assert result.unusable_document_count == 0
     assert result.evidence_count == 1
-    assert result.active_evidence_count == 1
-    assert result.curation_action_count == 0
-    assert result.citations == ["https://example.com/news/fake-result"]
-    assert result.source_types == ["news"]
     assert result.preferred_source_type_match is True
-    assert set(result.step_durations) == {
-        "plan_search",
-        "search",
-        "fetch_documents",
-        "extract_evidence",
-        "finish",
-    }
-
-
-class ThreeQueryPlanner:
-    async def plan(self, request: SearchPlanningRequest) -> SearchPlan:
-        return SearchPlan(
-            searches=[
-                PlannedSearch(query="AI releases", intent="official"),
-                PlannedSearch(query="AI research", intent="research"),
-                PlannedSearch(query="AI policy", intent="policy"),
-            ][: request.max_searches]
-        )
-
-
-async def _extract_multi_search_evaluation_result():
-    case = NewsEvaluationCase(
-        id="case-multi-search",
-        category="general",
-        query="latest AI news",
-    )
-    store = InMemoryArtifactStore()
-    trace_sink = InMemoryTraceSink()
-    runtime = AgentRuntime(
-        policy=NewsRuleBasedPolicy(),
-        executor=NewsActionExecutor(
-            store=store,
-            retrieval_provider=FakeRetrievalProvider(),
-            document_fetcher=FakeDocumentFetcher(),
-            evidence_extractor=FakeEvidenceExtractor(),
-            synthesizer=FakeSynthesizer(),
-            search_query_planner=ThreeQueryPlanner(),
-        ),
-        tracer=Tracer(trace_sink),
-    )
-    output = await runtime.run(
-        AgentState(
-            query=UserQuery(text=case.query),
-            budget=ExecutionBudget(max_searches=3),
-        )
-    )
-    spans = trace_sink.get_trace(output.trace_id)
-    return extract_evaluation_result(case, output, store, spans), output, spans
-
-
-def test_extract_evaluation_result_preserves_multiple_searches() -> None:
-    result, output, spans = asyncio.run(_extract_multi_search_evaluation_result())
-
-    assert result.trace_id == output.trace_id
-    plan = output.result.state.search_plan
-    assert plan is not None
-    assert [search.query for search in plan.searches] == [
-        "AI releases",
-        "AI research",
-        "AI policy",
-    ]
-    search_entries = [
-        entry
-        for entry in output.result.state.action_history
-        if entry.action.type.value == "search"
-    ]
-    assert [entry.action.params["query"] for entry in search_entries] == [
-        "AI releases",
-        "AI research",
-        "AI policy",
-    ]
-    assert result.retrieved_result_count == 3
-    assert result.filtered_result_count == 3
-    assert result.classified_result_count == 3
-    assert result.recognized_source_count == 3
-    assert result.unknown_source_count == 0
-
-    search_duration = sum(
-        span.duration_seconds
-        for span in spans
-        if span.name == "agent.action.execute"
-        and span.attributes.get("action_type") == "search"
-    )
-    total_duration = sum(
-        span.duration_seconds
-        for span in spans
-        if span.name == "agent.action.execute" and span.status == "ok"
-    )
-    assert result.step_durations["search"] == pytest.approx(search_duration)
-    assert result.total_action_seconds == pytest.approx(total_duration)
-
-
-class UnknownSourceRetrievalProvider:
-    async def search(self, request: SearchRequest) -> list[SearchResult]:
-        return [
-            SearchResult(
-                title="Unknown report",
-                url="https://unknown.example/report",
-                metadata={"score": 0.75},
-            )
-        ]
-
-
-async def _extract_unknown_source_evaluation_result():
-    case = NewsEvaluationCase(
-        id="case-2",
-        category="research",
-        query="recent AI research",
-    )
-    store = InMemoryArtifactStore()
-    trace_sink = InMemoryTraceSink()
-    runtime = AgentRuntime(
-        policy=NewsRuleBasedPolicy(),
-        executor=NewsActionExecutor(
-            store=store,
-            retrieval_provider=UnknownSourceRetrievalProvider(),
-            document_fetcher=FakeDocumentFetcher(),
-            evidence_extractor=FakeEvidenceExtractor(),
-            synthesizer=FakeSynthesizer(),
-        ),
-        tracer=Tracer(trace_sink),
-    )
-    output = await runtime.run(AgentState(query=UserQuery(text=case.query)))
-
-    spans = trace_sink.get_trace(output.trace_id)
-    return extract_evaluation_result(case, output, store, spans)
-
-
-def test_extract_evaluation_result_records_unknown_source() -> None:
-    result = asyncio.run(_extract_unknown_source_evaluation_result())
-
-    assert result.retrieved_result_count == 1
-    assert result.filtered_result_count == 1
-    assert result.classified_result_count == 1
-    assert result.recognized_source_count == 0
-    assert result.unknown_source_count == 1
-    assert result.classification_coverage == 0.0
-    assert result.document_count == 1
-    assert len(result.source_classifications) == 1
-    classification = result.source_classifications[0]
-    assert classification["publisher_domain"] == "unknown.example"
-    assert classification["source_type"] == "unknown"
-    assert classification["classification_source"] == "unknown"
+    assert result.step_durations["research"] >= 0
 
 
 def test_summarize_evaluation_results() -> None:
-    result = asyncio.run(_extract_successful_evaluation_result())
-    unknown_result = asyncio.run(_extract_unknown_source_evaluation_result())
+    results = [
+        NewsEvaluationResult(
+            case_id="a",
+            category="news",
+            query="a",
+            completed=True,
+            passed_minimums=True,
+            document_count=2,
+            active_document_count=1,
+            evidence_count=3,
+            active_evidence_count=2,
+            citations=["citation"],
+        ),
+        NewsEvaluationResult(case_id="b", category="news", query="b"),
+    ]
 
-    summary = summarize_evaluation_results([result, unknown_result])
+    summary = summarize_evaluation_results(results)
 
     assert summary["case_count"] == 2
-    assert summary["completed_count"] == 2
-    assert summary["passed_minimums_count"] == 2
-    assert summary["with_documents_count"] == 2
-    assert summary["with_active_documents_count"] == 2
-    assert summary["with_unusable_documents_count"] == 0
-    assert summary["with_evidence_count"] == 2
-    assert summary["with_active_evidence_count"] == 2
-    assert summary["with_citations_count"] == 2
-    assert summary["total_curation_actions"] == 0
-    assert summary["preferred_source_match_count"] == 1
-    assert summary["error_count"] == 0
-    assert summary["classification_coverage"] == 0.5
-    assert summary["classification_source_counts"] == {
-        "provider": 1,
-        "unknown": 1,
-    }
-    assert summary["source_type_counts"] == {
-        "news": 1,
-        "unknown": 1,
-    }
-    assert summary["unknown_source_candidates"] == [
-        {
-            "publisher_domain": "unknown.example",
-            "count": 1,
-        }
-    ]
-    assert summary["average_active_documents"] == 1.0
-    assert summary["average_unusable_documents"] == 0.0
-    assert summary["average_active_evidence"] == 1.0
+    assert summary["completed_count"] == 1
+    assert summary["average_documents"] == 1.0

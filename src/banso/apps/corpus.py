@@ -71,7 +71,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--mode",
         choices=tuple(CorpusSearchMode),
         type=CorpusSearchMode,
-        default=CorpusSearchMode.HYBRID,
+        default=CorpusSearchMode.VECTOR,
     )
     search_parser.add_argument("--limit", type=int, default=10)
     return parser.parse_args(argv)

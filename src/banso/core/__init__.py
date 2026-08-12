@@ -1,8 +1,13 @@
 """Core agent runtime abstractions."""
 
-from banso.core.action import AgentAction, AgentActionType
+from banso.core.action import (
+    AgentAction,
+    AgentActionType,
+    ResearchActionParams,
+    RetrievalRoute,
+)
 from banso.core.executor import ActionExecutor
-from banso.core.observation import Observation, PlannedSearch, SearchPlan
+from banso.core.observation import Observation
 from banso.core.policy import Policy
 from banso.core.reducer import DefaultStateReducer, StateReducer
 from banso.core.runtime import (
@@ -27,11 +32,11 @@ __all__ = [
     "DefaultStateReducer",
     "ExecutionBudget",
     "Observation",
-    "PlannedSearch",
     "Policy",
+    "ResearchActionParams",
+    "RetrievalRoute",
     "RuntimeExecutionError",
     "RuntimeRunResult",
-    "SearchPlan",
     "StateReducer",
     "UserQuery",
 ]

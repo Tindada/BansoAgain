@@ -1,0 +1,220 @@
+"""Tests for the combined research action contracts."""
+
+import pytest
+from pydantic import ValidationError
+
+from banso.core import (
+    AgentAction,
+    AgentActionType,
+    AgentState,
+    DefaultStateReducer,
+    ResearchActionParams,
+    RetrievalRoute,
+    UserQuery,
+)
+from banso.core.observation import (
+    DocumentFetchFailure,
+    EvidenceExtractionFailure,
+    ExtractionFailure,
+    ExtractionSuccess,
+    FetchFailure,
+    FetchSuccess,
+    ResearchObservation,
+    RetrievalFilterReport,
+    SearchResultMergeReport,
+    SearchResultSelectionReport,
+    SourceClassificationReport,
+)
+
+
+def _research_observation() -> ResearchObservation:
+    return ResearchObservation(
+        query="query",
+        route=RetrievalRoute.WEB,
+        search_result_ids=["result-1"],
+        search_result_index_updates={"https://example.com": "result-1"},
+        search_result_merge_report=SearchResultMergeReport(
+            candidate_count=1,
+            new_result_count=1,
+            reused_result_count=0,
+        ),
+        retrieval_filter_report=RetrievalFilterReport(
+            input_count=1,
+            output_count=1,
+        ),
+        source_classification_report=SourceClassificationReport(
+            input_count=1,
+            recognized_count=0,
+            unknown_count=1,
+        ),
+        selection_report=SearchResultSelectionReport(
+            candidate_ids=["result-1"],
+            selected_ids=["result-1"],
+            deferred_ids=[],
+        ),
+        fetch_outcomes=[
+            FetchSuccess(
+                search_result_id="result-1",
+                document_id="document-1",
+            )
+        ],
+        document_index_updates={"https://example.com": "document-1"},
+        extraction_outcomes=[
+            ExtractionSuccess(
+                document_id="document-1",
+                evidence_ids=["evidence-1"],
+            )
+        ],
+    )
+
+
+def test_research_action_params_are_strict_and_normalize_query() -> None:
+    params = ResearchActionParams(query="  query  ", route="local")
+
+    assert params.query == "query"
+    assert params.route == RetrievalRoute.LOCAL
+
+    with pytest.raises(ValidationError):
+        ResearchActionParams(query=" ", route="web")
+    with pytest.raises(ValidationError):
+        ResearchActionParams(query="query", route="other")
+    with pytest.raises(ValidationError):
+        ResearchActionParams(query="query", route="web", unsupported=True)
+
+
+@pytest.mark.parametrize(
+    "report",
+    [
+        {
+            "candidate_ids": ["a", "a"],
+            "selected_ids": ["a"],
+            "deferred_ids": [],
+        },
+        {
+            "candidate_ids": ["a", "b"],
+            "selected_ids": ["a"],
+            "deferred_ids": ["a"],
+        },
+        {
+            "candidate_ids": ["a", "b"],
+            "selected_ids": ["a"],
+            "deferred_ids": [],
+        },
+        {
+            "candidate_ids": ["a", "b", "c"],
+            "selected_ids": ["c", "a"],
+            "deferred_ids": ["b"],
+        },
+    ],
+)
+def test_selection_report_requires_a_unique_complete_partition(
+    report: dict[str, list[str]],
+) -> None:
+    with pytest.raises(ValidationError):
+        SearchResultSelectionReport(**report)
+
+
+def test_research_observation_reduces_the_entire_artifact_chain() -> None:
+    state = AgentState(query=UserQuery(text="query"))
+    action = AgentAction(
+        type=AgentActionType.RESEARCH,
+        params={"query": "query", "route": "web"},
+    )
+
+    next_state = DefaultStateReducer().apply(
+        state,
+        action,
+        _research_observation(),
+    )
+
+    assert next_state.search_results["result-1"].document_id == "document-1"
+    assert next_state.documents["document-1"].evidence_ids == ["evidence-1"]
+    assert next_state.documents["document-1"].lifecycle_status == "active"
+    assert next_state.action_history[0].observation.type == AgentActionType.RESEARCH
+
+
+def test_reducer_records_terminal_fetch_failure() -> None:
+    observation = _research_observation().model_copy(
+        update={
+            "fetch_outcomes": [
+                FetchFailure(
+                    search_result_id="result-1",
+                    failure=DocumentFetchFailure(
+                        reason="timeout",
+                        url="https://example.com",
+                        message="timed out",
+                        source_error_type="TimeoutError",
+                    ),
+                    attempt_count=2,
+                )
+            ],
+            "document_index_updates": {},
+            "extraction_outcomes": [],
+        }
+    )
+
+    next_state = DefaultStateReducer().apply(
+        AgentState(query=UserQuery(text="query")),
+        AgentAction(
+            type=AgentActionType.RESEARCH,
+            params={"query": "query", "route": "web"},
+        ),
+        observation,
+    )
+
+    assert next_state.search_results["result-1"].failure.reason == "timeout"
+    assert next_state.documents == {}
+
+
+def test_reducer_marks_terminal_extraction_failure_unusable() -> None:
+    observation = _research_observation().model_copy(
+        update={
+            "extraction_outcomes": [
+                ExtractionFailure(
+                    document_id="document-1",
+                    failure=EvidenceExtractionFailure(
+                        reason="llm_error",
+                        url="https://example.com",
+                        message="provider failed",
+                    ),
+                    attempt_count=2,
+                )
+            ]
+        }
+    )
+
+    next_state = DefaultStateReducer().apply(
+        AgentState(query=UserQuery(text="query")),
+        AgentAction(
+            type=AgentActionType.RESEARCH,
+            params={"query": "query", "route": "web"},
+        ),
+        observation,
+    )
+
+    document = next_state.documents["document-1"]
+    assert document.lifecycle_status == "unusable"
+    assert document.lifecycle_reason == "Evidence extraction failed: llm_error"
+
+
+def test_reducer_marks_empty_extraction_success_unusable() -> None:
+    observation = _research_observation().model_copy(
+        update={
+            "extraction_outcomes": [
+                ExtractionSuccess(document_id="document-1", evidence_ids=[])
+            ]
+        }
+    )
+
+    next_state = DefaultStateReducer().apply(
+        AgentState(query=UserQuery(text="query")),
+        AgentAction(
+            type=AgentActionType.RESEARCH,
+            params={"query": "query", "route": "web"},
+        ),
+        observation,
+    )
+
+    document = next_state.documents["document-1"]
+    assert document.lifecycle_status == "unusable"
+    assert document.lifecycle_reason == "Evidence extraction completed without evidence."

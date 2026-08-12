@@ -1,321 +1,142 @@
-"""Tests for controlled concurrency in the news executor."""
+"""Concurrency and extraction-failure tests for atomic research."""
 
 import asyncio
 
 import pytest
 
 from banso.artifacts import InMemoryArtifactStore
-from banso.core import (
-    AgentState,
-    DefaultStateReducer,
-    UserQuery,
-)
-from banso.core.observation import ExtractionSuccess
-from banso.core.state import DocumentState
-from banso.core.action import AgentAction, AgentActionType
+from banso.core import AgentAction, AgentActionType, AgentState, RetrievalRoute, UserQuery
+from banso.core.observation import ExtractionFailure
 from banso.documents import (
     Document,
+    DocumentFetchRequest,
     EvidenceExtractionError,
     EvidenceExtractionRequest,
     EvidenceItem,
 )
-from banso.documents.fake import FakeDocumentFetcher
-from banso.executors import NewsActionExecutor
-from banso.retrieval import FakeRetrievalProvider
-from banso.synthesis import FakeSynthesizer
+from banso.executors import NewsActionExecutor, ResearchRouteComponents
+from banso.retrieval import SearchRequest, SearchResult
+from banso.synthesis import SynthesisRequest, SynthesisResult
 
 
-class TrackingEvidenceExtractor:
-    def __init__(self) -> None:
-        self.active_count = 0
-        self.max_active_count = 0
+class Provider:
+    async def search(self, request: SearchRequest) -> list[SearchResult]:
+        return [
+            SearchResult(
+                id=f"result-{index}",
+                title=f"Result {index}",
+                url=f"https://example.com/{index}",
+            )
+            for index in range(4)
+        ]
 
-    async def extract(
-        self,
-        request: EvidenceExtractionRequest,
-    ) -> list[EvidenceItem]:
-        self.active_count += 1
-        self.max_active_count = max(self.max_active_count, self.active_count)
 
-        delay = 0.03 if request.document.title == "First" else 0.01
-        await asyncio.sleep(delay)
+class Fetcher:
+    async def fetch(self, request: DocumentFetchRequest) -> Document:
+        suffix = request.url.rsplit("/", 1)[-1]
+        return Document(
+            id=f"document-{suffix}",
+            title=request.title or suffix,
+            url=request.url,
+            text="body",
+        )
 
-        self.active_count -= 1
+
+class Synthesizer:
+    async def synthesize(self, request: SynthesisRequest) -> SynthesisResult:
+        return SynthesisResult(answer="answer")
+
+
+class TrackingExtractor:
+    def __init__(self, fail_document: str | None = None) -> None:
+        self.active = 0
+        self.max_active = 0
+        self.fail_document = fail_document
+        self.call_counts: dict[str, int] = {}
+
+    async def extract(self, request: EvidenceExtractionRequest) -> list[EvidenceItem]:
+        self.call_counts[request.document.id] = (
+            self.call_counts.get(request.document.id, 0) + 1
+        )
+        self.active += 1
+        self.max_active = max(self.max_active, self.active)
+        await asyncio.sleep(0.01)
+        self.active -= 1
+        if request.document.id == self.fail_document:
+            raise EvidenceExtractionError("failed", reason="llm_error")
         return [
             EvidenceItem(
                 document_id=request.document.id,
-                claim=request.document.title,
+                claim=request.document.id,
                 source_url=request.document.url,
             )
         ]
 
 
-class PartiallyFailingEvidenceExtractor:
-    async def extract(
-        self,
-        request: EvidenceExtractionRequest,
-    ) -> list[EvidenceItem]:
-        if request.document.title == "Invalid":
-            raise EvidenceExtractionError("invalid response", reason="invalid_json")
-        if request.document.title == "Empty":
-            return []
-        return [
-            EvidenceItem(
-                document_id=request.document.id,
-                claim=request.document.title,
-                source_url=request.document.url,
-            )
-        ]
-
-
-class FailingEvidenceExtractor:
-    async def extract(
-        self,
-        request: EvidenceExtractionRequest,
-    ) -> list[EvidenceItem]:
-        raise EvidenceExtractionError("provider failed", reason="llm_error")
-
-
-class MisassignedEvidenceExtractor:
-    async def extract(
-        self,
-        request: EvidenceExtractionRequest,
-    ) -> list[EvidenceItem]:
-        return [
-            EvidenceItem(
-                document_id="wrong-document",
-                claim="wrong source",
-                source_url=request.document.url,
-            )
-        ]
-
-
-async def _run_extraction_respects_concurrency_and_document_order() -> None:
-    store = InMemoryArtifactStore()
-    documents = [
-        Document(title="First", url="https://example.com/first", text="First"),
-        Document(title="Second", url="https://example.com/second", text="Second"),
-        Document(title="Third", url="https://example.com/third", text="Third"),
-    ]
-    state = AgentState(
-        query=UserQuery(text="test query"),
-        documents={
-            store.put(document): DocumentState()
-            for document in documents
-        },
+def _action() -> AgentAction:
+    return AgentAction(
+        type=AgentActionType.RESEARCH,
+        params={"query": "query", "route": "web"},
     )
-    extractor = TrackingEvidenceExtractor()
+
+
+def test_extraction_respects_concurrency_and_preserves_order() -> None:
+    extractor = TrackingExtractor()
     executor = NewsActionExecutor(
-        store=store,
-        retrieval_provider=FakeRetrievalProvider(),
-        document_fetcher=FakeDocumentFetcher(),
+        store=InMemoryArtifactStore(),
+        research_routes={
+            RetrievalRoute.WEB: ResearchRouteComponents(Provider(), Fetcher())
+        },
         evidence_extractor=extractor,
-        synthesizer=FakeSynthesizer(),
+        synthesizer=Synthesizer(),
         max_extraction_concurrency=2,
     )
 
-    observation = await executor.execute(
-        AgentAction(type=AgentActionType.EXTRACT_EVIDENCE),
-        state,
+    observation = asyncio.run(
+        executor.execute(_action(), AgentState(query=UserQuery(text="query")))
     )
 
-    evidence_ids = [
-        evidence_id
-        for outcome in observation.extraction_outcomes
-        if isinstance(outcome, ExtractionSuccess)
-        for evidence_id in outcome.evidence_ids
+    assert extractor.max_active == 2
+    assert [outcome.document_id for outcome in observation.extraction_outcomes] == [
+        f"document-{index}" for index in range(4)
     ]
-    evidence = [store.get(evidence_id, EvidenceItem) for evidence_id in evidence_ids]
-    assert extractor.max_active_count == 2
-    assert [item.claim for item in evidence if item is not None] == [
-        "First",
-        "Second",
-        "Third",
-    ]
-    assert [
-        outcome.document_id
-        for outcome in observation.extraction_outcomes
-    ] == [document.id for document in documents]
 
 
-def test_extraction_respects_concurrency_and_document_order() -> None:
-    asyncio.run(_run_extraction_respects_concurrency_and_document_order())
+def test_known_extraction_failure_is_isolated() -> None:
+    extractor = TrackingExtractor("document-1")
+    executor = NewsActionExecutor(
+        store=InMemoryArtifactStore(),
+        research_routes={
+            RetrievalRoute.WEB: ResearchRouteComponents(Provider(), Fetcher())
+        },
+        evidence_extractor=extractor,
+        synthesizer=Synthesizer(),
+        max_extraction_concurrency=2,
+    )
+
+    observation = asyncio.run(
+        executor.execute(_action(), AgentState(query=UserQuery(text="query")))
+    )
+
+    failures = [
+        outcome
+        for outcome in observation.extraction_outcomes
+        if isinstance(outcome, ExtractionFailure)
+    ]
+    assert len(failures) == 1
+    assert failures[0].document_id == "document-1"
+    assert failures[0].attempt_count == 2
+    assert extractor.call_counts["document-1"] == 2
 
 
 def test_extraction_concurrency_must_be_positive() -> None:
-    with pytest.raises(ValueError, match="must be at least 1"):
+    with pytest.raises(ValueError, match="at least 1"):
         NewsActionExecutor(
             store=InMemoryArtifactStore(),
-            retrieval_provider=FakeRetrievalProvider(),
-            document_fetcher=FakeDocumentFetcher(),
-            evidence_extractor=TrackingEvidenceExtractor(),
-            synthesizer=FakeSynthesizer(),
+            research_routes={
+                RetrievalRoute.WEB: ResearchRouteComponents(Provider(), Fetcher())
+            },
+            evidence_extractor=TrackingExtractor(),
+            synthesizer=Synthesizer(),
             max_extraction_concurrency=0,
         )
-
-
-async def _run_extraction_rejects_misassigned_evidence() -> None:
-    store = InMemoryArtifactStore()
-    document = Document(
-        title="Document",
-        url="https://example.com/document",
-        text="Document",
-    )
-    state = AgentState(
-        query=UserQuery(text="test query"),
-        documents={store.put(document): DocumentState()},
-    )
-    executor = NewsActionExecutor(
-        store=store,
-        retrieval_provider=FakeRetrievalProvider(),
-        document_fetcher=FakeDocumentFetcher(),
-        evidence_extractor=MisassignedEvidenceExtractor(),
-        synthesizer=FakeSynthesizer(),
-    )
-
-    with pytest.raises(ValueError, match="wrong-document"):
-        await executor.execute(
-            AgentAction(type=AgentActionType.EXTRACT_EVIDENCE),
-            state,
-        )
-
-
-def test_extraction_rejects_misassigned_evidence() -> None:
-    asyncio.run(_run_extraction_rejects_misassigned_evidence())
-
-
-async def _run_extraction_isolates_known_failures() -> None:
-    store = InMemoryArtifactStore()
-    documents = [
-        Document(title="Valid", url="https://example.com/valid", text="Valid"),
-        Document(title="Invalid", url="https://example.com/invalid", text="Invalid"),
-        Document(title="Empty", url="https://example.com/empty", text="Empty"),
-    ]
-    state = AgentState(
-        query=UserQuery(text="test query"),
-        documents={
-            store.put(document): DocumentState()
-            for document in documents
-        },
-    )
-    executor = NewsActionExecutor(
-        store=store,
-        retrieval_provider=FakeRetrievalProvider(),
-        document_fetcher=FakeDocumentFetcher(),
-        evidence_extractor=PartiallyFailingEvidenceExtractor(),
-        synthesizer=FakeSynthesizer(),
-    )
-
-    observation = await executor.execute(
-        AgentAction(type=AgentActionType.EXTRACT_EVIDENCE),
-        state,
-    )
-
-    outcomes = observation.extraction_outcomes
-    first = outcomes[0]
-    assert isinstance(first, ExtractionSuccess)
-    evidence_ids = first.evidence_ids
-    assert len(evidence_ids) == 1
-    assert [outcome.model_dump(mode="json") for outcome in outcomes] == [
-        {
-            "status": "success",
-            "document_id": documents[0].id,
-            "evidence_ids": evidence_ids,
-        },
-        {
-            "status": "failure",
-            "document_id": documents[1].id,
-            "failure": {
-                "url": documents[1].url,
-                "reason": "invalid_json",
-                "retryable": False,
-                "message": "invalid response",
-            },
-        },
-        {
-            "status": "success",
-            "document_id": documents[2].id,
-            "evidence_ids": [],
-        },
-    ]
-
-    state = DefaultStateReducer().apply(
-        state,
-        AgentAction(type=AgentActionType.EXTRACT_EVIDENCE),
-        observation,
-    )
-    assert state.documents[documents[0].id].evidence_ids == evidence_ids
-    assert state.documents[documents[0].id].extraction.failure is None
-    assert state.documents[documents[1].id].extraction.failure is not None
-    assert state.documents[documents[2].id].extraction.failure is None
-
-    next_observation = await executor.execute(
-        AgentAction(type=AgentActionType.EXTRACT_EVIDENCE),
-        state,
-    )
-    assert next_observation.extraction_outcomes == []
-
-
-def test_extraction_isolates_known_failures() -> None:
-    asyncio.run(_run_extraction_isolates_known_failures())
-
-
-async def _run_extraction_reports_failed_when_all_documents_fail() -> None:
-    store = InMemoryArtifactStore()
-    documents = [
-        Document(title="First", url="https://example.com/first", text="First"),
-        Document(title="Second", url="https://example.com/second", text="Second"),
-    ]
-    state = AgentState(
-        query=UserQuery(text="test query"),
-        documents={
-            store.put(document): DocumentState()
-            for document in documents
-        },
-    )
-    executor = NewsActionExecutor(
-        store=store,
-        retrieval_provider=FakeRetrievalProvider(),
-        document_fetcher=FakeDocumentFetcher(),
-        evidence_extractor=FailingEvidenceExtractor(),
-        synthesizer=FakeSynthesizer(),
-    )
-
-    observation = await executor.execute(
-        AgentAction(type=AgentActionType.EXTRACT_EVIDENCE),
-        state,
-    )
-
-    assert [
-        outcome.model_dump(mode="json")
-        for outcome in observation.extraction_outcomes
-    ] == [
-        {
-            "status": "failure",
-            "document_id": document.id,
-            "failure": {
-                "url": document.url,
-                "reason": "llm_error",
-                "retryable": True,
-                "message": "provider failed",
-            },
-        }
-        for document in documents
-    ]
-
-    action = AgentAction(type=AgentActionType.EXTRACT_EVIDENCE)
-    reducer = DefaultStateReducer()
-    state = reducer.apply(state, action, observation)
-    second = await executor.execute(action, state)
-    state = reducer.apply(state, action, second)
-    third = await executor.execute(action, state)
-
-    assert all(
-        state.documents[document.id].extraction.attempt_count == 2
-        for document in documents
-    )
-    assert third.extraction_outcomes == []
-
-
-def test_extraction_reports_failed_when_all_documents_fail() -> None:
-    asyncio.run(_run_extraction_reports_failed_when_all_documents_fail())

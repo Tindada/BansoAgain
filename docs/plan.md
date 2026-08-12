@@ -27,15 +27,15 @@
 - 已定义核心 runtime、state、action、policy、executor、reducer 等基础模块；
   `AgentResult` 和 `RuntimeRunResult` 已集中到 runtime 模块。
 - 已实现最小 `AgentRuntime` 主循环，支持 policy 决策、executor 执行、reducer 更新状态和 trace 收集。
-- 已实现新闻场景的固定流程 policy：搜索、获取文档、抽取 evidence、生成总结。
+- 已将新闻研究流程合并为原子的 `RESEARCH(query, route)` action，在 action 内完成
+  retrieval、结果选择、document fetch 和 evidence extraction。
 - 已实现最小 `LLMNewsPolicy`，由 LLM 根据有界 Policy Context、可用 action 和剩余
-  预算选择结构化 `AgentAction`，并校验动作参数、搜索预算和重复 query；Action
+  预算选择结构化 `AgentAction`，并校验动作参数、research 预算和重复 query；Action
   availability 由资源生命周期和剩余额度决定。
 - `LLMNewsPolicy` 的非法输出和已知 LLM 调用失败会作为带 reason 的 policy error
   向上抛出，由 Runtime Span 保存失败信息；第一版不重试或自动回退。
-- 真实新闻运行入口支持通过 `BANSO_NEWS_POLICY` 选择规则 Policy 或 LLM Policy，
-  默认继续使用规则 Policy；规则 Policy 默认使用外部 LLM 生成 SearchPlan，
-  LLM Policy 当前复用本地 vLLM client。
+- 真实新闻运行入口始终使用 LLM Policy；通过 `BANSO_NEWS_RETRIEVAL_ROUTES`
+  显式启用 `web`、`local` 或两路，由 LLM 为每次 research 选择 route。
 - 已通过 provider-independent 的 `TracingLLMClient` 统一记录 LLM 实际输入、原始
   provider 响应、completion 和 token usage；业务解析结果继续保存在对应
   Observation、Artifact 或外层 Span 中。
@@ -47,8 +47,7 @@
 - 已完成官方来源注册表、RSS/Atom 与 Sitemap 发现、robots 校验、条件请求、
   HTML/PDF 解析和 `SQLiteCorpusStore` 写入编排；该链路仍独立于 Agent。
 - 已新增段落感知分块和可从 SQLite 重建的 LanceDB 本地索引，支持按次选择
-  BM25、向量或混合检索；真实 News Runtime 可在本地语料与 Tavily-only
-  两种隔离路径间切换。
+  BM25、向量或混合检索；真实 News Runtime 可同时启用本地语料和 Web route。
 - 已实现超长文档的分块 evidence extraction，并隔离单篇文档的 LLM 提取失败。
 - LLM evidence extraction 为单篇文档设置最大 chunk 数，超过上限时在调用 LLM 前
   将该文档记录为 `document_too_large`，避免异常文档无上限占用执行时间。
@@ -173,12 +172,10 @@ tracer 记录运行边界 Span
 目标：在保持 runtime 和 executor 边界不变的前提下，让 LLM 根据当前 state、
 已有 observation 和剩余预算，从受约束的动作空间中动态选择下一步 action。
 
-LLM policy 第一版使用受约束的动作空间：
+LLM policy 使用受约束的动作空间：
 
 ```text
-SEARCH
-FETCH_DOCUMENTS
-EXTRACT_EVIDENCE
+RESEARCH
 CURATE_EVIDENCE
 FINISH
 STOP
@@ -186,9 +183,11 @@ STOP
 
 核心要求：
 
-- rule-based policy 继续使用 `PLAN_SEARCH` 和持久化在 State 中的可选
-  `SearchPlan`；LLM policy 不依赖 SearchPlan，直接根据 query 和当前 context
-  生成 `SEARCH(query, intent)`。
+- `RESEARCH(query, route)` 在内部完成 retrieval、单次 search-result selection、
+  fetch 和 extraction；LLM 不在这些内部阶段之间做选择。
+- 同一 query 可以使用不同 route，但不重复已经执行的 `(route, normalized query)`。
+  fetch/extraction 的可恢复错误由 executor 在当前 action 内有界重试，不进入 LLM
+  policy 或跨 action lifecycle。
 - `FINISH` 生成最终答案并终止运行；`STOP` 不生成新答案，直接终止运行。
 - `CURATE_EVIDENCE` 允许 LLM 根据相关性、信息增量、重复程度、覆盖缺口和来源质量，
   在已有 Evidence 的文档组之间进行 active/shelved 精筛；搁置不会删除产物或返还
@@ -419,19 +418,14 @@ Rollout 必须保存 LLM 实际接收的 prompt/messages、原始 completion、�
   存在于 `AgentState.action_history`，后续应以 State 作为业务事实来源，只从 Span
   获取阶段耗时、失败和 LLM usage 等观测数据，避免评估结果依赖 best-effort Trace。
 
-### 检索规划
-
-- `PlannedSearch.intent` 当前仅保存在计划、Action 参数和 Trace 中，不会影响
-  实际发送给 retrieval provider 的检索请求。
-
 ### 本地语料检索
 
 - BM25 与向量检索当前共用无重叠的简单段落分块；后续需要根据检索与端到端
   evaluation，在召回完整性、结果重复度和索引成本之间评估是否引入重叠、相邻
   chunk 扩展或更复杂的分块策略。
-- 本地 corpus 与 Tavily 当前只能分别使用。需要先完善 trusted sources，并比较
-  local-only 与 Tavily-only evaluation 的覆盖、来源多样性和端到端质量，再决定
-  是否采用结果缺口补位、并列候选检索以及跨 provider 排序。
+- 本地 corpus 与 Web route 可同时启用，但一次 `RESEARCH` 只执行一路且没有自动
+  fallback。当前选择策略仍是 provider order；后续可在该边界加入跨新旧 search
+  results 的 reranker。
 
 ### 来源分类
 

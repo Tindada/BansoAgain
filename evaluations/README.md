@@ -48,7 +48,7 @@ fixed-flow baseline.
 `BANSO_NEWS_RETRIEVAL_PROVIDER` selects an isolated retrieval path: `tavily`
 keeps the v4 baseline behavior and is the default, while `local` only searches
 the trusted corpus. Local runs can select `bm25`, `vector`, or `hybrid` through
-`BANSO_CORPUS_SEARCH_MODE`; the default is `hybrid`. Run Tavily-only and
+`BANSO_CORPUS_SEARCH_MODE`; the default is `vector`. Run Tavily-only and
 local-only evaluations separately. Cross-provider fallback and ranking are not
 implemented yet.
 

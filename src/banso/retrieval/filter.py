@@ -15,7 +15,6 @@ class RetrievalFilterConfig(BaseModel):
     max_results: int = 10
     require_title: bool = True
     require_url: bool = True
-    deduplicate_urls: bool = True
     ignored_query_params: set[str] = Field(
         default_factory=lambda: {
             "fbclid",
@@ -65,15 +64,14 @@ class RetrievalFilter:
                 report.dropped_invalid_url += 1
                 continue
 
-            if self.config.deduplicate_urls:
-                normalized_url = normalize_url(
-                    url,
-                    ignored_query_params=self.config.ignored_query_params,
-                )
-                if normalized_url in seen_urls:
-                    report.dropped_duplicate_url += 1
-                    continue
-                seen_urls.add(normalized_url)
+            normalized_url = normalize_url(
+                url,
+                ignored_query_params=self.config.ignored_query_params,
+            )
+            if normalized_url in seen_urls:
+                report.dropped_duplicate_url += 1
+                continue
+            seen_urls.add(normalized_url)
 
             if len(filtered) >= self.config.max_results:
                 report.truncated_count += 1

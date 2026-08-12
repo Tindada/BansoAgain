@@ -95,9 +95,9 @@ async def run_case(
 async def main(args: argparse.Namespace) -> None:
     load_dotenv()
     started_at = datetime.now(timezone.utc)
-    retrieval_provider = os.getenv(
-        "BANSO_NEWS_RETRIEVAL_PROVIDER",
-        "tavily",
+    retrieval_routes = os.getenv(
+        "BANSO_NEWS_RETRIEVAL_ROUTES",
+        "web",
     ).strip().casefold()
     cases = load_evaluation_cases(args.cases)
     if args.limit is not None:
@@ -145,10 +145,10 @@ async def main(args: argparse.Namespace) -> None:
             "traces_path": str(traces_path),
             "max_document_fetches": args.max_document_fetches,
             "max_active_documents": args.max_active_documents,
-            "retrieval_provider": retrieval_provider,
+            "retrieval_routes": retrieval_routes,
             "corpus_search_mode": (
-                os.getenv("BANSO_CORPUS_SEARCH_MODE", "hybrid").strip().casefold()
-                if retrieval_provider == "local"
+                os.getenv("BANSO_CORPUS_SEARCH_MODE", "vector").strip().casefold()
+                if "local" in retrieval_routes.split(",")
                 else None
             ),
             "vllm_model": os.getenv("VLLM_MODEL"),

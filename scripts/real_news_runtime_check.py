@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 
 from banso.apps.real_news import build_real_news_runtime
 from banso.core import AgentActionType, AgentState, UserQuery
-from banso.core.observation import SearchObservation
+from banso.core.observation import ResearchObservation
 from banso.documents import Document, EvidenceItem
 from banso.retrieval import SearchResult
 
@@ -52,13 +52,13 @@ async def main(*, verbose: bool = False) -> None:
         print(f"- {span.attributes['action_type']}: {span.duration_seconds:.2f}s")
     total_duration = sum(span.duration_seconds for span in action_spans)
     print(f"total action time: {total_duration:.2f}s")
-    search_queries = [
-        entry.observation.search_queries[0]
+    research_queries = [
+        (entry.observation.query, entry.observation.route.value)
         for entry in state.action_history
-        if entry.action.type == AgentActionType.SEARCH
-        and isinstance(entry.observation, SearchObservation)
+        if entry.action.type == AgentActionType.RESEARCH
+        and isinstance(entry.observation, ResearchObservation)
     ]
-    print("search queries:", search_queries)
+    print("research queries:", research_queries)
     print("search results:", len(state.search_results))
     print("documents:", len(state.documents))
     print(

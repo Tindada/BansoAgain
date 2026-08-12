@@ -1,12 +1,13 @@
 """Simple action executor implementation for smoke testing."""
 
-from banso.core.action import AgentAction, AgentActionType
+from banso.core.action import AgentAction, AgentActionType, ResearchActionParams
 from banso.core.observation import (
     FinishObservation,
     Observation,
+    ResearchObservation,
     RetrievalFilterReport,
-    SearchObservation,
     SearchResultMergeReport,
+    SearchResultSelectionReport,
     SourceClassificationReport,
     StopObservation,
 )
@@ -17,10 +18,11 @@ class SimpleActionExecutor:
     """Returns deterministic observations without calling external services."""
 
     async def execute(self, action: AgentAction, state: AgentState) -> Observation:
-        if action.type == AgentActionType.SEARCH:
-            query = action.params.get("query", state.query.text)
-            return SearchObservation(
-                search_queries=[query],
+        if action.type == AgentActionType.RESEARCH:
+            params = ResearchActionParams.model_validate(action.params)
+            return ResearchObservation(
+                query=params.query,
+                route=params.route,
                 search_result_ids=[],
                 search_result_index_updates={},
                 search_result_merge_report=SearchResultMergeReport(
@@ -37,15 +39,20 @@ class SimpleActionExecutor:
                     recognized_count=0,
                     unknown_count=0,
                 ),
+                selection_report=SearchResultSelectionReport(
+                    candidate_ids=[],
+                    selected_ids=[],
+                    deferred_ids=[],
+                ),
+                fetch_outcomes=[],
+                document_index_updates={},
+                extraction_outcomes=[],
             )
-
         if action.type == AgentActionType.FINISH:
             return FinishObservation(
                 final_answer="TODO: synthesize answer",
                 citations=[],
             )
-
         if action.type == AgentActionType.STOP:
             return StopObservation()
-
         raise ValueError(f"unsupported action type: {action.type.value}")

@@ -10,9 +10,9 @@ class RuleBasedPolicy:
     async def select_action(self, state: AgentState) -> AgentAction:
         if state.current_step == 0:
             return AgentAction(
-                type=AgentActionType.SEARCH,
-                params={"query": state.query.text},
-                rationale="Start by searching for the user query.",
+                type=AgentActionType.RESEARCH,
+                params={"query": state.query.text, "route": "web"},
+                rationale="Run one deterministic smoke-test research action.",
             )
 
         if state.current_step == 1:

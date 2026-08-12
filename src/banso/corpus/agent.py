@@ -24,7 +24,7 @@ class LocalCorpusRetrievalProvider:
         store: SQLiteCorpusStore,
         registry: SourceRegistry,
         *,
-        mode: CorpusSearchMode = CorpusSearchMode.HYBRID,
+        mode: CorpusSearchMode = CorpusSearchMode.VECTOR,
     ) -> None:
         self._index = index
         self._store = store

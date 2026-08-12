@@ -115,7 +115,7 @@ class LanceCorpusIndex:
         query: str,
         *,
         limit: int = 10,
-        mode: CorpusSearchMode = CorpusSearchMode.HYBRID,
+        mode: CorpusSearchMode = CorpusSearchMode.VECTOR,
     ) -> tuple[CorpusSearchResult, ...]:
         """Return chunks ranked by the selected retrieval mode."""
 
