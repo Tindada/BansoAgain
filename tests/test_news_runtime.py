@@ -137,7 +137,7 @@ def _executor(
 
 def test_research_routes_and_processes_selected_results_atomically() -> None:
     store = InMemoryArtifactStore()
-    web = StaticRetrievalProvider("web", count=5)
+    web = StaticRetrievalProvider("web", count=3)
     local = StaticRetrievalProvider("local")
     web_fetcher = RecordingFetcher()
     local_fetcher = RecordingFetcher()
@@ -153,23 +153,25 @@ def test_research_routes_and_processes_selected_results_atomically() -> None:
         params={"query": "latest news", "route": "web"},
     )
 
-    observation = asyncio.run(
-        executor.execute(action, AgentState(query=UserQuery(text="news")))
+    state = AgentState(
+        query=UserQuery(text="news"),
+        budget=ExecutionBudget(max_results_per_research=2),
     )
+    observation = asyncio.run(executor.execute(action, state))
 
     assert isinstance(observation, ResearchObservation)
-    assert len(observation.search_result_ids) == 5
+    assert len(observation.search_result_ids) == 3
     assert (
         observation.selection_report.selected_ids
-        == observation.search_result_ids[:4]
+        == observation.search_result_ids[:2]
     )
     assert (
         observation.selection_report.deferred_ids
-        == observation.search_result_ids[4:]
+        == observation.search_result_ids[2:]
     )
-    assert len(observation.fetch_outcomes) == 4
-    assert len(observation.extraction_outcomes) == 4
-    assert len(web_fetcher.requests) == 4
+    assert len(observation.fetch_outcomes) == 2
+    assert len(observation.extraction_outcomes) == 2
+    assert len(web_fetcher.requests) == 2
     assert not local.requests
     assert not local_fetcher.requests
 

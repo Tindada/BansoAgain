@@ -63,7 +63,11 @@ async def _run_llm_evidence_extractor() -> None:
             "]"
         )
     )
-    extractor = LLMEvidenceExtractor(client=client, model="fake-model")
+    extractor = LLMEvidenceExtractor(
+        client=client,
+        model="fake-model",
+        max_tokens=1_234,
+    )
     request = EvidenceExtractionRequest(
         query=UserQuery(text="latest AI product news"),
         document=_document(),
@@ -85,7 +89,7 @@ async def _run_llm_evidence_extractor() -> None:
     llm_request = client.requests[0]
     assert llm_request.model == "fake-model"
     assert llm_request.temperature == 0.0
-    assert llm_request.max_tokens == 2_048
+    assert llm_request.max_tokens == 1_234
     assert [message.role for message in llm_request.messages] == [
         LLMMessageRole.SYSTEM,
         LLMMessageRole.USER,
