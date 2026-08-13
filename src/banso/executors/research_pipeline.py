@@ -63,7 +63,7 @@ class ResearchPipeline:
         *,
         retrieval_filter: RetrievalFilter | None = None,
         source_classifier: SourceClassifier | None = None,
-        max_extraction_concurrency: int = 3,
+        max_extraction_concurrency: int = 4,
         fetch_retry_policy: RetryPolicy | None = None,
         extraction_retry_policy: RetryPolicy | None = None,
     ) -> None:

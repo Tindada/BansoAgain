@@ -135,7 +135,7 @@ def build_real_news_runtime() -> RealNewsRuntimeBundle:
             synthesizer=LLMSynthesizer(client=external_llm_client),
             source_classifier=source_classifier,
             max_extraction_concurrency=int(
-                os.getenv("BANSO_MAX_EXTRACTION_CONCURRENCY", "3")
+                os.getenv("BANSO_MAX_EXTRACTION_CONCURRENCY", "4")
             ),
         ),
         tracer=tracer,
