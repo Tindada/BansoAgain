@@ -3,9 +3,9 @@
 ## 背景
 
 目标是设计并逐步实现一个“新闻搜索 + 信息筛选 + 总结”的新闻 Agent。当前已完成
-固定流程 MVP、LLM Policy 所需的 State、Artifact 与 Policy Context、跨 Search
-结果去重和独立 LLM tracing，以及根据这些输入动态选择 Action 的最小
-`LLMNewsPolicy`。规则 Policy 和 LLM Policy 均已接入真实运行入口。
+核心 Runtime、LLM Policy 所需的 State、Artifact 与 Policy Context、原子化
+`RESEARCH(query, route)`、跨步骤 URL 去重和独立 LLM tracing。真实运行
+入口始终使用 `LLMNewsPolicy`，并可同时启用 Web 与 Local retrieval routes。
 
 系统需要长期支持：
 
@@ -30,10 +30,11 @@
 - 已将新闻研究流程合并为原子的 `RESEARCH(query, route)` action，在 action 内完成
   retrieval、结果选择、document fetch 和 evidence extraction。
 - 已实现最小 `LLMNewsPolicy`，由 LLM 根据有界 Policy Context、可用 action 和剩余
-  预算选择结构化 `AgentAction`，并校验动作参数、research 预算和重复 query；Action
+  预算选择结构化 `AgentAction`，并校验动作参数与 research 预算；Action
   availability 由资源生命周期和剩余额度决定。
 - `LLMNewsPolicy` 的非法输出和已知 LLM 调用失败会作为带 reason 的 policy error
-  向上抛出，由 Runtime Span 保存失败信息；第一版不重试或自动回退。
+  向上抛出，由 Runtime Span 保存失败信息；Policy 选择失败不在 Policy
+  内重试或自动回退。
 - 真实新闻运行入口始终使用 LLM Policy；通过 `BANSO_NEWS_RETRIEVAL_ROUTES`
   显式启用 `web`、`local` 或两路，由 LLM 为每次 research 选择 route。
 - 已通过 provider-independent 的 `TracingLLMClient` 统一记录 LLM 实际输入、原始
@@ -70,15 +71,13 @@
 - 已实现新闻专用的 `NewsPolicyContextBuilder`，从 State 和 ArtifactStore
   确定性构造用户查询、参考时间、剩余预算、搜索历史、资源生命周期摘要以及有界的
   Search Result、Document 和分组 Evidence 预览，并显式标记省略数量。
-- Rule-based Policy 使用的 Search Planner 会从 State 接收同一个 `reference_time`；
-  LLM Search Planner 将其加入 prompt，作为解释“最近”“本周”等相对时间的统一基准。
+- `reference_time` 在运行初始化时固定，并通过 Policy Context 为“最近”“本周”
+  等相对时间提供统一基准。
 - Runtime 已分别使用 Policy、Executor 和 Reducer 子 Span 记录耗时；失败 Span
   记录异常类型和信息，Trace 自身失败不会改变业务执行结果。
 - 已补充覆盖核心 runtime、新闻执行器、retrieval、document fetcher、LLM 配置和 LLM 组件的测试。
-- 当前最近的完整评估基线为 2026-07-28 的 v4：rule policy 完成 12/12、
-  minimums 通过 5/12、错误 0；LLM policy 的最终 v4.4 完成 12/12、
-  minimums 通过 12/12、错误 0。该基线早于本地语料检索接入，后续应保留为
-  Tavily-only 对照组。
+- 早期固定流程与 v4 LLM evaluation 已作为历史 baseline 归档；当前评估以
+  原子 Research 结构下的 Web 和 Local/Web runs 为准。
 
 ## 阶段 1：系统架构设计
 
@@ -185,9 +184,9 @@ STOP
 
 - `RESEARCH(query, route)` 在内部完成 retrieval、单次 search-result selection、
   fetch 和 extraction；LLM 不在这些内部阶段之间做选择。
-- 同一 query 可以使用不同 route，但不重复已经执行的 `(route, normalized query)`。
-  fetch/extraction 的可恢复错误由 executor 在当前 action 内有界重试，不进入 LLM
-  policy 或跨 action lifecycle。
+- 允许 Policy 重复或改写 research query；SearchResult 和 Document 仍通过运行内稳定的
+  URL 索引去重。fetch/extraction 的可恢复错误由 executor 在当前 action 内有界
+  重试，不进入 LLM policy 或跨 action lifecycle。
 - `FINISH` 生成最终答案并终止运行；`STOP` 不生成新答案，直接终止运行。
 - `CURATE_EVIDENCE` 允许 LLM 根据相关性、信息增量、重复程度、覆盖缺口和来源质量，
   在已有 Evidence 的文档组之间进行 active/shelved 精筛；搁置不会删除产物或返还
@@ -204,16 +203,16 @@ STOP
   构造模型可见的决策事实；通用 `Policy` 接口继续只返回 `AgentAction`。
 - 向模型提供 query、预算、语义化执行历史、有界 artifact context 和可用 action，
   不直接暴露完整 State，也不在 State 中重复保存 artifact summary。
-- 对非法 action、无效参数、重复搜索 query 和 LLM 调用失败提供确定性校验和明确错误；
+- 对非法 action、无效参数和 LLM 调用失败提供确定性校验和明确错误；
   是否增加纠正重试由 evaluation 结果决定。
 - 记录 action 选择所需的简短 decision metadata，保证行为可审计。
-- 继续使用固定流程 policy 作为 baseline，而不是直接替换或删除。
+- 早期固定流程 policy 仅作为历史实现保留，不接入真实运行入口。
 - 累计文档获取预算只约束搜索可用性和获取执行边界；active 文档上限只约束精筛后的
   Evidence 工作集及 `FINISH`。最大步骤数、搜索数和 token/cost 预算继续独立生效。
 
 当前已完成最小 Policy、资源生命周期约束、精简的显式 Policy Context、确定性输出
-校验、独立 LLM tracing 和真实运行入口接入；token/cost 预算和基于评估结果的重试
-策略仍属于后续工作。
+校验、独立 LLM tracing、真实运行入口和 action-local fetch/extraction 重试；
+token/cost 预算、retrieval 重试和是否为 Policy 增加纠正重试仍属于后续工作。
 
 评估重点：
 
@@ -267,7 +266,7 @@ Runtime 使用它建立根 Span，LLM、Retrieval 等深层组件不创建自己
 彼此独立的 trace，并由 `ContextVar` 隔离。
 
 真实 Runtime 通过 provider-independent 的 `TracingLLMClient` 装饰器，为 LLM Policy、
-搜索规划、证据抽取和总结统一记录 `llm.call` Span。Span 输入记录实际发送的
+证据抽取和总结统一记录 `llm.call` Span。Span 输入记录实际发送的
 `LLMRequest`，输出只记录进入业务层的 completion、provider 原始响应、模型和 token
 usage；其状态只表示模型调用是否成功，不混入后续解析和业务校验结果。
 
@@ -286,8 +285,8 @@ reward modeling
 LLM RL rollout/training data generation
 ```
 
-LLM Agent Policy 与固定流程 policy 应使用相同 evaluation cases 和指标进行
-对比，为后续 reward 设计和 LLM RL 后训练提供可复现的行为基线。Reward、
+后续 Policy 版本应使用相同 evaluation cases 和指标进行对比，为 reward
+设计和 LLM RL 后训练提供可复现的行为基线。Reward、
 自动评分和其他 evaluator 才能获得的信息应作为 rollout 完成后的训练标注保存，
 不能泄漏到生成当前 action 的 policy 输入中。
 
@@ -307,7 +306,7 @@ LLM Agent Policy 与固定流程 policy 应使用相同 evaluation cases 和指�
     -> 段落感知分块
     -> LanceDB BM25/vector/hybrid 索引
     -> Agent 本地检索
-    -> Tavily fallback（后续）
+    -> Agent 按次选择 Local 或 Web route
 ```
 
 边界与约束：
@@ -338,10 +337,10 @@ LLM Agent Policy 与固定流程 policy 应使用相同 evaluation cases 和指�
    与内容页面条件请求、嵌套 Sitemap、来源范围校验以及 SQLite 写入编排。
 4. 已新增段落感知分块和可从 SQLite 幂等重建的 LanceDB
    BM25/vector/hybrid 索引；未变化 chunk 可复用已有 embedding。
-5. 已新增语料管理 CLI、首个真实来源配置、CLI 端到端测试与运维文档；当前由
-   OpenAI 官方 RSS 和 Sitemap 作为首个审查来源，后续来源仍需逐个核实后加入。
-6. 已将适配层接入真实 News Runtime，可分别选择 local-only 或 Tavily-only；
-   跨 provider 补位与排序等待 trusted sources 完善及两组 evaluation 后决定。
+5. 已新增语料管理 CLI、多个已审查来源、CLI 端到端测试与运维文档；
+   后续来源仍需逐个核实后加入。
+6. 已将适配层接入真实 News Runtime，可启用 local-only、Web-only 或同时启用两路；
+   同时启用时由 LLM Policy 为每次 Research 选择 route，当前不自动 fallback。
 
 ## 阶段 8：LLM Policy RL 后训练预留
 
@@ -396,8 +395,8 @@ Rollout 必须保存 LLM 实际接收的 prompt/messages、原始 completion、�
 
 ### 文档获取与异常处理
 
-- HTTP 429、可恢复的 5xx、超时和连接错误尚未实现有上限的重试，也缺少按
-  失败类别聚合的指标和持久化日志。
+- Document fetch 已对已知可恢复失败进行 action-local 有界重试；retrieval provider
+  的短暂连接错误仍会使整次 Research 失败，也缺少按失败类别聚合的指标和持久化日志。
 - PDF 目前仅支持通过 `pypdf` 提取文本层；扫描件 OCR、复杂版面、表格和公式恢复仍
   需要结合真实语料评估更强的解析方案。
 - HTML 正文抽取仍是启发式的，缺少质量判定和低质量结果的回退策略。
@@ -424,8 +423,8 @@ Rollout 必须保存 LLM 实际接收的 prompt/messages、原始 completion、�
   evaluation，在召回完整性、结果重复度和索引成本之间评估是否引入重叠、相邻
   chunk 扩展或更复杂的分块策略。
 - 本地 corpus 与 Web route 可同时启用，但一次 `RESEARCH` 只执行一路且没有自动
-  fallback。当前选择策略仍是 provider order；后续可在该边界加入跨新旧 search
-  results 的 reranker。
+  fallback。Route 由 LLM Policy 按次选择；Research 内对新旧 SearchResults 仍按 provider
+  order 有界选取，后续可在该边界加入 reranker。
 
 ### 来源分类
 
