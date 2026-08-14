@@ -1,6 +1,7 @@
 """Tests for evidence-group curation and synthesis."""
 
 import asyncio
+from datetime import datetime, timezone
 
 import pytest
 
@@ -17,7 +18,7 @@ from banso.core import (
 from banso.core.state import DocumentState
 from banso.documents import Document, EvidenceItem
 from banso.executors import NewsActionExecutor, ResearchRouteComponents
-from banso.retrieval import FakeRetrievalProvider
+from banso.retrieval import FakeRetrievalProvider, Source, SourceType
 from banso.synthesis import SynthesisRequest, SynthesisResult
 
 
@@ -66,6 +67,8 @@ def _state_and_store() -> tuple[AgentState, InMemoryArtifactStore]:
             url=f"https://example.com/{identifier}",
             title=identifier.upper(),
             text=identifier,
+            source=Source(name=f"Source {identifier}", type=SourceType.NEWS),
+            published_at=datetime(2026, 8, 1, tzinfo=timezone.utc),
         )
         evidence = EvidenceItem(
             id=f"evidence-{identifier}",
@@ -155,8 +158,15 @@ def test_finish_uses_only_active_documents_and_evidence() -> None:
 
     assert observation.final_answer == "answer"
     assert synthesizer.request is not None
-    assert [document.id for document in synthesizer.request.documents] == ["a"]
-    assert [evidence.id for evidence in synthesizer.request.evidence] == ["evidence-a"]
+    assert synthesizer.request.reference_time == state.reference_time
+    assert len(synthesizer.request.evidence_groups) == 1
+    group = synthesizer.request.evidence_groups[0]
+    assert group.document_id == "a"
+    assert group.title == "A"
+    assert group.source_url == "https://example.com/a"
+    assert group.source == Source(name="Source a", type=SourceType.NEWS)
+    assert group.published_at == datetime(2026, 8, 1, tzinfo=timezone.utc)
+    assert [evidence.id for evidence in group.evidence] == ["evidence-a"]
 
 
 def test_finish_rejects_active_overflow() -> None:

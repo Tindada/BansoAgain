@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import Awaitable
+from datetime import datetime, timezone
 from typing import Any
 
 from banso.artifacts import InMemoryArtifactStore
@@ -20,7 +21,11 @@ from banso.llm import (
     TracingLLMClient,
 )
 from banso.policies import LLMNewsPolicy, LLMPolicyError, NewsPolicyContextBuilder
-from banso.synthesis import LLMSynthesizer, SynthesisRequest
+from banso.synthesis import (
+    LLMSynthesizer,
+    SynthesisEvidenceGroup,
+    SynthesisRequest,
+)
 from banso.tracing import InMemoryTraceSink, SpanRecord, Tracer
 
 class StaticResponseClient:
@@ -101,7 +106,15 @@ async def _run_successful_calls() -> list[SpanRecord]:
         result = await synthesizer.synthesize(
             SynthesisRequest(
                 query=UserQuery(text="Latest product news"),
-                evidence=evidence,
+                reference_time=datetime(2026, 8, 13, tzinfo=timezone.utc),
+                evidence_groups=[
+                    SynthesisEvidenceGroup(
+                        document_id=document.id,
+                        title=document.title,
+                        source_url=document.url,
+                        evidence=evidence,
+                    )
+                ],
             )
         )
         assert result.answer == "Final answer."

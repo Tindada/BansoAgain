@@ -24,7 +24,7 @@ from banso.executors.research_pipeline import (
 from banso.executors.retry import RetryPolicy
 from banso.retrieval import SourceClassifier
 from banso.retrieval.filter import RetrievalFilter
-from banso.synthesis import Synthesizer, SynthesisRequest
+from banso.synthesis import SynthesisEvidenceGroup, Synthesizer, SynthesisRequest
 
 
 class NewsActionExecutor:
@@ -111,24 +111,34 @@ class NewsActionExecutor:
         if state.active_document_count > state.budget.max_active_documents:
             raise ValueError("finish requires curation within the active document limit")
 
-        documents: list[Document] = []
-        evidence: list[EvidenceItem] = []
+        evidence_groups: list[SynthesisEvidenceGroup] = []
         for document_id, document_state in state.documents.items():
             if document_state.lifecycle_status != "active":
                 continue
             document = self.store.get(document_id, Document)
-            if document is not None:
-                documents.append(document)
+            if document is None:
+                continue
+            evidence: list[EvidenceItem] = []
             for evidence_id in document_state.evidence_ids:
                 item = self.store.get(evidence_id, EvidenceItem)
                 if item is not None:
                     evidence.append(item)
+            evidence_groups.append(
+                SynthesisEvidenceGroup(
+                    document_id=document.id,
+                    title=document.title,
+                    source_url=document.url,
+                    source=document.source,
+                    published_at=document.published_at,
+                    evidence=evidence,
+                )
+            )
 
         result = await self.synthesizer.synthesize(
             SynthesisRequest(
                 query=state.query,
-                evidence=evidence,
-                documents=documents,
+                reference_time=state.reference_time,
+                evidence_groups=evidence_groups,
             )
         )
         return FinishObservation(

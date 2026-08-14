@@ -118,7 +118,7 @@ class RecordingSynthesizer:
         self.requests.append(request)
         return SynthesisResult(
             answer="answer",
-            citations=[item.source_url for item in request.evidence],
+            citations=[group.source_url for group in request.evidence_groups],
         )
 
 
@@ -214,7 +214,7 @@ def test_runtime_researches_then_finishes_from_active_evidence() -> None:
         document.lifecycle_status == "active"
         for document in state.documents.values()
     )
-    assert len(synthesizer.requests[0].evidence) == 2
+    assert len(synthesizer.requests[0].evidence_groups) == 2
     span_names = {span.name for span in sink.get_trace(output.trace_id)}
     assert {
         "news.research.retrieve",

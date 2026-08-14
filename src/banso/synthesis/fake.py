@@ -7,12 +7,17 @@ class FakeSynthesizer:
     """Returns deterministic synthesis output without LLM calls."""
 
     async def synthesize(self, request: SynthesisRequest) -> SynthesisResult:
-        if not request.evidence:
+        if not request.evidence_groups:
             return SynthesisResult(answer="No evidence was available to synthesize.")
 
-        claims = " ".join(item.claim for item in request.evidence)
-        citations = [item.source_url for item in request.evidence]
+        summaries = [
+            f"{' '.join(item.claim for item in group.evidence)} [S{index}]"
+            for index, group in enumerate(request.evidence_groups, start=1)
+        ]
+        citations = list(
+            dict.fromkeys(group.source_url for group in request.evidence_groups)
+        )
         return SynthesisResult(
-            answer=f"Fake summary for '{request.query.text}': {claims}",
+            answer=f"Fake summary for '{request.query.text}': {' '.join(summaries)}",
             citations=citations,
         )
