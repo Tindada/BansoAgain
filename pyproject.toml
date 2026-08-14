@@ -1,7 +1,7 @@
 [project]
 name = "banso"
 version = "0.1.0"
-description = "Add your description here"
+description = "An experimental LLM-driven news research agent"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

@@ -55,6 +55,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if error.trace_id:
             print(f"Trace ID: {error.trace_id}", file=sys.stderr)
         return 1
+    except (RuntimeError, ValueError) as error:
+        print(f"Configuration error: {error}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

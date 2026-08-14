@@ -38,8 +38,8 @@ uv run python main.py \
 ```
 
 Set `BANSO_NEWS_RETRIEVAL_ROUTES` in `.env` to `web`, `local`, or `local,web`.
-With both routes enabled, the policy chooses a route for each research action;
-See[News Runtime](docs/news_runtime.md) for details.
+With both routes enabled, the policy chooses a route for each research action.
+See [News Runtime](docs/news_runtime.md) for details.
 
 ## Local corpus
 
