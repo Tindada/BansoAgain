@@ -174,21 +174,6 @@ def test_same_query_is_allowed_on_a_different_route() -> None:
     assert action.params["route"] == "local"
 
 
-def test_rejects_an_executed_query_and_route_pair() -> None:
-    state = _apply_research(
-        AgentState(query=UserQuery(text="question")),
-        _empty_research(),
-    )
-    output = {
-        "type": "research",
-        "params": {"query": " QUERY ", "route": "web"},
-        "rationale": "Retry timeout.",
-    }
-    policy, _ = _policy(output)
-    with pytest.raises(LLMPolicyError, match="executed"):
-        asyncio.run(policy.select_action(state))
-
-
 def test_rejects_disabled_route_and_invalid_output() -> None:
     disabled_policy, _ = _policy(
         {

@@ -18,12 +18,6 @@ from banso.policies.news_policy_context import (
     document_reference_maps,
 )
 
-
-def _normalize_research_query(query: str) -> str:
-    """Normalize a research query for exact history comparisons."""
-    return " ".join(query.split()).casefold()
-
-
 SYSTEM_PROMPT = (
     "You are the action-selection policy for a news research agent. Select exactly "
     "one next action from available_actions. RESEARCH is an atomic operation that "
@@ -41,8 +35,8 @@ ACTION_INSTRUCTIONS = {
     AgentActionType.RESEARCH: (
         "Research one specific information need. params format: "
         '{"query": "<non-empty string>", "route": "web|local"}. '
-        "route must be present in enabled_routes. A query may be reused on another "
-        "route. Do not repeat an executed normalized query and route pair."
+        "route must be present in enabled_routes. web searches current external "
+        "results; local searches the periodically updated indexed corpus."
     ),
     AgentActionType.CURATE_EVIDENCE: (
         "Change the active document-evidence working set based on relevance, information "
@@ -50,13 +44,18 @@ ACTION_INSTRUCTIONS = {
         '{"active_document_refs": ["<document_ref>"]}. The array is the complete '
         "post-curation active set. Use unique refs from active or shelved groups only. "
         "Do not select this action merely to confirm the current set. The result must "
-        "not exceed max_active_documents."
+        "not exceed max_active_documents. If the evidence is sufficient but FINISH is "
+        "unavailable because the active set exceeds the limit, curate before finishing."
     ),
     AgentActionType.FINISH: (
         "Synthesize the final answer from active documents and evidence, preserving "
         "uncertainty where support is incomplete. params format: {}."
     ),
-    AgentActionType.STOP: "Stop without generating a new answer. params format: {}.",
+    AgentActionType.STOP: (
+        "Stop without generating a new answer. Use only when active evidence cannot "
+        "support a useful answer and no available research or curation action can make "
+        "progress. params format: {}."
+    ),
 }
 
 
@@ -225,16 +224,6 @@ class LLMNewsPolicy:
             raise LLMPolicyError(
                 "research action selects a disabled route",
                 reason="invalid_params",
-            )
-        pair = (params.route, _normalize_research_query(params.query))
-        matching_history = {
-            (item.route, _normalize_research_query(item.query))
-            for item in context.research_history
-        }
-        if pair in matching_history:
-            raise LLMPolicyError(
-                "research action repeats an executed query and route",
-                reason="invalid_action",
             )
         return {"query": params.query, "route": params.route.value}
 
