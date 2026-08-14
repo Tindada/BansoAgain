@@ -77,19 +77,23 @@ class LLMSynthesizer:
         ]
         evidence_block = "\n\n".join(group_blocks) or "No evidence provided."
         time_range = request.query.time_range or "Not specified"
+        answer_language = (
+            request.query.language or "Match the language of the user query"
+        )
 
         return (
             f"User query:\n{request.query.text}\n\n"
             f"Reference time:\n{request.reference_time.isoformat()}\n\n"
             f"Requested time range:\n{time_range}\n\n"
+            f"Answer language:\n{answer_language}\n\n"
             f"Evidence groups:\n{evidence_block}\n\n"
-            "Write the final news summary. Cite each factual statement with one or "
-            "more applicable source-group references such as [S1]. Use publication "
-            "dates to respect the requested time range, but do not treat a publication "
-            "date as the event date unless the evidence supports that conclusion. "
-            "Prefer relevant, credible, and diverse sources. Explicitly describe "
-            "material conflicts or uncertainty. Do not cite a source group that does "
-            "not support the statement."
+            "Write the final news summary in the specified answer language. Cite each "
+            "factual statement with one or more applicable source-group references "
+            "such as [S1]. Use publication dates to respect the requested time range, "
+            "but do not treat a publication date as the event date unless the evidence "
+            "supports that conclusion. Prefer relevant, credible, and diverse sources. "
+            "Explicitly describe material conflicts or uncertainty. Do not cite a "
+            "source group that does not support the statement."
         )
 
     def _build_group_block(

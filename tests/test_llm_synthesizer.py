@@ -19,6 +19,7 @@ def _request() -> SynthesisRequest:
     return SynthesisRequest(
         query=UserQuery(
             text="latest AI company news",
+            language="English",
             time_range="past 7 days",
         ),
         reference_time=datetime(2026, 8, 13, tzinfo=timezone.utc),
@@ -86,6 +87,7 @@ async def _run_llm_synthesizer() -> None:
     assert "latest AI company news" in user_prompt
     assert "2026-08-13T00:00:00+00:00" in user_prompt
     assert "past 7 days" in user_prompt
+    assert "Answer language:\nEnglish" in user_prompt
     assert "[S1]" in user_prompt
     assert "[S2]" in user_prompt
     assert "[S1-E1]" not in user_prompt

@@ -11,7 +11,7 @@ from banso.core.observation import (
     FetchFailure,
     ResearchObservation,
 )
-from banso.core.state import AgentState, DocumentLifecycleStatus, UserQuery
+from banso.core.state import AgentState, DocumentLifecycleStatus
 from banso.documents import Document, EvidenceItem
 from banso.retrieval import Source, SourceType
 from banso.retrieval.url_utils import publisher_domain
@@ -87,10 +87,18 @@ class WorkingSetSummary(BaseModel):
     shelved_document_refs: list[str]
 
 
+class PolicyUserQuery(BaseModel):
+    """User query fields relevant to policy decisions."""
+
+    text: str
+    region: str | None = None
+    time_range: str | None = None
+
+
 class NewsPolicyContext(BaseModel):
     """Compact facts visible to the LLM news policy."""
 
-    user_query: UserQuery
+    user_query: PolicyUserQuery
     reference_time: datetime
     enabled_routes: list[RetrievalRoute]
     budget: BudgetSummary
@@ -176,7 +184,11 @@ class NewsPolicyContextBuilder:
         ]
 
         return NewsPolicyContext(
-            user_query=state.query.model_copy(deep=True),
+            user_query=PolicyUserQuery(
+                text=state.query.text,
+                region=state.query.region,
+                time_range=state.query.time_range,
+            ),
             reference_time=state.reference_time,
             enabled_routes=list(self.enabled_routes),
             budget=BudgetSummary(
