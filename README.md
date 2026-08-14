@@ -66,3 +66,13 @@ The scripts under `scripts/` are development and evaluation tools rather than
 the normal application entry point. See [News Evaluation](evaluations/README.md)
 for the live evaluation workflow and [Project Plan](docs/plan.md) for the
 current implementation status.
+
+## Third-party content
+
+Banso does not distribute documents fetched from third-party sources. Content
+retrieved at runtime remains subject to the rights and terms of its original
+publisher.
+
+## License
+
+Banso is licensed under the [MIT License](LICENSE).
