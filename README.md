@@ -15,9 +15,14 @@ uv sync
 cp .env.template .env
 ```
 
-Configure the local policy and extraction model under `VLLM_*`, and the answer
-synthesis model under `EXTERNAL_LLM_*`. Web retrieval also requires
-`BANSO_TAVILY_API_KEY`.
+Configure the policy and extraction model under `VLLM_*`, and the answer
+synthesis model under `EXTERNAL_LLM_*`. Both accept OpenAI-compatible endpoints
+and may point to either local or hosted model services.
+
+The default `web` route uses
+[Tavily](https://docs.tavily.com/documentation/api-reference/introduction), a
+hosted Web search API, to retrieve result URLs and snippets. It requires a
+separate `BANSO_TAVILY_API_KEY`; Banso fetches the source documents itself.
 
 ## Run the news agent
 
