@@ -11,6 +11,8 @@ from banso.core.observation import (
     ExtractionFailure,
     FetchFailure,
     ResearchObservation,
+    ResearchObservationBase,
+    RetrievalFailedResearchObservation,
 )
 from banso.core.state import AgentState, DocumentLifecycleStatus
 from banso.documents import Document, EvidenceItem
@@ -47,10 +49,10 @@ class ResearchHistoryItemBase(BaseModel):
     route: RetrievalRoute
 
 
-class SuccessfulResearchHistoryItem(ResearchHistoryItemBase):
-    """Compact outcomes from a successful research action."""
+class CompletedResearchHistoryItem(ResearchHistoryItemBase):
+    """Compact outcomes from a completed research action."""
 
-    status: Literal["success"] = "success"
+    status: Literal["completed"] = "completed"
     retrieved_results: int
     new_results: int
     reused_results: int
@@ -62,10 +64,10 @@ class SuccessfulResearchHistoryItem(ResearchHistoryItemBase):
     extraction_failures: int
 
 
-class FailedResearchHistoryItem(ResearchHistoryItemBase):
+class RetrievalFailedResearchHistoryItem(ResearchHistoryItemBase):
     """Trace-safe diagnostics from a failed retrieval."""
 
-    status: Literal["failure"] = "failure"
+    status: Literal["retrieval_failed"] = "retrieval_failed"
     reason: str
     status_code: int | None = None
     retryable: bool
@@ -73,7 +75,7 @@ class FailedResearchHistoryItem(ResearchHistoryItemBase):
 
 
 ResearchHistoryItem = Annotated[
-    SuccessfulResearchHistoryItem | FailedResearchHistoryItem,
+    CompletedResearchHistoryItem | RetrievalFailedResearchHistoryItem,
     Field(discriminator="status"),
 ]
 
@@ -203,7 +205,7 @@ class NewsPolicyContextBuilder:
         research_entries = [
             entry
             for entry in state.action_history
-            if isinstance(entry.observation, ResearchObservation)
+            if isinstance(entry.observation, ResearchObservationBase)
         ]
 
         return NewsPolicyContext(
@@ -276,15 +278,14 @@ class NewsPolicyContextBuilder:
         self,
         observation: ResearchObservation,
     ) -> ResearchHistoryItem:
-        failure = observation.retrieval_failure
-        if failure is not None:
-            return FailedResearchHistoryItem(
+        if isinstance(observation, RetrievalFailedResearchObservation):
+            return RetrievalFailedResearchHistoryItem(
                 query=observation.query,
                 route=observation.route,
-                reason=failure.reason,
-                status_code=failure.status_code,
-                retryable=failure.retryable,
-                attempt_count=failure.attempt_count,
+                reason=observation.reason,
+                status_code=observation.status_code,
+                retryable=observation.retryable,
+                attempt_count=observation.attempt_count,
             )
 
         fetch_failures = [
@@ -297,7 +298,7 @@ class NewsPolicyContextBuilder:
             for outcome in observation.extraction_outcomes
             if isinstance(outcome, ExtractionFailure)
         ]
-        return SuccessfulResearchHistoryItem(
+        return CompletedResearchHistoryItem(
             query=observation.query,
             route=observation.route,
             retrieved_results=len(observation.search_result_ids),

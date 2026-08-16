@@ -14,10 +14,11 @@ from banso.core import (
     RuntimeRunResult,
 )
 from banso.core.observation import (
+    CompletedResearchObservation,
     ExtractionFailure,
     FetchFailure,
     Observation,
-    ResearchObservation,
+    RetrievalFailedResearchObservation,
     validate_observation,
 )
 from banso.retrieval import SearchResult
@@ -132,7 +133,7 @@ def extract_evaluation_result(
             **outcome.failure.model_dump(mode="json"),
         }
         for _, observation in steps
-        if isinstance(observation, ResearchObservation)
+        if isinstance(observation, CompletedResearchObservation)
         for outcome in observation.fetch_outcomes
         if isinstance(outcome, FetchFailure)
     ]
@@ -142,15 +143,17 @@ def extract_evaluation_result(
             **outcome.failure.model_dump(mode="json"),
         }
         for _, observation in steps
-        if isinstance(observation, ResearchObservation)
+        if isinstance(observation, CompletedResearchObservation)
         for outcome in observation.extraction_outcomes
         if isinstance(outcome, ExtractionFailure)
     ]
     retrieval_failures = [
-        observation.retrieval_failure.model_dump(mode="json")
+        observation.model_dump(
+            mode="json",
+            exclude={"type", "status", "query", "route"},
+        )
         for _, observation in steps
-        if isinstance(observation, ResearchObservation)
-        and observation.retrieval_failure is not None
+        if isinstance(observation, RetrievalFailedResearchObservation)
     ]
 
     sources = [
@@ -173,7 +176,7 @@ def extract_evaluation_result(
     unknown_source_count = 0
     source_classifications: list[dict[str, Any]] = []
     for _, observation in steps:
-        if not isinstance(observation, ResearchObservation):
+        if not isinstance(observation, CompletedResearchObservation):
             continue
         filter_report = observation.retrieval_filter_report
         classification_report = observation.source_classification_report

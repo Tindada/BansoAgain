@@ -169,25 +169,18 @@ ExtractionOutcome = Annotated[
 # Action observations
 
 
-class RetrievalFailure(ObservationModel):
-    """Diagnostic details for a failed retrieval operation."""
-
-    provider: str
-    reason: str
-    status_code: int | None = None
-    message: str
-    source_error_type: str
-    retryable: bool
-    attempt_count: int = Field(ge=1)
-
-
-class ResearchObservation(ObservationModel):
-    """Combined retrieval, selection, fetch, and extraction result."""
+class ResearchObservationBase(ObservationModel):
+    """Fields shared by all handled research action results."""
 
     type: Literal[AgentActionType.RESEARCH] = AgentActionType.RESEARCH
     query: str = Field(min_length=1)
     route: RetrievalRoute
-    retrieval_failure: RetrievalFailure | None = None
+
+
+class CompletedResearchObservation(ResearchObservationBase):
+    """Completed retrieval, selection, fetch, and extraction result."""
+
+    status: Literal["completed"] = "completed"
     search_result_ids: list[str]
     retrieval_filter_report: RetrievalFilterReport
     source_classification_report: SourceClassificationReport
@@ -198,70 +191,24 @@ class ResearchObservation(ObservationModel):
     search_result_index_updates: dict[str, str]
     document_index_updates: dict[str, str]
 
-    @classmethod
-    def from_retrieval_failure(
-        cls,
-        *,
-        query: str,
-        route: RetrievalRoute,
-        failure: RetrievalFailure,
-    ) -> "ResearchObservation":
-        """Construct the canonical result of a failed retrieval."""
-        return cls(
-            query=query,
-            route=route,
-            retrieval_failure=failure,
-            search_result_ids=[],
-            retrieval_filter_report=RetrievalFilterReport(
-                input_count=0,
-                output_count=0,
-            ),
-            source_classification_report=SourceClassificationReport(
-                input_count=0,
-                recognized_count=0,
-                unknown_count=0,
-            ),
-            search_result_merge_report=SearchResultMergeReport(
-                candidate_count=0,
-                new_result_count=0,
-                reused_result_count=0,
-            ),
-            selection_report=SearchResultSelectionReport(
-                candidate_ids=[],
-                selected_ids=[],
-                deferred_ids=[],
-            ),
-            fetch_outcomes=[],
-            extraction_outcomes=[],
-            search_result_index_updates={},
-            document_index_updates={},
-        )
 
-    @model_validator(mode="after")
-    def validate_failed_retrieval_has_no_artifacts(self) -> "ResearchObservation":
-        if self.retrieval_failure is None:
-            return self
-        if (
-            self.search_result_ids
-            or self.retrieval_filter_report.input_count
-            or self.retrieval_filter_report.output_count
-            or self.source_classification_report.input_count
-            or self.source_classification_report.recognized_count
-            or self.source_classification_report.unknown_count
-            or self.source_classification_report.classifications
-            or self.search_result_merge_report.candidate_count
-            or self.search_result_merge_report.new_result_count
-            or self.search_result_merge_report.reused_result_count
-            or self.selection_report.candidate_ids
-            or self.selection_report.selected_ids
-            or self.selection_report.deferred_ids
-            or self.fetch_outcomes
-            or self.extraction_outcomes
-            or self.search_result_index_updates
-            or self.document_index_updates
-        ):
-            raise ValueError("failed retrieval cannot contain artifacts or outcomes")
-        return self
+class RetrievalFailedResearchObservation(ResearchObservationBase):
+    """Handled retrieval failure that prevented later research stages."""
+
+    status: Literal["retrieval_failed"] = "retrieval_failed"
+    provider: str
+    reason: str
+    status_code: int | None = None
+    message: str
+    source_error_type: str
+    retryable: bool
+    attempt_count: int = Field(ge=1)
+
+
+ResearchObservation = Annotated[
+    CompletedResearchObservation | RetrievalFailedResearchObservation,
+    Field(discriminator="status"),
+]
 
 
 class CurateEvidenceObservation(ObservationModel):

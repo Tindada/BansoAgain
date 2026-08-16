@@ -13,10 +13,10 @@ from banso.apps.news_evaluation import (
 from banso.artifacts import InMemoryArtifactStore
 from banso.core import AgentAction, AgentActionType, AgentRuntime, AgentState, UserQuery
 from banso.core.observation import (
+    CompletedResearchObservation,
     FinishObservation,
-    ResearchObservation,
+    RetrievalFailedResearchObservation,
     RetrievalFilterReport,
-    RetrievalFailure,
     SearchResultMergeReport,
     SearchResultSelectionReport,
     SourceClassificationReport,
@@ -58,7 +58,10 @@ class Policy:
 
 
 class Executor:
-    def __init__(self, retrieval_failure: RetrievalFailure | None = None) -> None:
+    def __init__(
+        self,
+        retrieval_failure: RetrievalFailedResearchObservation | None = None,
+    ) -> None:
         self.retrieval_failure = retrieval_failure
 
     async def execute(self, action: AgentAction, state: AgentState):
@@ -70,13 +73,9 @@ class Executor:
         if action.type == AgentActionType.STOP:
             return StopObservation()
         if self.retrieval_failure is not None:
-            return ResearchObservation.from_retrieval_failure(
-                query="focused",
-                route="web",
-                failure=self.retrieval_failure,
-            )
+            return self.retrieval_failure
         result_ids = ["result"]
-        return ResearchObservation(
+        return CompletedResearchObservation(
             query="focused",
             route="web",
             search_result_ids=result_ids,
@@ -203,7 +202,9 @@ def test_evaluation_reports_handled_retrieval_failures_separately() -> None:
     runtime = AgentRuntime(
         Policy(AgentActionType.STOP),
         Executor(
-            RetrievalFailure(
+            RetrievalFailedResearchObservation(
+                query="focused",
+                route="web",
                 provider="tavily",
                 reason="http_status",
                 status_code=429,

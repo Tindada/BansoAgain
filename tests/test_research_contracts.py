@@ -13,13 +13,13 @@ from banso.core import (
     UserQuery,
 )
 from banso.core.observation import (
+    CompletedResearchObservation,
     DocumentFetchFailure,
     EvidenceExtractionFailure,
     ExtractionFailure,
     ExtractionSuccess,
     FetchFailure,
     FetchSuccess,
-    ResearchObservation,
     RetrievalFilterReport,
     SearchResultMergeReport,
     SearchResultSelectionReport,
@@ -27,8 +27,8 @@ from banso.core.observation import (
 )
 
 
-def _research_observation() -> ResearchObservation:
-    return ResearchObservation(
+def _research_observation() -> CompletedResearchObservation:
+    return CompletedResearchObservation(
         query="query",
         route=RetrievalRoute.WEB,
         search_result_ids=["result-1"],

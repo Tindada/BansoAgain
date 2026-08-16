@@ -15,9 +15,9 @@ from banso.core import (
     UserQuery,
 )
 from banso.core.observation import (
+    CompletedResearchObservation,
     ExtractionSuccess,
     FetchSuccess,
-    ResearchObservation,
     RetrievalFilterReport,
     SearchResultMergeReport,
     SearchResultSelectionReport,
@@ -62,7 +62,7 @@ def _completed_state_and_store() -> tuple[AgentState, InMemoryArtifactStore]:
         type=AgentActionType.RESEARCH,
         params={"query": "focused query", "route": "web"},
     )
-    observation = ResearchObservation(
+    observation = CompletedResearchObservation(
         query="focused query",
         route=RetrievalRoute.WEB,
         search_result_ids=[result.id],

@@ -14,7 +14,10 @@ from banso.core import (
     RetrievalRoute,
     UserQuery,
 )
-from banso.core.observation import ResearchObservation
+from banso.core.observation import (
+    CompletedResearchObservation,
+    RetrievalFailedResearchObservation,
+)
 from banso.documents import (
     Document,
     DocumentFetchError,
@@ -196,7 +199,7 @@ def test_research_routes_and_processes_selected_results_atomically() -> None:
     )
     observation = asyncio.run(executor.execute(action, state))
 
-    assert isinstance(observation, ResearchObservation)
+    assert isinstance(observation, CompletedResearchObservation)
     assert len(observation.search_result_ids) == 3
     assert (
         observation.selection_report.selected_ids
@@ -303,7 +306,7 @@ def test_retrieval_retries_and_continues_after_transient_failure() -> None:
     )
 
     assert provider.attempt_count == 2
-    assert observation.retrieval_failure is None
+    assert isinstance(observation, CompletedResearchObservation)
     assert len(observation.search_result_ids) == 1
     assert len(observation.fetch_outcomes) == 1
 
@@ -327,10 +330,10 @@ def test_retrieval_failure_is_recorded_without_artifacts_and_consumes_budget() -
 
     output = asyncio.run(runtime.run(AgentState(query=UserQuery(text="query"))))
     state = output.result.state
-    failure = state.action_history[0].observation.retrieval_failure
+    failure = state.action_history[0].observation
 
     assert provider.attempt_count == 2
-    assert failure is not None
+    assert isinstance(failure, RetrievalFailedResearchObservation)
     assert failure.reason == "transport"
     assert failure.attempt_count == 2
     assert state.current_step == 2
@@ -356,8 +359,8 @@ def test_non_retryable_retrieval_failure_is_not_retried() -> None:
     )
 
     assert provider.attempt_count == 1
-    assert observation.retrieval_failure is not None
-    assert observation.retrieval_failure.status_code == 400
+    assert isinstance(observation, RetrievalFailedResearchObservation)
+    assert observation.status_code == 400
 
 
 def test_global_document_budget_bounds_research_selection() -> None:

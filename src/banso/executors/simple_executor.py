@@ -2,9 +2,9 @@
 
 from banso.core.action import AgentAction, AgentActionType, ResearchActionParams
 from banso.core.observation import (
+    CompletedResearchObservation,
     FinishObservation,
     Observation,
-    ResearchObservation,
     RetrievalFilterReport,
     SearchResultMergeReport,
     SearchResultSelectionReport,
@@ -20,7 +20,7 @@ class SimpleActionExecutor:
     async def execute(self, action: AgentAction, state: AgentState) -> Observation:
         if action.type == AgentActionType.RESEARCH:
             params = ResearchActionParams.model_validate(action.params)
-            return ResearchObservation(
+            return CompletedResearchObservation(
                 query=params.query,
                 route=params.route,
                 search_result_ids=[],

@@ -4,6 +4,7 @@ from typing import Protocol
 
 from banso.core.action import AgentAction, AgentActionType
 from banso.core.observation import (
+    CompletedResearchObservation,
     CurateEvidenceObservation,
     ExtractionFailure,
     ExtractionOutcome,
@@ -13,7 +14,6 @@ from banso.core.observation import (
     FetchSuccess,
     FinishObservation,
     Observation,
-    ResearchObservation,
 )
 from banso.core.state import (
     ActionHistoryEntry,
@@ -122,7 +122,7 @@ class DefaultStateReducer:
         next_state.current_step += 1
         next_state.last_action = action.type
 
-        if isinstance(observation, ResearchObservation):
+        if isinstance(observation, CompletedResearchObservation):
             for result_id in observation.search_result_ids:
                 next_state.search_results.setdefault(result_id, SearchResultState())
             _update_index(

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from banso.artifacts import ArtifactStore
 from banso.core.action import ResearchActionParams, RetrievalRoute
 from banso.core.observation import (
+    CompletedResearchObservation,
     DocumentFetchFailure,
     EvidenceExtractionFailure,
     ExtractionFailure,
@@ -16,8 +17,8 @@ from banso.core.observation import (
     FetchOutcome,
     FetchSuccess,
     ResearchObservation,
+    RetrievalFailedResearchObservation,
     RetrievalFilterReport,
-    RetrievalFailure,
     SearchResultMergeReport,
     SearchResultSelectionReport,
     SourceClassificationReport,
@@ -113,17 +114,20 @@ class ResearchPipeline:
                 policy=self.retrieval_retry_policy,
             )
             if attempt.error is not None:
-                failure = self._retrieval_failure(
-                    attempt.error,
-                    attempt.attempt_count,
+                failure = RetrievalFailedResearchObservation(
+                    query=params.query,
+                    route=params.route,
+                    provider=attempt.error.provider,
+                    reason=attempt.error.reason,
+                    status_code=attempt.error.status_code,
+                    message=attempt.error.message,
+                    source_error_type=attempt.error.source_error_type,
+                    retryable=attempt.error.retryable,
+                    attempt_count=attempt.attempt_count,
                 )
                 span.set_attribute("outcome", "failure")
                 span.set_output({"retrieval_failure": failure})
-                return ResearchObservation.from_retrieval_failure(
-                    query=params.query,
-                    route=params.route,
-                    failure=failure,
-                )
+                return failure
             if attempt.value is None:
                 raise AssertionError("successful retrieval returned no result")
             (
@@ -172,7 +176,7 @@ class ResearchPipeline:
             )
             span.set_output({"extraction_outcomes": extraction_outcomes})
 
-        return ResearchObservation(
+        return CompletedResearchObservation(
             query=params.query,
             route=params.route,
             search_result_ids=search_result_ids,
@@ -184,21 +188,6 @@ class ResearchPipeline:
             extraction_outcomes=extraction_outcomes,
             search_result_index_updates=search_result_index_updates,
             document_index_updates=document_index_updates,
-        )
-
-    @staticmethod
-    def _retrieval_failure(
-        error: RetrievalError,
-        attempt_count: int,
-    ) -> RetrievalFailure:
-        return RetrievalFailure(
-            provider=error.provider,
-            reason=error.reason,
-            status_code=error.status_code,
-            message=error.message,
-            source_error_type=error.source_error_type,
-            retryable=error.retryable,
-            attempt_count=attempt_count,
         )
 
     def _process_retrieval_results(

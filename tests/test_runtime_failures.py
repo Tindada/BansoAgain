@@ -19,8 +19,8 @@ from banso.core import (
     UserQuery,
 )
 from banso.core.observation import (
+    CompletedResearchObservation,
     Observation,
-    ResearchObservation,
     RetrievalFilterReport,
     SearchResultMergeReport,
     SearchResultSelectionReport,
@@ -62,7 +62,7 @@ class StopExecutor:
     ) -> Observation:
         if action.type == AgentActionType.STOP:
             return StopObservation()
-        return ResearchObservation(
+        return CompletedResearchObservation(
             query=state.query.text,
             route="web",
             search_result_ids=[],

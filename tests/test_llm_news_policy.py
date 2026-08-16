@@ -16,9 +16,10 @@ from banso.core import (
     UserQuery,
 )
 from banso.core.observation import (
+    CompletedResearchObservation,
     ResearchObservation,
+    RetrievalFailedResearchObservation,
     RetrievalFilterReport,
-    RetrievalFailure,
     SearchResultMergeReport,
     SearchResultSelectionReport,
     SourceClassificationReport,
@@ -65,13 +66,11 @@ def _empty_research(
     *,
     query: str = "query",
     route: RetrievalRoute = RetrievalRoute.WEB,
-    retrieval_failure: RetrievalFailure | None = None,
-) -> ResearchObservation:
+) -> CompletedResearchObservation:
     result_ids: list[str] = []
-    return ResearchObservation(
+    return CompletedResearchObservation(
         query=query,
         route=route,
-        retrieval_failure=retrieval_failure,
         search_result_ids=result_ids,
         search_result_index_updates={},
         search_result_merge_report=SearchResultMergeReport(
@@ -180,16 +179,16 @@ def test_same_query_is_allowed_on_a_different_route() -> None:
 def test_retrieval_failure_is_visible_to_policy_without_external_message() -> None:
     state = _apply_research(
         AgentState(query=UserQuery(text="question")),
-        _empty_research(
-            retrieval_failure=RetrievalFailure(
-                provider="tavily",
-                reason="http_status",
-                status_code=400,
-                message="untrusted provider response",
-                source_error_type="HTTPStatusError",
-                retryable=False,
-                attempt_count=1,
-            )
+        RetrievalFailedResearchObservation(
+            query="query",
+            route=RetrievalRoute.WEB,
+            provider="tavily",
+            reason="http_status",
+            status_code=400,
+            message="untrusted provider response",
+            source_error_type="HTTPStatusError",
+            retryable=False,
+            attempt_count=1,
         ),
     )
     policy, client = _policy(
@@ -200,7 +199,7 @@ def test_retrieval_failure_is_visible_to_policy_without_external_message() -> No
 
     prompt = json.loads(client.requests[0].messages[1].content)
     history = prompt["context"]["research_history"][0]
-    assert history["status"] == "failure"
+    assert history["status"] == "retrieval_failed"
     assert history["reason"] == "http_status"
     assert history["status_code"] == 400
     assert "untrusted provider response" not in client.requests[0].messages[1].content
