@@ -8,7 +8,12 @@ from banso.retrieval.filter import (
     RetrievalFilterResult,
 )
 from banso.retrieval.models import SearchResult, Source, SourceType
-from banso.retrieval.provider import RetrievalProvider, SearchRequest
+from banso.retrieval.provider import (
+    RetrievalError,
+    RetrievalFailureReason,
+    RetrievalProvider,
+    SearchRequest,
+)
 from banso.retrieval.source_classifier import (
     SourceClassification,
     SourceClassificationResult,
@@ -24,6 +29,8 @@ __all__ = [
     "RetrievalFilterConfig",
     "RetrievalFilterReport",
     "RetrievalFilterResult",
+    "RetrievalError",
+    "RetrievalFailureReason",
     "RetrievalProvider",
     "SearchRequest",
     "SearchResult",

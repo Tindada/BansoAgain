@@ -17,6 +17,7 @@ from banso.core.observation import (
     FetchSuccess,
     ResearchObservation,
     RetrievalFilterReport,
+    RetrievalFailure,
     SearchResultMergeReport,
     SearchResultSelectionReport,
     SourceClassificationReport,
@@ -34,6 +35,7 @@ from banso.documents import (
 )
 from banso.retrieval import (
     RetrievalProvider,
+    RetrievalError,
     SearchRequest,
     SearchResult,
     SourceClassifier,
@@ -66,6 +68,7 @@ class ResearchPipeline:
         max_extraction_concurrency: int = 4,
         fetch_retry_policy: RetryPolicy | None = None,
         extraction_retry_policy: RetryPolicy | None = None,
+        retrieval_retry_policy: RetryPolicy | None = None,
     ) -> None:
         if not research_routes:
             raise ValueError("research_routes must contain at least one route")
@@ -80,6 +83,7 @@ class ResearchPipeline:
         self.max_extraction_concurrency = max_extraction_concurrency
         self.fetch_retry_policy = fetch_retry_policy or RetryPolicy()
         self.extraction_retry_policy = extraction_retry_policy or RetryPolicy()
+        self.retrieval_retry_policy = retrieval_retry_policy or RetryPolicy()
 
     async def run(
         self,
@@ -96,13 +100,40 @@ class ResearchPipeline:
             input={"query": params.query},
             attributes={"route": params.route.value},
         ) as span:
+            request = SearchRequest(
+                query=params.query,
+                language=state.query.language,
+                region=state.query.region,
+                time_range=state.query.time_range,
+            )
+            attempt = await run_with_retry(
+                lambda: components.retrieval_provider.search(request),
+                error_type=RetrievalError,
+                is_retryable=lambda error: error.retryable,
+                policy=self.retrieval_retry_policy,
+            )
+            if attempt.error is not None:
+                failure = self._retrieval_failure(
+                    attempt.error,
+                    attempt.attempt_count,
+                )
+                span.set_attribute("outcome", "failure")
+                span.set_output({"retrieval_failure": failure})
+                return ResearchObservation.from_retrieval_failure(
+                    query=params.query,
+                    route=params.route,
+                    failure=failure,
+                )
+            if attempt.value is None:
+                raise AssertionError("successful retrieval returned no result")
             (
                 search_result_ids,
                 search_result_index_updates,
                 merge_report,
                 filter_report,
                 classification_report,
-            ) = await self._retrieve(params, state, components.retrieval_provider)
+            ) = self._process_retrieval_results(attempt.value, state)
+            span.set_attribute("outcome", "success")
             span.set_output(
                 {
                     "search_result_ids": search_result_ids,
@@ -155,11 +186,25 @@ class ResearchPipeline:
             document_index_updates=document_index_updates,
         )
 
-    async def _retrieve(
+    @staticmethod
+    def _retrieval_failure(
+        error: RetrievalError,
+        attempt_count: int,
+    ) -> RetrievalFailure:
+        return RetrievalFailure(
+            provider=error.provider,
+            reason=error.reason,
+            status_code=error.status_code,
+            message=error.message,
+            source_error_type=error.source_error_type,
+            retryable=error.retryable,
+            attempt_count=attempt_count,
+        )
+
+    def _process_retrieval_results(
         self,
-        params: ResearchActionParams,
+        raw_results: list[SearchResult],
         state: AgentState,
-        retrieval_provider: RetrievalProvider,
     ) -> tuple[
         list[str],
         dict[str, str],
@@ -167,14 +212,6 @@ class ResearchPipeline:
         RetrievalFilterReport,
         SourceClassificationReport,
     ]:
-        raw_results = await retrieval_provider.search(
-            SearchRequest(
-                query=params.query,
-                language=state.query.language,
-                region=state.query.region,
-                time_range=state.query.time_range,
-            )
-        )
         filtered = self.retrieval_filter.apply(raw_results)
         classified = self.source_classifier.apply(filtered.results)
         index_updates: dict[str, str] = {}

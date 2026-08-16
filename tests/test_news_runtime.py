@@ -23,7 +23,7 @@ from banso.documents import (
     EvidenceItem,
 )
 from banso.executors import NewsActionExecutor, ResearchRouteComponents
-from banso.retrieval import SearchRequest, SearchResult
+from banso.retrieval import RetrievalError, SearchRequest, SearchResult
 from banso.synthesis import SynthesisRequest, SynthesisResult
 from banso.tracing import InMemoryTraceSink, Tracer
 
@@ -53,6 +53,31 @@ class StaticRetrievalProvider:
                 rank=index,
             )
             for index in range(1, self.count + 1)
+        ]
+
+
+class FailingRetrievalProvider:
+    def __init__(self, *, failures: int, retryable: bool) -> None:
+        self.failures = failures
+        self.retryable = retryable
+        self.attempt_count = 0
+
+    async def search(self, request: SearchRequest) -> list[SearchResult]:
+        self.attempt_count += 1
+        if self.attempt_count <= self.failures:
+            raise RetrievalError(
+                provider="test",
+                reason="transport" if self.retryable else "http_status",
+                status_code=None if self.retryable else 400,
+                message="retrieval failed",
+                source_error_type="TestError",
+            )
+        return [
+            SearchResult(
+                id="recovered-result",
+                title="Recovered",
+                url="https://example.com/recovered",
+            )
         ]
 
 
@@ -132,6 +157,18 @@ def _executor(
         research_routes=routes,
         evidence_extractor=EvidenceExtractor(),
         synthesizer=synthesizer or RecordingSynthesizer(),
+    )
+
+
+def _web_executor(provider) -> NewsActionExecutor:
+    return _executor(
+        InMemoryArtifactStore(),
+        {
+            RetrievalRoute.WEB: ResearchRouteComponents(
+                provider,
+                RecordingFetcher(),
+            )
+        },
     )
 
 
@@ -250,6 +287,77 @@ def test_fetch_retries_within_the_research_action() -> None:
     assert fetcher.attempt_count == 2
     assert observation.fetch_outcomes[0].attempt_count == 2
     assert len(observation.extraction_outcomes) == 1
+
+
+def test_retrieval_retries_and_continues_after_transient_failure() -> None:
+    provider = FailingRetrievalProvider(failures=1, retryable=True)
+
+    observation = asyncio.run(
+        _web_executor(provider).execute(
+            AgentAction(
+                type=AgentActionType.RESEARCH,
+                params={"query": "query", "route": "web"},
+            ),
+            AgentState(query=UserQuery(text="query")),
+        )
+    )
+
+    assert provider.attempt_count == 2
+    assert observation.retrieval_failure is None
+    assert len(observation.search_result_ids) == 1
+    assert len(observation.fetch_outcomes) == 1
+
+
+def test_retrieval_failure_is_recorded_without_artifacts_and_consumes_budget() -> None:
+    provider = FailingRetrievalProvider(failures=2, retryable=True)
+    sink = InMemoryTraceSink()
+    runtime = AgentRuntime(
+        policy=SequencePolicy(
+            [
+                AgentAction(
+                    type=AgentActionType.RESEARCH,
+                    params={"query": "query", "route": "web"},
+                ),
+                AgentAction(type=AgentActionType.STOP),
+            ]
+        ),
+        executor=_web_executor(provider),
+        tracer=Tracer(sink),
+    )
+
+    output = asyncio.run(runtime.run(AgentState(query=UserQuery(text="query"))))
+    state = output.result.state
+    failure = state.action_history[0].observation.retrieval_failure
+
+    assert provider.attempt_count == 2
+    assert failure is not None
+    assert failure.reason == "transport"
+    assert failure.attempt_count == 2
+    assert state.current_step == 2
+    assert state.remaining_research_capacity == 2
+    assert state.remaining_document_capacity == state.budget.max_document_fetches
+    assert state.search_results == {}
+    assert state.documents == {}
+    spans = sink.get_trace(output.trace_id)
+    retrieve_span = next(span for span in spans if span.name == "news.research.retrieve")
+    assert retrieve_span.attributes["outcome"] == "failure"
+
+
+def test_non_retryable_retrieval_failure_is_not_retried() -> None:
+    provider = FailingRetrievalProvider(failures=2, retryable=False)
+    observation = asyncio.run(
+        _web_executor(provider).execute(
+            AgentAction(
+                type=AgentActionType.RESEARCH,
+                params={"query": "query", "route": "web"},
+            ),
+            AgentState(query=UserQuery(text="query")),
+        )
+    )
+
+    assert provider.attempt_count == 1
+    assert observation.retrieval_failure is not None
+    assert observation.retrieval_failure.status_code == 400
 
 
 def test_global_document_budget_bounds_research_selection() -> None:

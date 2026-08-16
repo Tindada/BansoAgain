@@ -4,8 +4,20 @@ import asyncio
 import json
 
 import httpx
+import pytest
 
-from banso.retrieval import SearchRequest, TavilyRetrievalProvider
+from banso.retrieval import RetrievalError, SearchRequest, TavilyRetrievalProvider
+
+
+async def _capture_search_error(handler, *, api_key: str = "key") -> RetrievalError:
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        provider = TavilyRetrievalProvider(api_key=api_key, client=client)
+        with pytest.raises(RetrievalError) as caught:
+            await provider.search(SearchRequest(query="query"))
+        return caught.value
+    finally:
+        await client.aclose()
 
 
 async def _run_tavily_provider_maps_request_and_response() -> None:
@@ -130,3 +142,49 @@ def test_tavily_provider_maps_request_and_response() -> None:
 
 def test_tavily_provider_skips_invalid_result_items() -> None:
     asyncio.run(_run_tavily_provider_skips_invalid_result_items())
+
+
+@pytest.mark.parametrize(
+    ("status_code", "retryable"),
+    [
+        (400, False),
+        (429, True),
+        (500, True),
+    ],
+)
+def test_tavily_provider_maps_http_failures(
+    status_code: int,
+    retryable: bool,
+) -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            status_code,
+            text='{"detail":"failed tvly-test-key"}',
+            request=request,
+        )
+
+    error = asyncio.run(_capture_search_error(handler, api_key="tvly-test-key"))
+
+    assert error.reason == "http_status"
+    assert (error.status_code, error.retryable) == (status_code, retryable)
+    assert error.message == f"Tavily returned HTTP {status_code}"
+
+
+def test_tavily_provider_maps_transport_failure() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("timed out", request=request)
+
+    error = asyncio.run(_capture_search_error(handler))
+
+    assert error.reason == "transport"
+    assert error.retryable is True
+
+
+def test_tavily_provider_rejects_invalid_response() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="not json", request=request)
+
+    error = asyncio.run(_capture_search_error(handler))
+
+    assert error.reason == "invalid_response"
+    assert error.retryable is False

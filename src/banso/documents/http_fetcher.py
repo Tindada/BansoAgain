@@ -14,6 +14,7 @@ from banso.documents.parser import (
     DocumentParser,
     ParsedDocument,
 )
+from banso.http_errors import classify_httpx_error
 
 
 class HTTPDocumentFetcher:
@@ -50,33 +51,22 @@ class HTTPDocumentFetcher:
                     response = await client.get(request.url)
 
             response.raise_for_status()
-        except httpx.HTTPStatusError as error:
-            message = (
-                f"HTTP {error.response.status_code} while fetching document: "
-                f"{error.response.url}"
+        except (httpx.HTTPStatusError, httpx.TransportError) as error:
+            failure = classify_httpx_error(error)
+            url = (
+                str(error.response.url)
+                if isinstance(error, httpx.HTTPStatusError)
+                else request.url
+            )
+            message = str(error) or (
+                f"HTTP {failure.kind} while fetching document: {url}"
             )
             raise DocumentFetchError(
-                url=str(response.url),
-                status_code=response.status_code,
-                reason="http_status",
+                url=url,
+                status_code=failure.status_code,
+                reason=failure.kind,
                 message=message,
-                source_error_type=type(error).__name__,
-            ) from error
-        except httpx.TimeoutException as error:
-            message = str(error) or f"Timed out while fetching document: {request.url}"
-            raise DocumentFetchError(
-                url=request.url,
-                reason="timeout",
-                message=message,
-                source_error_type=type(error).__name__,
-            ) from error
-        except httpx.TransportError as error:
-            message = str(error) or (f"Transport error while fetching document: {request.url}")
-            raise DocumentFetchError(
-                url=request.url,
-                reason="transport",
-                message=message,
-                source_error_type=type(error).__name__,
+                source_error_type=failure.source_error_type,
             ) from error
 
         content_type = response.headers.get("content-type")

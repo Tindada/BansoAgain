@@ -5,6 +5,7 @@ from typing import Any, Literal, Protocol
 from pydantic import BaseModel, Field
 
 from banso.documents.models import Document
+from banso.http_errors import is_retryable_http_status
 from banso.retrieval.models import Source
 
 
@@ -45,9 +46,7 @@ class DocumentFetchError(Exception):
             return True
         if self.reason != "http_status" or self.status_code is None:
             return False
-        return self.status_code in {408, 425, 429} or (
-            500 <= self.status_code < 600
-        )
+        return is_retryable_http_status(self.status_code)
 
 
 class DocumentFetchRequest(BaseModel):

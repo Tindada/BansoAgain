@@ -18,6 +18,7 @@ from banso.core import (
 from banso.core.observation import (
     ResearchObservation,
     RetrievalFilterReport,
+    RetrievalFailure,
     SearchResultMergeReport,
     SearchResultSelectionReport,
     SourceClassificationReport,
@@ -64,11 +65,13 @@ def _empty_research(
     *,
     query: str = "query",
     route: RetrievalRoute = RetrievalRoute.WEB,
+    retrieval_failure: RetrievalFailure | None = None,
 ) -> ResearchObservation:
     result_ids: list[str] = []
     return ResearchObservation(
         query=query,
         route=route,
+        retrieval_failure=retrieval_failure,
         search_result_ids=result_ids,
         search_result_index_updates={},
         search_result_merge_report=SearchResultMergeReport(
@@ -172,6 +175,35 @@ def test_same_query_is_allowed_on_a_different_route() -> None:
     action = asyncio.run(policy.select_action(state))
 
     assert action.params["route"] == "local"
+
+
+def test_retrieval_failure_is_visible_to_policy_without_external_message() -> None:
+    state = _apply_research(
+        AgentState(query=UserQuery(text="question")),
+        _empty_research(
+            retrieval_failure=RetrievalFailure(
+                provider="tavily",
+                reason="http_status",
+                status_code=400,
+                message="untrusted provider response",
+                source_error_type="HTTPStatusError",
+                retryable=False,
+                attempt_count=1,
+            )
+        ),
+    )
+    policy, client = _policy(
+        {"type": "stop", "params": {}, "rationale": "Cannot progress."}
+    )
+
+    asyncio.run(policy.select_action(state))
+
+    prompt = json.loads(client.requests[0].messages[1].content)
+    history = prompt["context"]["research_history"][0]
+    assert history["status"] == "failure"
+    assert history["reason"] == "http_status"
+    assert history["status_code"] == 400
+    assert "untrusted provider response" not in client.requests[0].messages[1].content
 
 
 def test_rejects_disabled_route_and_invalid_output() -> None:

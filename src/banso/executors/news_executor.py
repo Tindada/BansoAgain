@@ -41,6 +41,7 @@ class NewsActionExecutor:
         max_extraction_concurrency: int = 4,
         fetch_retry_policy: RetryPolicy | None = None,
         extraction_retry_policy: RetryPolicy | None = None,
+        retrieval_retry_policy: RetryPolicy | None = None,
     ) -> None:
         self.store = store
         self.synthesizer = synthesizer
@@ -53,6 +54,7 @@ class NewsActionExecutor:
             max_extraction_concurrency=max_extraction_concurrency,
             fetch_retry_policy=fetch_retry_policy,
             extraction_retry_policy=extraction_retry_policy,
+            retrieval_retry_policy=retrieval_retry_policy,
         )
 
     @property

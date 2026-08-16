@@ -178,7 +178,7 @@ async def _run_http_document_fetcher_exposes_transport_failure(
 @pytest.mark.parametrize(
     ("source_error", "expected_reason"),
     (
-        (httpx.ReadTimeout("read timed out"), "timeout"),
+        (httpx.ReadTimeout("read timed out"), "transport"),
         (httpx.ConnectError("connection failed"), "transport"),
     ),
     ids=["timeout", "transport"],

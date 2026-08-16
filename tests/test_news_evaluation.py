@@ -16,9 +16,11 @@ from banso.core.observation import (
     FinishObservation,
     ResearchObservation,
     RetrievalFilterReport,
+    RetrievalFailure,
     SearchResultMergeReport,
     SearchResultSelectionReport,
     SourceClassificationReport,
+    StopObservation,
 )
 from banso.documents import Document, EvidenceItem
 from banso.retrieval import SearchResult, Source, SourceType
@@ -40,45 +42,63 @@ def test_load_evaluation_cases(tmp_path) -> None:
 
 
 class Policy:
+    def __init__(
+        self,
+        terminal_action: AgentActionType = AgentActionType.FINISH,
+    ) -> None:
+        self.terminal_action = terminal_action
+
     async def select_action(self, state: AgentState) -> AgentAction:
         if state.current_step == 0:
             return AgentAction(
                 type=AgentActionType.RESEARCH,
                 params={"query": "focused", "route": "web"},
             )
-        return AgentAction(type=AgentActionType.FINISH)
+        return AgentAction(type=self.terminal_action)
 
 
 class Executor:
+    def __init__(self, retrieval_failure: RetrievalFailure | None = None) -> None:
+        self.retrieval_failure = retrieval_failure
+
     async def execute(self, action: AgentAction, state: AgentState):
         if action.type == AgentActionType.FINISH:
             return FinishObservation(
                 final_answer="answer",
                 citations=["https://example.com/article"],
             )
+        if action.type == AgentActionType.STOP:
+            return StopObservation()
+        if self.retrieval_failure is not None:
+            return ResearchObservation.from_retrieval_failure(
+                query="focused",
+                route="web",
+                failure=self.retrieval_failure,
+            )
+        result_ids = ["result"]
         return ResearchObservation(
             query="focused",
             route="web",
-            search_result_ids=["result"],
+            search_result_ids=result_ids,
             search_result_index_updates={"https://example.com/article": "result"},
             search_result_merge_report=SearchResultMergeReport(
-                candidate_count=1,
-                new_result_count=1,
+                candidate_count=len(result_ids),
+                new_result_count=len(result_ids),
                 reused_result_count=0,
             ),
             retrieval_filter_report=RetrievalFilterReport(
                 input_count=2,
-                output_count=1,
+                output_count=len(result_ids),
                 dropped_invalid_url=1,
             ),
             source_classification_report=SourceClassificationReport(
-                input_count=1,
-                recognized_count=1,
+                input_count=len(result_ids),
+                recognized_count=len(result_ids),
                 unknown_count=0,
             ),
             selection_report=SearchResultSelectionReport(
-                candidate_ids=["result"],
-                selected_ids=["result"],
+                candidate_ids=result_ids,
+                selected_ids=result_ids,
                 deferred_ids=[],
             ),
             fetch_outcomes=[
@@ -176,3 +196,35 @@ def test_summarize_evaluation_results() -> None:
     assert summary["case_count"] == 2
     assert summary["completed_count"] == 1
     assert summary["average_documents"] == 1.0
+
+
+def test_evaluation_reports_handled_retrieval_failures_separately() -> None:
+    sink = InMemoryTraceSink()
+    runtime = AgentRuntime(
+        Policy(AgentActionType.STOP),
+        Executor(
+            RetrievalFailure(
+                provider="tavily",
+                reason="http_status",
+                status_code=429,
+                message="rate limited",
+                source_error_type="HTTPStatusError",
+                retryable=True,
+                attempt_count=2,
+            )
+        ),
+        tracer=Tracer(sink),
+    )
+    output = asyncio.run(runtime.run(AgentState(query=UserQuery(text="question"))))
+    result = extract_evaluation_result(
+        NewsEvaluationCase(id="case", category="news", query="question"),
+        output,
+        InMemoryArtifactStore(),
+        sink.get_trace(output.trace_id),
+    )
+    summary = summarize_evaluation_results([result])
+
+    assert len(result.retrieval_failures) == 1
+    assert result.retrieval_failures[0]["reason"] == "http_status"
+    assert summary["with_retrieval_failures_count"] == 1
+    assert summary["retrieval_failure_reason_counts"] == {"http_status": 1}
