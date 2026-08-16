@@ -109,6 +109,9 @@ class TavilyRetrievalProvider(RetrievalProvider):
         if request.region is not None and self.topic == "general":
             payload["country"] = request.region
 
+        if request.source_domains is not None:
+            payload["include_domains"] = request.source_domains
+
         return payload
 
     def _parse_results(self, data: dict[str, Any]) -> list[SearchResult]:

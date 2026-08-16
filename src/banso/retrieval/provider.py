@@ -54,6 +54,7 @@ class SearchRequest(BaseModel):
     language: str | None = None
     region: str | None = None
     time_range: str | None = None
+    source_domains: list[str] | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

@@ -183,6 +183,7 @@ class ResearchObservationBase(ObservationModel):
     type: Literal[AgentActionType.RESEARCH] = AgentActionType.RESEARCH
     query: str = Field(min_length=1)
     route: RetrievalRoute
+    source_domains: list[str] | None = None
 
 
 class CompletedResearchObservation(ResearchObservationBase):

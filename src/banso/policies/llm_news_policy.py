@@ -37,7 +37,12 @@ SYSTEM_PROMPT = (
 ACTION_INSTRUCTIONS = {
     AgentActionType.RESEARCH: (
         "Research one specific information need. params format: "
-        '{"query": "<non-empty string>", "route": "web|local"}. '
+        '{"query": "<non-empty string>", "route": "web|local", '
+        '"source_domains": ["<bare domain>"]}. source_domains is optional and '
+        "only valid for web. Each value must be a bare domain without a scheme, "
+        "port, path, or wildcard; omit it for an unrestricted search. Use it when "
+        "the user requests specific sites or a broader search did not find the "
+        "needed source, but do not restrict searches by default. "
         "route must be present in enabled_routes. web searches current external "
         "results; local searches the periodically updated indexed corpus."
     ),
@@ -215,7 +220,7 @@ class LLMNewsPolicy:
     def _validate_research_params(
         raw_params: dict[str, Any],
         context: NewsPolicyContext,
-    ) -> dict[str, str]:
+    ) -> dict[str, Any]:
         try:
             params = ResearchActionParams.model_validate(raw_params)
         except ValidationError as error:
@@ -228,7 +233,7 @@ class LLMNewsPolicy:
                 "research action selects a disabled route",
                 reason="invalid_params",
             )
-        return {"query": params.query, "route": params.route.value}
+        return params.model_dump(mode="json", exclude_none=True)
 
     @staticmethod
     def _validate_curation_params(

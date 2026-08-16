@@ -155,6 +155,34 @@ def test_selects_research_with_an_enabled_route() -> None:
     assert prompt["context"]["enabled_routes"] == ["web"]
     assert "candidate_results" not in prompt["context"]
     assert "candidate_documents" not in prompt["context"]
+    research_instruction = prompt["action_instructions"]["research"]
+    assert "source_domains" in research_instruction
+    assert "only valid for web" in research_instruction
+    assert "bare domain" in research_instruction
+
+
+def test_selects_web_research_with_source_domains() -> None:
+    policy, _ = _policy(
+        {
+            "type": "research",
+            "params": {
+                "query": "focused query",
+                "route": "web",
+                "source_domains": [" X.COM ", "twitter.com"],
+            },
+            "rationale": "Search the requested platform.",
+        }
+    )
+
+    action = asyncio.run(
+        policy.select_action(AgentState(query=UserQuery(text="question")))
+    )
+
+    assert action.params == {
+        "query": "focused query",
+        "route": "web",
+        "source_domains": ["x.com", "twitter.com"],
+    }
 
 
 def test_same_query_is_allowed_on_a_different_route() -> None:
@@ -182,6 +210,7 @@ def test_retrieval_failure_is_visible_to_policy_without_external_message() -> No
         RetrievalFailedResearchObservation(
             query="query",
             route=RetrievalRoute.WEB,
+            source_domains=["x.com"],
             provider="tavily",
             reason="http_status",
             status_code=400,
@@ -200,6 +229,7 @@ def test_retrieval_failure_is_visible_to_policy_without_external_message() -> No
     prompt = json.loads(client.requests[0].messages[1].content)
     history = prompt["context"]["research_history"][0]
     assert history["status"] == "retrieval_failed"
+    assert history["source_domains"] == ["x.com"]
     assert history["reason"] == "http_status"
     assert history["status_code"] == 400
     assert "untrusted provider response" not in client.requests[0].messages[1].content

@@ -98,7 +98,11 @@ class ResearchPipeline:
 
         with start_span(
             "news.research.retrieve",
-            input={"query": params.query},
+            input=params.model_dump(
+                mode="json",
+                include={"query", "source_domains"},
+                exclude_none=True,
+            ),
             attributes={"route": params.route.value},
         ) as span:
             request = SearchRequest(
@@ -106,6 +110,7 @@ class ResearchPipeline:
                 language=state.query.language,
                 region=state.query.region,
                 time_range=state.query.time_range,
+                source_domains=params.source_domains,
             )
             attempt = await run_with_retry(
                 lambda: components.retrieval_provider.search(request),
@@ -117,6 +122,7 @@ class ResearchPipeline:
                 failure = RetrievalFailedResearchObservation(
                     query=params.query,
                     route=params.route,
+                    source_domains=params.source_domains,
                     provider=attempt.error.provider,
                     reason=attempt.error.reason,
                     status_code=attempt.error.status_code,
@@ -179,6 +185,7 @@ class ResearchPipeline:
         return CompletedResearchObservation(
             query=params.query,
             route=params.route,
+            source_domains=params.source_domains,
             search_result_ids=search_result_ids,
             retrieval_filter_report=filter_report,
             source_classification_report=classification_report,

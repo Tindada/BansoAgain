@@ -1,9 +1,16 @@
 """Agent action models."""
 
+import re
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+_DOMAIN_PATTERN = re.compile(
+    r"(?=^.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+"
+    r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+)
 
 
 class RetrievalRoute(StrEnum):
@@ -29,6 +36,7 @@ class ResearchActionParams(BaseModel):
 
     query: str
     route: RetrievalRoute
+    source_domains: list[str] | None = None
 
     @field_validator("query")
     @classmethod
@@ -37,6 +45,29 @@ class ResearchActionParams(BaseModel):
         if not query:
             raise ValueError("query must be non-empty")
         return query
+
+    @field_validator("source_domains")
+    @classmethod
+    def normalize_source_domains(
+        cls,
+        value: list[str] | None,
+    ) -> list[str] | None:
+        if value is None:
+            return None
+        if not value:
+            raise ValueError("source_domains must be non-empty when provided")
+        domains = [domain.strip().lower() for domain in value]
+        if any(not _DOMAIN_PATTERN.fullmatch(domain) for domain in domains):
+            raise ValueError("source_domains must contain bare domain names")
+        if len(set(domains)) != len(domains):
+            raise ValueError("source_domains must contain unique domains")
+        return domains
+
+    @model_validator(mode="after")
+    def validate_source_domains_route(self) -> "ResearchActionParams":
+        if self.source_domains is not None and self.route != RetrievalRoute.WEB:
+            raise ValueError("source_domains is only supported by the web route")
+        return self
 
 
 class AgentAction(BaseModel):

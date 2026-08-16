@@ -68,6 +68,7 @@ async def _run_tavily_provider_maps_request_and_response() -> None:
                 query="latest AI news",
                 max_results=2,
                 time_range="day",
+                source_domains=["x.com", "twitter.com"],
             )
         )
     finally:
@@ -88,6 +89,7 @@ async def _run_tavily_provider_maps_request_and_response() -> None:
         "include_images": False,
         "include_usage": True,
         "time_range": "day",
+        "include_domains": ["x.com", "twitter.com"],
     }
     assert len(results) == 2
     assert results[0].title == "AI News One"
@@ -142,6 +144,14 @@ def test_tavily_provider_maps_request_and_response() -> None:
 
 def test_tavily_provider_skips_invalid_result_items() -> None:
     asyncio.run(_run_tavily_provider_skips_invalid_result_items())
+
+
+def test_tavily_provider_omits_include_domains_by_default() -> None:
+    provider = TavilyRetrievalProvider(api_key="tvly-test-key")
+
+    payload = provider._build_payload(SearchRequest(query="latest AI news"))
+
+    assert "include_domains" not in payload
 
 
 @pytest.mark.parametrize(

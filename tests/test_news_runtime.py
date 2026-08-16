@@ -235,7 +235,11 @@ def test_runtime_researches_then_finishes_from_active_evidence() -> None:
             [
                 AgentAction(
                     type=AgentActionType.RESEARCH,
-                    params={"query": "query", "route": "web"},
+                    params={
+                        "query": "query",
+                        "route": "web",
+                        "source_domains": ["x.com"],
+                    },
                 ),
                 AgentAction(type=AgentActionType.FINISH),
             ]
@@ -262,13 +266,19 @@ def test_runtime_researches_then_finishes_from_active_evidence() -> None:
         for document in state.documents.values()
     )
     assert len(synthesizer.requests[0].evidence_groups) == 2
-    span_names = {span.name for span in sink.get_trace(output.trace_id)}
+    spans = sink.get_trace(output.trace_id)
+    span_names = {span.name for span in spans}
     assert {
         "news.research.retrieve",
         "news.research.select",
         "news.research.fetch",
         "news.research.extract",
     } <= span_names
+    assert provider.requests[0].source_domains == ["x.com"]
+    research = state.action_history[0].observation
+    assert research.source_domains == ["x.com"]
+    retrieve_span = next(span for span in spans if span.name == "news.research.retrieve")
+    assert retrieve_span.input["source_domains"] == ["x.com"]
 
 
 def test_fetch_retries_within_the_research_action() -> None:
@@ -326,7 +336,11 @@ def test_retrieval_failure_is_recorded_without_artifacts_and_consumes_budget() -
             [
                 AgentAction(
                     type=AgentActionType.RESEARCH,
-                    params={"query": "query", "route": "web"},
+                    params={
+                        "query": "query",
+                        "route": "web",
+                        "source_domains": ["x.com"],
+                    },
                 ),
                 AgentAction(type=AgentActionType.STOP),
             ]
@@ -343,6 +357,7 @@ def test_retrieval_failure_is_recorded_without_artifacts_and_consumes_budget() -
     assert isinstance(failure, RetrievalFailedResearchObservation)
     assert failure.reason == "transport"
     assert failure.attempt_count == 2
+    assert failure.source_domains == ["x.com"]
     assert state.current_step == 2
     assert state.remaining_research_capacity == 2
     assert state.remaining_document_capacity == state.budget.max_document_fetches
@@ -351,6 +366,7 @@ def test_retrieval_failure_is_recorded_without_artifacts_and_consumes_budget() -
     spans = sink.get_trace(output.trace_id)
     retrieve_span = next(span for span in spans if span.name == "news.research.retrieve")
     assert retrieve_span.attributes["outcome"] == "failure"
+    assert retrieve_span.input["source_domains"] == ["x.com"]
 
 
 def test_non_retryable_retrieval_failure_is_not_retried() -> None:

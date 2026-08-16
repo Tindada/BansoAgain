@@ -60,11 +60,16 @@ def _completed_state_and_store() -> tuple[AgentState, InMemoryArtifactStore]:
     )
     action = AgentAction(
         type=AgentActionType.RESEARCH,
-        params={"query": "focused query", "route": "web"},
+        params={
+            "query": "focused query",
+            "route": "web",
+            "source_domains": ["example.com"],
+        },
     )
     observation = CompletedResearchObservation(
         query="focused query",
         route=RetrievalRoute.WEB,
+        source_domains=["example.com"],
         search_result_ids=[result.id],
         search_result_index_updates={result.url: result.id},
         search_result_merge_report=SearchResultMergeReport(
@@ -111,6 +116,7 @@ def test_context_contains_research_history_and_evidence_groups() -> None:
     assert context.working_set.active_document_refs == ["D1"]
     assert len(context.research_history) == 1
     assert context.research_history[0].query == "focused query"
+    assert context.research_history[0].source_domains == ["example.com"]
     assert context.research_history[0].selected_results == 1
     assert context.evidence_groups[0].claim_previews == ["Supported claim"]
     dumped = context.model_dump(mode="json")

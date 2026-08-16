@@ -69,10 +69,15 @@ def _research_observation() -> CompletedResearchObservation:
 
 
 def test_research_action_params_are_strict_and_normalize_query() -> None:
-    params = ResearchActionParams(query="  query  ", route="local")
+    params = ResearchActionParams(
+        query="  query  ",
+        route="web",
+        source_domains=[" X.COM ", "news.example.com"],
+    )
 
     assert params.query == "query"
-    assert params.route == RetrievalRoute.LOCAL
+    assert params.route == RetrievalRoute.WEB
+    assert params.source_domains == ["x.com", "news.example.com"]
 
     with pytest.raises(ValidationError):
         ResearchActionParams(query=" ", route="web")
@@ -80,6 +85,29 @@ def test_research_action_params_are_strict_and_normalize_query() -> None:
         ResearchActionParams(query="query", route="other")
     with pytest.raises(ValidationError):
         ResearchActionParams(query="query", route="web", unsupported=True)
+
+
+@pytest.mark.parametrize(
+    ("route", "source_domains"),
+    [
+        ("local", ["x.com"]),
+        ("web", []),
+        ("web", ["https://x.com"]),
+        ("web", ["x.com/path"]),
+        ("web", ["*.x.com"]),
+        ("web", ["x.com", "X.COM"]),
+    ],
+)
+def test_research_action_params_reject_invalid_source_domains(
+    route: str,
+    source_domains: list[str],
+) -> None:
+    with pytest.raises(ValidationError):
+        ResearchActionParams(
+            query="query",
+            route=route,
+            source_domains=source_domains,
+        )
 
 
 @pytest.mark.parametrize(

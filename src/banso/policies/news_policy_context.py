@@ -47,6 +47,7 @@ class ResearchHistoryItemBase(BaseModel):
 
     query: str
     route: RetrievalRoute
+    source_domains: list[str] | None = None
 
 
 class CompletedResearchHistoryItem(ResearchHistoryItemBase):
@@ -282,6 +283,7 @@ class NewsPolicyContextBuilder:
             return RetrievalFailedResearchHistoryItem(
                 query=observation.query,
                 route=observation.route,
+                source_domains=observation.source_domains,
                 reason=observation.reason,
                 status_code=observation.status_code,
                 retryable=observation.retryable,
@@ -301,6 +303,7 @@ class NewsPolicyContextBuilder:
         return CompletedResearchHistoryItem(
             query=observation.query,
             route=observation.route,
+            source_domains=observation.source_domains,
             retrieved_results=len(observation.search_result_ids),
             new_results=observation.search_result_merge_report.new_result_count,
             reused_results=observation.search_result_merge_report.reused_result_count,
