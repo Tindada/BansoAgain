@@ -14,6 +14,7 @@ from banso.core import (
     RuntimeRunResult,
 )
 from banso.core.observation import (
+    Citation,
     CompletedResearchObservation,
     ExtractionFailure,
     FetchFailure,
@@ -65,7 +66,7 @@ class NewsEvaluationResult(BaseModel):
     evidence_count: int = 0
     active_evidence_count: int = 0
     curation_action_count: int = 0
-    citations: list[str] = Field(default_factory=list)
+    citations: list[Citation] = Field(default_factory=list)
     source_domains: list[str] = Field(default_factory=list)
     source_types: list[str] = Field(default_factory=list)
     preferred_source_types: list[str] = Field(default_factory=list)

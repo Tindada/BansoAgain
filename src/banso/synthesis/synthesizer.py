@@ -5,6 +5,7 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel, Field
 
+from banso.core.observation import Citation
 from banso.core.state import UserQuery
 from banso.documents.models import EvidenceItem
 from banso.retrieval.models import Source
@@ -34,7 +35,7 @@ class SynthesisResult(BaseModel):
     """Structured synthesis output."""
 
     answer: str
-    citations: list[str] = Field(default_factory=list)
+    citations: list[Citation] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

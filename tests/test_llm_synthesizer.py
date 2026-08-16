@@ -8,6 +8,7 @@ from banso.documents import EvidenceItem
 from banso.llm import FakeLLMClient, LLMMessageRole
 from banso.retrieval import Source, SourceType
 from banso.synthesis import (
+    Citation,
     LLMSynthesizer,
     SynthesisEvidenceGroup,
     SynthesisRequest,
@@ -69,8 +70,18 @@ async def _run_llm_synthesizer() -> None:
     result = await synthesizer.synthesize(_request())
 
     assert result.answer == client.content
-    assert result.citations == ["https://example.com/a"]
-    assert result.metadata["cited_group_refs"] == ["S2", "S1"]
+    assert result.citations == [
+        Citation(
+            reference="S2",
+            document_id="doc-2",
+            source_url="https://example.com/a",
+        ),
+        Citation(
+            reference="S1",
+            document_id="doc-1",
+            source_url="https://example.com/a",
+        ),
+    ]
     assert result.metadata["llm_model"] == "fake-model"
     assert result.metadata["llm_usage"]["total_tokens"] is not None
 
@@ -103,7 +114,6 @@ async def _run_synthesizer_without_valid_references() -> None:
     result = await LLMSynthesizer(client).synthesize(_request())
 
     assert result.citations == []
-    assert result.metadata["cited_group_refs"] == []
 
 
 def test_llm_synthesizer() -> None:

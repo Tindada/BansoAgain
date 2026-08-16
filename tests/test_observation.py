@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from banso.core import AgentAction, AgentActionType
 from banso.core.observation import (
+    Citation,
     ExtractionSuccess,
     FinishObservation,
 )
@@ -17,7 +18,13 @@ def test_observation_round_trips_as_json_inside_history() -> None:
         action=AgentAction(type=AgentActionType.FINISH),
         observation=FinishObservation(
             final_answer="Answer",
-            citations=["https://example.com"],
+            citations=[
+                Citation(
+                    reference="S1",
+                    document_id="document-1",
+                    source_url="https://example.com",
+                )
+            ],
         ),
     )
 

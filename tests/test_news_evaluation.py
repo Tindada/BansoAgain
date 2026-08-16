@@ -13,6 +13,7 @@ from banso.apps.news_evaluation import (
 from banso.artifacts import InMemoryArtifactStore
 from banso.core import AgentAction, AgentActionType, AgentRuntime, AgentState, UserQuery
 from banso.core.observation import (
+    Citation,
     CompletedResearchObservation,
     FinishObservation,
     RetrievalFailedResearchObservation,
@@ -68,7 +69,13 @@ class Executor:
         if action.type == AgentActionType.FINISH:
             return FinishObservation(
                 final_answer="answer",
-                citations=["https://example.com/article"],
+                citations=[
+                    Citation(
+                        reference="S1",
+                        document_id="document",
+                        source_url="https://example.com/article",
+                    )
+                ],
             )
         if action.type == AgentActionType.STOP:
             return StopObservation()
@@ -185,7 +192,13 @@ def test_summarize_evaluation_results() -> None:
             active_document_count=1,
             evidence_count=3,
             active_evidence_count=2,
-            citations=["citation"],
+            citations=[
+                Citation(
+                    reference="S1",
+                    document_id="document",
+                    source_url="citation",
+                )
+            ],
         ),
         NewsEvaluationResult(case_id="b", category="news", query="b"),
     ]

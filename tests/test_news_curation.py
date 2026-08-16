@@ -19,7 +19,7 @@ from banso.core.state import DocumentState
 from banso.documents import Document, EvidenceItem
 from banso.executors import NewsActionExecutor, ResearchRouteComponents
 from banso.retrieval import FakeRetrievalProvider, Source, SourceType
-from banso.synthesis import SynthesisRequest, SynthesisResult
+from banso.synthesis import Citation, SynthesisRequest, SynthesisResult
 
 
 class UnusedFetcher:
@@ -38,7 +38,16 @@ class RecordingSynthesizer:
 
     async def synthesize(self, request: SynthesisRequest) -> SynthesisResult:
         self.request = request
-        return SynthesisResult(answer="answer", citations=["https://example.com/a"])
+        return SynthesisResult(
+            answer="answer",
+            citations=[
+                Citation(
+                    reference="S1",
+                    document_id="a",
+                    source_url="https://example.com/a",
+                )
+            ],
+        )
 
 
 def _executor(

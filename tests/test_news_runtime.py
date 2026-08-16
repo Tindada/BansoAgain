@@ -27,7 +27,7 @@ from banso.documents import (
 )
 from banso.executors import NewsActionExecutor, ResearchRouteComponents
 from banso.retrieval import RetrievalError, SearchRequest, SearchResult
-from banso.synthesis import SynthesisRequest, SynthesisResult
+from banso.synthesis import Citation, SynthesisRequest, SynthesisResult
 from banso.tracing import InMemoryTraceSink, Tracer
 
 
@@ -146,7 +146,14 @@ class RecordingSynthesizer:
         self.requests.append(request)
         return SynthesisResult(
             answer="answer",
-            citations=[group.source_url for group in request.evidence_groups],
+            citations=[
+                Citation(
+                    reference=f"S{index}",
+                    document_id=group.document_id,
+                    source_url=group.source_url,
+                )
+                for index, group in enumerate(request.evidence_groups, start=1)
+            ],
         )
 
 

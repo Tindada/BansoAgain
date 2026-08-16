@@ -4,6 +4,7 @@ import re
 
 from banso.llm import LLMClient, LLMMessage, LLMMessageRole, LLMRequest
 from banso.synthesis.synthesizer import (
+    Citation,
     SynthesisEvidenceGroup,
     SynthesisRequest,
     SynthesisResult,
@@ -54,7 +55,7 @@ class LLMSynthesizer:
                 metadata={"trace": {"operation": "synthesizer.synthesize"}},
             )
         )
-        cited_group_refs, citations = self._citations(
+        citations = self._citations(
             response.content,
             request.evidence_groups,
         )
@@ -66,7 +67,6 @@ class LLMSynthesizer:
                 "llm_usage": response.usage.model_dump()
                 if response.usage is not None
                 else None,
-                "cited_group_refs": cited_group_refs,
             },
         )
 
@@ -130,17 +130,23 @@ class LLMSynthesizer:
         self,
         answer: str,
         evidence_groups: list[SynthesisEvidenceGroup],
-    ) -> tuple[list[str], list[str]]:
-        cited_group_refs: list[str] = []
-        citations: list[str] = []
+    ) -> list[Citation]:
+        citations: list[Citation] = []
+        cited_group_refs: set[str] = set()
         for match in _GROUP_REFERENCE_PATTERN.finditer(answer):
             index = int(match.group(1))
             if index > len(evidence_groups):
                 continue
             group_ref = f"S{index}"
-            if group_ref not in cited_group_refs:
-                cited_group_refs.append(group_ref)
-            source_url = evidence_groups[index - 1].source_url
-            if source_url not in citations:
-                citations.append(source_url)
-        return cited_group_refs, citations
+            if group_ref in cited_group_refs:
+                continue
+            cited_group_refs.add(group_ref)
+            group = evidence_groups[index - 1]
+            citations.append(
+                Citation(
+                    reference=group_ref,
+                    document_id=group.document_id,
+                    source_url=group.source_url,
+                )
+            )
+        return citations

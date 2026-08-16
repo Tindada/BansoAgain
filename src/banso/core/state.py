@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 from banso.core.action import AgentAction, AgentActionType
-from banso.core.observation import Observation
+from banso.core.observation import Citation, Observation
 
 
 class ExecutionBudget(BaseModel):
@@ -91,7 +91,7 @@ class AgentState(BaseModel):
     documents: dict[str, DocumentState] = Field(default_factory=dict)
     document_index: dict[str, str] = Field(default_factory=dict)
     final_answer: str | None = None
-    citations: list[str] = Field(default_factory=list)
+    citations: list[Citation] = Field(default_factory=list)
     last_action: AgentActionType | None = None
     done: bool = False
 
