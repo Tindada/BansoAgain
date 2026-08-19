@@ -29,7 +29,7 @@ from banso.retrieval import (
     SourceClassifierConfig,
     TavilyRetrievalProvider,
 )
-from banso.synthesis import LLMSynthesizer
+from banso.synthesis import LLMSynthesizer, Synthesizer
 from banso.tracing import InMemoryTraceSink, Tracer
 
 
@@ -69,7 +69,10 @@ def enabled_retrieval_routes_from_env() -> list[RetrievalRoute]:
         ) from error
 
 
-def build_real_news_runtime() -> RealNewsRuntimeBundle:
+def build_real_news_runtime(
+    *,
+    synthesizer_class: type[Synthesizer] = LLMSynthesizer,
+) -> RealNewsRuntimeBundle:
     """Build a fresh LLM-policy news runtime from environment variables."""
     enabled_routes = enabled_retrieval_routes_from_env()
     registry = SourceRegistry.load(
@@ -132,7 +135,7 @@ def build_real_news_runtime() -> RealNewsRuntimeBundle:
             store=store,
             research_routes=research_routes,
             evidence_extractor=LLMEvidenceExtractor(client=local_llm_client),
-            synthesizer=LLMSynthesizer(client=external_llm_client),
+            synthesizer=synthesizer_class(client=external_llm_client),
             source_classifier=source_classifier,
             max_extraction_concurrency=int(
                 os.getenv("BANSO_MAX_EXTRACTION_CONCURRENCY", "4")

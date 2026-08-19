@@ -6,3 +6,5 @@ __pycache__/
 scratch_*.py
 runs/
 data/
+evaluations/gisa/raw/
+evaluations/gisa/derived/

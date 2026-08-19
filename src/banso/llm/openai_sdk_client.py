@@ -37,15 +37,18 @@ class OpenAISDKLLMClient:
             raise ValueError("LLM model is required.")
 
         try:
-            response = await self._client.chat.completions.create(
-                model=model,
-                messages=[
+            request_kwargs: dict[str, Any] = {
+                "model": model,
+                "messages": [
                     {"role": message.role.value, "content": message.content}
                     for message in request.messages
                 ],
-                temperature=request.temperature,
-                max_tokens=request.max_tokens,
-            )
+                "temperature": request.temperature,
+                "max_tokens": request.max_tokens,
+            }
+            if request.response_format is not None:
+                request_kwargs["response_format"] = request.response_format
+            response = await self._client.chat.completions.create(**request_kwargs)
         except APIError as error:
             raise LLMError(error) from error
 

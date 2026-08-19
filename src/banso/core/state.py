@@ -1,7 +1,7 @@
 """Agent state models."""
 
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -80,6 +80,7 @@ class AgentState(BaseModel):
     """Authoritative mutable record of runtime progress and artifact references."""
 
     query: UserQuery
+    synthesis_metadata: dict[str, Any] = Field(default_factory=dict)
     reference_time: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc).replace(microsecond=0)
     )

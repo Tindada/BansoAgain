@@ -117,6 +117,23 @@ async def _run_request_model_overrides_default_model() -> None:
     assert completions.calls[0]["model"] == "request-model"
 
 
+async def _run_response_format_is_passed_only_when_requested() -> None:
+    completions = FakeChatCompletions()
+    client = OpenAISDKLLMClient(
+        model="test-model",
+        client=FakeOpenAIClient(completions),
+    )
+
+    await client.generate(
+        LLMRequest(
+            messages=[],
+            response_format={"type": "json_object"},
+        )
+    )
+
+    assert completions.calls[0]["response_format"] == {"type": "json_object"}
+
+
 async def _run_missing_model_raises_error() -> None:
     completions = FakeChatCompletions()
     client = OpenAISDKLLMClient(client=FakeOpenAIClient(completions))
@@ -208,6 +225,10 @@ def test_openai_sdk_llm_client_maps_request_and_response() -> None:
 
 def test_openai_sdk_llm_client_request_model_overrides_default_model() -> None:
     asyncio.run(_run_request_model_overrides_default_model())
+
+
+def test_openai_sdk_llm_client_passes_requested_response_format() -> None:
+    asyncio.run(_run_response_format_is_passed_only_when_requested())
 
 
 def test_openai_sdk_llm_client_missing_model_raises_error() -> None:

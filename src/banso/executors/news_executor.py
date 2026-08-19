@@ -141,6 +141,7 @@ class NewsActionExecutor:
                 query=state.query,
                 reference_time=state.reference_time,
                 evidence_groups=evidence_groups,
+                metadata=state.synthesis_metadata,
             )
         )
         return FinishObservation(
