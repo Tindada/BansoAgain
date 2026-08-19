@@ -139,7 +139,11 @@ def test_selects_research_with_an_enabled_route() -> None:
     policy, client = _policy(
         {
             "type": "research",
-            "params": {"query": "  focused query  ", "route": "web"},
+            "params": {
+                "query": "  focused query  ",
+                "route": "web",
+                "source_domains": [],
+            },
             "rationale": "Need more evidence.",
         }
     )

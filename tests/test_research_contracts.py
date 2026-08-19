@@ -78,6 +78,9 @@ def test_research_action_params_are_strict_and_normalize_query() -> None:
     assert params.query == "query"
     assert params.route == RetrievalRoute.WEB
     assert params.source_domains == ["x.com", "news.example.com"]
+    assert ResearchActionParams(
+        query="query", route="web", source_domains=[]
+    ).source_domains is None
 
     with pytest.raises(ValidationError):
         ResearchActionParams(query=" ", route="web")
@@ -91,7 +94,6 @@ def test_research_action_params_are_strict_and_normalize_query() -> None:
     ("route", "source_domains"),
     [
         ("local", ["x.com"]),
-        ("web", []),
         ("web", ["https://x.com"]),
         ("web", ["x.com/path"]),
         ("web", ["*.x.com"]),

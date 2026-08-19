@@ -52,10 +52,8 @@ class ResearchActionParams(BaseModel):
         cls,
         value: list[str] | None,
     ) -> list[str] | None:
-        if value is None:
-            return None
         if not value:
-            raise ValueError("source_domains must be non-empty when provided")
+            return None
         domains = [domain.strip().lower() for domain in value]
         if any(not _DOMAIN_PATTERN.fullmatch(domain) for domain in domains):
             raise ValueError("source_domains must contain bare domain names")
