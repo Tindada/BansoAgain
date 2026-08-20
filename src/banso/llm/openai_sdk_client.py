@@ -48,6 +48,8 @@ class OpenAISDKLLMClient:
             }
             if request.response_format is not None:
                 request_kwargs["response_format"] = request.response_format
+            if request.extra_body is not None:
+                request_kwargs["extra_body"] = request.extra_body
             response = await self._client.chat.completions.create(**request_kwargs)
         except APIError as error:
             raise LLMError(error) from error
@@ -62,15 +64,30 @@ class OpenAISDKLLMClient:
         )
 
 
-class ThinkingTagStrippingLLMClient:
-    """Removes model thinking tags from an LLM client's response content."""
+class ThinkingModeLLMClient:
+    """Configure thinking requests and remove thinking tags from responses."""
 
     _thinking_tag_pattern = re.compile(r"<think>.*?</think>", re.DOTALL)
 
-    def __init__(self, client: LLMClient) -> None:
+    def __init__(
+        self,
+        client: LLMClient,
+        *,
+        thinking_extra_body: dict[str, Any] | None = None,
+    ) -> None:
         self.client = client
+        self.thinking_extra_body = thinking_extra_body
 
     async def generate(self, request: LLMRequest) -> LLMResponse:
+        if self.thinking_extra_body is not None:
+            request = request.model_copy(
+                update={
+                    "extra_body": {
+                        **self.thinking_extra_body,
+                        **(request.extra_body or {}),
+                    }
+                }
+            )
         response = await self.client.generate(request)
         return response.model_copy(
             update={"content": self._strip_thinking_tags(response.content)}

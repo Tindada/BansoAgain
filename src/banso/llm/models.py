@@ -30,6 +30,7 @@ class LLMRequest(BaseModel):
     temperature: float | None = None
     max_tokens: int | None = None
     response_format: dict[str, Any] | None = None
+    extra_body: dict[str, Any] | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

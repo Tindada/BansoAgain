@@ -68,10 +68,15 @@ def test_web_only_runtime_builds_only_the_web_route(monkeypatch) -> None:
         ),
     )
 
-    bundle = real_news.build_real_news_runtime()
+    thinking_extra_body = {"thinking": {"type": "disabled"}}
+    bundle = real_news.build_real_news_runtime(
+        extraction_thinking_extra_body=thinking_extra_body
+    )
 
     assert isinstance(bundle.runtime.policy, LLMNewsPolicy)
     assert isinstance(bundle.runtime.executor, NewsActionExecutor)
+    extractor = bundle.runtime.executor.research_pipeline.evidence_extractor
+    assert extractor.client.client.thinking_extra_body == thinking_extra_body
     assert set(bundle.runtime.executor.research_routes) == {RetrievalRoute.WEB}
     assert (
         bundle.runtime.executor.research_routes[RetrievalRoute.WEB].retrieval_provider

@@ -13,7 +13,7 @@ from banso.llm import (
     LLMMessageRole,
     LLMRequest,
     OpenAISDKLLMClient,
-    ThinkingTagStrippingLLMClient,
+    ThinkingModeLLMClient,
 )
 
 
@@ -117,7 +117,7 @@ async def _run_request_model_overrides_default_model() -> None:
     assert completions.calls[0]["model"] == "request-model"
 
 
-async def _run_response_format_is_passed_only_when_requested() -> None:
+async def _run_optional_request_fields_are_passed() -> None:
     completions = FakeChatCompletions()
     client = OpenAISDKLLMClient(
         model="test-model",
@@ -128,10 +128,14 @@ async def _run_response_format_is_passed_only_when_requested() -> None:
         LLMRequest(
             messages=[],
             response_format={"type": "json_object"},
+            extra_body={"thinking": {"type": "disabled"}},
         )
     )
 
     assert completions.calls[0]["response_format"] == {"type": "json_object"}
+    assert completions.calls[0]["extra_body"] == {
+        "thinking": {"type": "disabled"}
+    }
 
 
 async def _run_missing_model_raises_error() -> None:
@@ -174,15 +178,16 @@ async def _run_empty_content_and_missing_usage_are_supported() -> None:
     assert response.usage is None
 
 
-async def _run_thinking_tag_stripping_client_removes_thinking_content() -> None:
+async def _run_thinking_mode_client() -> None:
     completions = FakeChatCompletions(
         content="<think>reasoning details</think>\n[{\"claim\":\"x\"}]"
     )
-    client = ThinkingTagStrippingLLMClient(
+    client = ThinkingModeLLMClient(
         OpenAISDKLLMClient(
             model="test-model",
             client=FakeOpenAIClient(completions),
-        )
+        ),
+        thinking_extra_body={"thinking": {"type": "disabled"}},
     )
 
     response = await client.generate(
@@ -190,9 +195,14 @@ async def _run_thinking_tag_stripping_client_removes_thinking_content() -> None:
             messages=[
                 LLMMessage(role=LLMMessageRole.USER, content="Extract evidence.")
             ],
+            extra_body={"provider_option": True},
         )
     )
 
+    assert completions.calls[0]["extra_body"] == {
+        "thinking": {"type": "disabled"},
+        "provider_option": True,
+    }
     assert response.content == '[{"claim":"x"}]'
     assert response.model == "test-model"
 
@@ -227,8 +237,8 @@ def test_openai_sdk_llm_client_request_model_overrides_default_model() -> None:
     asyncio.run(_run_request_model_overrides_default_model())
 
 
-def test_openai_sdk_llm_client_passes_requested_response_format() -> None:
-    asyncio.run(_run_response_format_is_passed_only_when_requested())
+def test_openai_sdk_llm_client_passes_optional_request_fields() -> None:
+    asyncio.run(_run_optional_request_fields_are_passed())
 
 
 def test_openai_sdk_llm_client_missing_model_raises_error() -> None:
@@ -239,8 +249,8 @@ def test_openai_sdk_llm_client_empty_content_and_missing_usage_are_supported() -
     asyncio.run(_run_empty_content_and_missing_usage_are_supported())
 
 
-def test_thinking_tag_stripping_client_removes_thinking_content() -> None:
-    asyncio.run(_run_thinking_tag_stripping_client_removes_thinking_content())
+def test_thinking_mode_client_configures_request_and_strips_content() -> None:
+    asyncio.run(_run_thinking_mode_client())
 
 
 def test_openai_sdk_llm_client_wraps_and_preserves_provider_error() -> None:

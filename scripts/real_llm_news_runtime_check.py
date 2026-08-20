@@ -22,7 +22,7 @@ from banso.documents import (
 )
 from banso.executors import NewsActionExecutor, ResearchRouteComponents
 from banso.llm import (
-    ThinkingTagStrippingLLMClient,
+    ThinkingModeLLMClient,
     build_external_llm_client_from_env,
     build_vllm_llm_client_from_env,
 )
@@ -53,7 +53,7 @@ async def main() -> None:
     load_dotenv()
 
     query = os.getenv("BANSO_NEWS_QUERY", "latest AI news")
-    evidence_llm_client = ThinkingTagStrippingLLMClient(
+    evidence_llm_client = ThinkingModeLLMClient(
         build_vllm_llm_client_from_env()
     )
     external_llm_client = build_external_llm_client_from_env()

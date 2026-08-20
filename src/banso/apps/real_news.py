@@ -3,6 +3,7 @@
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from banso.artifacts import InMemoryArtifactStore
 from banso.corpus import (
@@ -18,7 +19,7 @@ from banso.core import AgentRuntime, RetrievalRoute
 from banso.documents import HTTPDocumentFetcher, LLMEvidenceExtractor
 from banso.executors import NewsActionExecutor, ResearchRouteComponents
 from banso.llm import (
-    ThinkingTagStrippingLLMClient,
+    ThinkingModeLLMClient,
     TracingLLMClient,
     build_external_llm_client_from_env,
     build_vllm_llm_client_from_env,
@@ -72,6 +73,7 @@ def enabled_retrieval_routes_from_env() -> list[RetrievalRoute]:
 def build_real_news_runtime(
     *,
     synthesizer_class: type[Synthesizer] = LLMSynthesizer,
+    extraction_thinking_extra_body: dict[str, Any] | None = None,
 ) -> RealNewsRuntimeBundle:
     """Build a fresh LLM-policy news runtime from environment variables."""
     enabled_routes = enabled_retrieval_routes_from_env()
@@ -82,8 +84,15 @@ def build_real_news_runtime(
         SourceClassifierConfig(source_domains=registry.source_type_by_domain())
     )
 
-    local_llm_client = TracingLLMClient(
-        ThinkingTagStrippingLLMClient(build_vllm_llm_client_from_env())
+    base_local_llm_client = build_vllm_llm_client_from_env()
+    policy_llm_client = TracingLLMClient(
+        ThinkingModeLLMClient(base_local_llm_client)
+    )
+    extraction_llm_client = TracingLLMClient(
+        ThinkingModeLLMClient(
+            base_local_llm_client,
+            thinking_extra_body=extraction_thinking_extra_body,
+        )
     )
     external_llm_client = TracingLLMClient(build_external_llm_client_from_env())
     store = InMemoryArtifactStore()
@@ -126,7 +135,7 @@ def build_real_news_runtime(
         )
 
     policy = LLMNewsPolicy(
-        client=local_llm_client,
+        client=policy_llm_client,
         context_builder=NewsPolicyContextBuilder(store, enabled_routes),
     )
     runtime = AgentRuntime(
@@ -134,7 +143,7 @@ def build_real_news_runtime(
         executor=NewsActionExecutor(
             store=store,
             research_routes=research_routes,
-            evidence_extractor=LLMEvidenceExtractor(client=local_llm_client),
+            evidence_extractor=LLMEvidenceExtractor(client=extraction_llm_client),
             synthesizer=synthesizer_class(client=external_llm_client),
             source_classifier=source_classifier,
             max_extraction_concurrency=int(

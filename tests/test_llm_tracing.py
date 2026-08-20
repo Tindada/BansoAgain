@@ -17,7 +17,7 @@ from banso.llm import (
     LLMRequest,
     LLMResponse,
     LLMUsage,
-    ThinkingTagStrippingLLMClient,
+    ThinkingModeLLMClient,
     TracingLLMClient,
 )
 from banso.policies import LLMNewsPolicy, LLMPolicyError, NewsPolicyContextBuilder
@@ -168,7 +168,7 @@ async def _run_traced_thinking_strip() -> tuple[LLMResponse, SpanRecord]:
     tracer = Tracer(sink)
     raw_content = "<think>private reasoning</think>\nFinal answer."
     client = TracingLLMClient(
-        ThinkingTagStrippingLLMClient(
+        ThinkingModeLLMClient(
             StaticResponseClient(
                 LLMResponse(
                     content=raw_content,

@@ -16,7 +16,7 @@ from banso.llm.models import (
 )
 from banso.llm.openai_sdk_client import (
     OpenAISDKLLMClient,
-    ThinkingTagStrippingLLMClient,
+    ThinkingModeLLMClient,
 )
 from banso.llm.tracing import TracingLLMClient
 
@@ -30,7 +30,7 @@ __all__ = [
     "LLMResponse",
     "LLMUsage",
     "OpenAISDKLLMClient",
-    "ThinkingTagStrippingLLMClient",
+    "ThinkingModeLLMClient",
     "TracingLLMClient",
     "build_external_llm_client_from_env",
     "build_vllm_llm_client_from_env",

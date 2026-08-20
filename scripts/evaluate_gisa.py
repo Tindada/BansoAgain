@@ -291,7 +291,10 @@ async def run_evaluation(
     cases: list[GisaCase],
     output_dir: Path,
 ) -> None:
-    bundle = build_real_news_runtime(synthesizer_class=GisaSynthesizer)
+    bundle = build_real_news_runtime(
+        synthesizer_class=GisaSynthesizer,
+        extraction_thinking_extra_body={"thinking": {"type": "disabled"}},
+    )
     budget = execution_budget(args)
     results_path = output_dir / "results.jsonl"
     traces_path = output_dir / "traces.jsonl"
