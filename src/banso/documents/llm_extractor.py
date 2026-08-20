@@ -8,14 +8,8 @@ from banso.documents.models import EvidenceItem
 from banso.llm import LLMClient, LLMError, LLMMessage, LLMMessageRole, LLMRequest
 
 
-SYSTEM_PROMPT = (
-    "You are a news evidence extraction assistant. Extract factual claims from "
-    "the provided document that are relevant to the user query. Use only the "
-    "provided document. Return only valid JSON, with no markdown or explanation."
-)
-
 EVIDENCE_OUTPUT_FORMAT = (
-    "Return a JSON array in this schema:\n"
+    "Return exactly one JSON array matching this schema:\n"
     "[\n"
     "  {\n"
     '    "claim": "...",\n'
@@ -23,6 +17,14 @@ EVIDENCE_OUTPUT_FORMAT = (
     '    "confidence": 0.8\n'
     "  }\n"
     "]"
+)
+
+SYSTEM_PROMPT = (
+    "You are a news evidence extraction assistant. Extract factual claims from "
+    "the provided document that are relevant to the user query. Use only the "
+    f"provided document.\n\n{EVIDENCE_OUTPUT_FORMAT}\n"
+    "Do not wrap the array in Markdown or an object, and do not include any "
+    "explanation."
 )
 
 DEFAULT_MAX_INPUT_BYTES = 24000
@@ -244,7 +246,7 @@ class LLMEvidenceExtractor:
             f"Document title:\n{document.title}\n\n"
             f"Document URL:\n{document.url}\n\n"
             f"Document text:\n{chunk_text}\n\n"
-            f"{EVIDENCE_OUTPUT_FORMAT}"
+            "Return only the JSON array defined by the system instructions."
         )
 
     def _chunk_failure_message(
@@ -272,6 +274,15 @@ class LLMEvidenceExtractor:
         content: str,
         request: EvidenceExtractionRequest,
     ) -> list[EvidenceItem]:
+        content = content.strip()
+        # Unwrap a complete JSON Markdown code block.
+        if content.startswith("```") and content.endswith("```"):
+            fence, separator, content = content.partition("\n")
+            if not separator or fence.lower() not in {"```", "```json"}:
+                content = fence + separator + content
+            else:
+                content = content[:-3].strip()
+
         try:
             raw_items = json.loads(content)
         except json.JSONDecodeError as error:
@@ -279,6 +290,10 @@ class LLMEvidenceExtractor:
                 "LLM evidence response is not valid JSON",
                 reason="invalid_json",
             ) from error
+
+        # Accept the common {"claims": [...]} response wrapper.
+        if isinstance(raw_items, dict) and set(raw_items) == {"claims"}:
+            raw_items = raw_items["claims"]
 
         if not isinstance(raw_items, list):
             raise EvidenceExtractionError(

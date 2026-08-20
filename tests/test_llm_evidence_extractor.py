@@ -50,7 +50,7 @@ def _document() -> Document:
 def _document_text_from_request(request: LLMRequest) -> str:
     user_prompt = request.messages[1].content
     document_text = user_prompt.split("Document text:\n", maxsplit=1)[1]
-    return document_text.split("\n\nReturn a JSON array", maxsplit=1)[0]
+    return document_text.split("\n\nReturn only the JSON array", maxsplit=1)[0]
 
 
 async def _run_llm_evidence_extractor() -> None:
@@ -128,6 +128,23 @@ async def _run_empty_array_case() -> None:
     assert evidence == []
 
 
+async def _run_compatible_json_wrappers_case() -> None:
+    for content in (
+        '```json\n[{"claim":"Company A announced a product."}]\n```',
+        '{"claims":[{"claim":"Company A announced a product."}]}',
+    ):
+        extractor = LLMEvidenceExtractor(client=FakeLLMClient(content=content))
+        evidence = await extractor.extract(
+            EvidenceExtractionRequest(
+                query=UserQuery(text="latest AI product news"),
+                document=_document(),
+            )
+        )
+        assert [item.claim for item in evidence] == [
+            "Company A announced a product."
+        ]
+
+
 async def _run_invalid_schema_case() -> None:
     extractor = LLMEvidenceExtractor(client=FakeLLMClient(content='{"claim":"x"}'))
 
@@ -172,7 +189,7 @@ async def _run_chunked_document_case() -> None:
         }
     )
     client = ChunkingLLMClient()
-    extractor = LLMEvidenceExtractor(client=client, max_input_bytes=600)
+    extractor = LLMEvidenceExtractor(client=client, max_input_bytes=700)
 
     evidence = await extractor.extract(
         EvidenceExtractionRequest(
@@ -186,7 +203,7 @@ async def _run_chunked_document_case() -> None:
         document.text
     )
     assert all(
-        sum(len(message.content.encode("utf-8")) for message in item.messages) <= 600
+        sum(len(message.content.encode("utf-8")) for message in item.messages) <= 700
         for item in client.requests
     )
     assert [item.claim for item in evidence] == [
@@ -197,7 +214,7 @@ async def _run_chunked_document_case() -> None:
 async def _run_later_chunk_failure_case() -> None:
     document = _document().model_copy(update={"text": "x" * 80})
     client = ChunkingLLMClient(fail_on_call=2)
-    extractor = LLMEvidenceExtractor(client=client, max_input_bytes=600)
+    extractor = LLMEvidenceExtractor(client=client, max_input_bytes=700)
     request = EvidenceExtractionRequest(
         query=UserQuery(text="latest AI product news"),
         document=document,
@@ -220,7 +237,7 @@ async def _run_document_chunk_limit_case() -> None:
     client = ChunkingLLMClient()
     extractor = LLMEvidenceExtractor(
         client=client,
-        max_input_bytes=600,
+        max_input_bytes=700,
         max_chunks_per_document=1,
     )
 
@@ -251,6 +268,10 @@ def test_llm_evidence_extractor_raises_for_invalid_json() -> None:
 
 def test_llm_evidence_extractor_accepts_empty_array() -> None:
     asyncio.run(_run_empty_array_case())
+
+
+def test_llm_evidence_extractor_accepts_compatible_json_wrappers() -> None:
+    asyncio.run(_run_compatible_json_wrappers_case())
 
 
 def test_llm_evidence_extractor_raises_for_invalid_schema() -> None:
