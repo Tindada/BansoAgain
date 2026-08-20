@@ -3,7 +3,7 @@
 import asyncio
 from datetime import datetime, timezone
 
-from banso.documents import DocumentParser
+from banso.documents import DocumentParseError, DocumentParser
 from tests.pdf_fixtures import make_text_pdf
 
 
@@ -94,6 +94,15 @@ def test_html_extraction_falls_back_to_body_and_removes_page_chrome() -> None:
 
     assert extraction.strategy == "body"
     assert extraction.text == "Body heading\nBody text."
+
+
+def test_html_extraction_rejects_empty_content() -> None:
+    try:
+        _parse_html("<html><body><script>challenge()</script></body></html>")
+    except DocumentParseError as error:
+        assert error.reason == "no_extractable_text"
+    else:
+        raise AssertionError("expected DocumentParseError")
 
 
 def test_html_extraction_reads_json_ld_publication_date_before_open_graph() -> None:

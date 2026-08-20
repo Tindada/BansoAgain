@@ -89,7 +89,14 @@ class DocumentParser:
                 if isinstance(content, str)
                 else content.decode("utf-8", errors="replace")
             )
-            return _extract_html_content(html)
+            extraction = _extract_html_content(html)
+            if not extraction.text.strip():
+                raise DocumentParseError(
+                    reason="no_extractable_text",
+                    message="HTML contains no extractable text",
+                    source_error_type="NoExtractableText",
+                )
+            return extraction
 
         if media_type != PDF_CONTENT_TYPE:
             raise ValueError(f"unsupported document media type: {media_type}")
