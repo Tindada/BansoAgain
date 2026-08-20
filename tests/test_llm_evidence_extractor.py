@@ -189,7 +189,7 @@ async def _run_chunked_document_case() -> None:
         }
     )
     client = ChunkingLLMClient()
-    extractor = LLMEvidenceExtractor(client=client, max_input_bytes=700)
+    extractor = LLMEvidenceExtractor(client=client, max_input_bytes=1_000)
 
     evidence = await extractor.extract(
         EvidenceExtractionRequest(
@@ -203,7 +203,7 @@ async def _run_chunked_document_case() -> None:
         document.text
     )
     assert all(
-        sum(len(message.content.encode("utf-8")) for message in item.messages) <= 700
+        sum(len(message.content.encode("utf-8")) for message in item.messages) <= 1_000
         for item in client.requests
     )
     assert [item.claim for item in evidence] == [
@@ -214,7 +214,7 @@ async def _run_chunked_document_case() -> None:
 async def _run_later_chunk_failure_case() -> None:
     document = _document().model_copy(update={"text": "x" * 80})
     client = ChunkingLLMClient(fail_on_call=2)
-    extractor = LLMEvidenceExtractor(client=client, max_input_bytes=700)
+    extractor = LLMEvidenceExtractor(client=client, max_input_bytes=1_000)
     request = EvidenceExtractionRequest(
         query=UserQuery(text="latest AI product news"),
         document=document,
@@ -237,7 +237,7 @@ async def _run_document_chunk_limit_case() -> None:
     client = ChunkingLLMClient()
     extractor = LLMEvidenceExtractor(
         client=client,
-        max_input_bytes=700,
+        max_input_bytes=1_000,
         max_chunks_per_document=1,
     )
 

@@ -22,7 +22,11 @@ EVIDENCE_OUTPUT_FORMAT = (
 SYSTEM_PROMPT = (
     "You are a news evidence extraction assistant. Extract factual claims from "
     "the provided document that are relevant to the user query. Use only the "
-    f"provided document.\n\n{EVIDENCE_OUTPUT_FORMAT}\n"
+    "Document text as evidence. Never invent or infer claims from the document "
+    "title, URL, user query, or prior knowledge. Copy every supporting_text "
+    "verbatim from the Document text. If the Document text is empty or contains "
+    "no directly relevant evidence, return []. Preserve tentative, future, and "
+    f"completed statements as written.\n\n{EVIDENCE_OUTPUT_FORMAT}\n"
     "Do not wrap the array in Markdown or an object, and do not include any "
     "explanation."
 )
