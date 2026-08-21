@@ -4,15 +4,11 @@ from datetime import datetime, timezone
 
 import pytest
 
-from banso.artifacts import InMemoryArtifactStore
-from banso.core import (
+from banso.artifacts.store import InMemoryArtifactStore
+from banso.core.action import (
     AgentAction,
     AgentActionType,
-    AgentState,
-    DefaultStateReducer,
-    ExecutionBudget,
     RetrievalRoute,
-    UserQuery,
 )
 from banso.core.observation import (
     CompletedResearchObservation,
@@ -20,16 +16,25 @@ from banso.core.observation import (
     FetchSuccess,
     RetrievalFailedResearchObservation,
 )
-from banso.core.state import ActionHistoryEntry, SearchResultState
-from banso.documents import Document, EvidenceItem
+from banso.core.reducer import DefaultStateReducer
+from banso.core.state import (
+    ActionHistoryEntry,
+    AgentState,
+    ExecutionBudget,
+    SearchResultState,
+    UserQuery,
+)
+from banso.documents.models import Document, EvidenceItem
 from banso.research_context import ResearchContextBuilder
-from banso.retrieval import SearchResult, Source, SourceType
 from banso.retrieval.models import (
     RetrievalFilterReport,
+    SearchResult,
     SearchResultMergeReport,
     SearchResultSelectionReport,
+    Source,
     SourceClassificationReport,
 )
+from banso.source_types import SourceType
 
 
 def _completed_state_and_store() -> tuple[AgentState, InMemoryArtifactStore]:

@@ -6,7 +6,8 @@ import json
 import httpx
 import pytest
 
-from banso.retrieval import RetrievalError, SearchRequest, TavilyRetrievalProvider
+from banso.retrieval.provider import RetrievalError, SearchRequest
+from banso.retrieval.tavily_provider import TavilyRetrievalProvider
 
 
 async def _capture_search_error(handler, *, api_key: str = "key") -> RetrievalError:

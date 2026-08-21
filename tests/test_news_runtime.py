@@ -3,33 +3,29 @@
 import asyncio
 from collections.abc import Iterable
 
-from banso.artifacts import InMemoryArtifactStore
-from banso.core import (
+from banso.artifacts.store import InMemoryArtifactStore
+from banso.core.action import (
     AgentAction,
     AgentActionType,
-    AgentRuntime,
-    AgentState,
-    DefaultStateReducer,
-    ExecutionBudget,
     RetrievalRoute,
-    UserQuery,
 )
 from banso.core.observation import (
     Citation,
     CompletedResearchObservation,
     RetrievalFailedResearchObservation,
 )
-from banso.documents import (
-    Document,
-    DocumentFetchError,
-    DocumentFetchRequest,
-    EvidenceExtractionRequest,
-    EvidenceItem,
-)
-from banso.executors import NewsActionExecutor, ResearchRouteComponents
-from banso.retrieval import RetrievalError, SearchRequest, SearchResult
-from banso.synthesis import SynthesisRequest, SynthesisResult
-from banso.tracing import InMemoryTraceSink, Tracer
+from banso.core.reducer import DefaultStateReducer
+from banso.core.runtime import AgentRuntime
+from banso.core.state import AgentState, ExecutionBudget, UserQuery
+from banso.documents.extractor import EvidenceExtractionRequest
+from banso.documents.fetcher import DocumentFetchError, DocumentFetchRequest
+from banso.documents.models import Document, EvidenceItem
+from banso.executors.news_executor import NewsActionExecutor
+from banso.executors.research_pipeline import ResearchRouteComponents
+from banso.retrieval.models import SearchResult
+from banso.retrieval.provider import RetrievalError, SearchRequest
+from banso.synthesis.synthesizer import SynthesisRequest, SynthesisResult
+from banso.tracing.trace import InMemoryTraceSink, Tracer
 
 
 class SequencePolicy:

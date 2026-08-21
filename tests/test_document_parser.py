@@ -3,7 +3,7 @@
 import asyncio
 from datetime import datetime, timezone
 
-from banso.documents import DocumentParseError, DocumentParser
+from banso.documents.parser import DocumentParseError, DocumentParser
 from tests.pdf_fixtures import make_text_pdf
 
 

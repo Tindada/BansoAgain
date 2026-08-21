@@ -5,8 +5,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
 
-from banso.apps import corpus as corpus_app
-from banso.corpus import config as corpus_config
+import banso.apps.corpus as corpus_app
+import banso.corpus.config as corpus_config
 from banso.corpus.ingestion.sync import CorpusSyncResult
 from banso.corpus.models import (
     CorpusDocumentStatus,

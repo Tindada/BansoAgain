@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from banso.core import AgentAction, AgentActionType
+from banso.core.action import AgentAction, AgentActionType
 from banso.core.observation import (
     Citation,
     ExtractionSuccess,

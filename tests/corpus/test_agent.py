@@ -19,8 +19,10 @@ from banso.corpus.indexing.index import (
 from banso.corpus.ingestion.registry import SourceRegistry, TrustedSource
 from banso.corpus.models import CorpusDocument, CorpusDocumentStatus
 from banso.corpus.sqlite_store import SQLiteCorpusStore
-from banso.documents import Document, DocumentFetchRequest
-from banso.retrieval import SearchRequest, Source
+from banso.documents.fetcher import DocumentFetchRequest
+from banso.documents.models import Document
+from banso.retrieval.models import Source
+from banso.retrieval.provider import SearchRequest
 
 _NOW = datetime(2026, 7, 31, tzinfo=timezone.utc)
 

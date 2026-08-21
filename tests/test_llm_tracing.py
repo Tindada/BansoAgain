@@ -5,29 +5,24 @@ from collections.abc import Awaitable
 from datetime import datetime, timezone
 from typing import Any
 
-from banso.artifacts import InMemoryArtifactStore
-from banso.core import AgentActionType, AgentState, RetrievalRoute, UserQuery
-from banso.documents import (
-    Document,
-    EvidenceExtractionRequest,
-    LLMEvidenceExtractor,
-)
-from banso.llm import (
-    LLMError,
-    LLMRequest,
-    LLMResponse,
-    LLMUsage,
-    ThinkingModeLLMClient,
-    TracingLLMClient,
-)
-from banso.policies import LLMNewsPolicy, LLMPolicyError
+from banso.artifacts.store import InMemoryArtifactStore
+from banso.core.action import AgentActionType, RetrievalRoute
+from banso.core.state import AgentState, UserQuery
+from banso.documents.extractor import EvidenceExtractionRequest
+from banso.documents.llm_extractor import LLMEvidenceExtractor
+from banso.documents.models import Document
+from banso.llm.errors import LLMError
+from banso.llm.models import LLMRequest, LLMResponse, LLMUsage
+from banso.llm.openai_sdk_client import ThinkingModeLLMClient
+from banso.llm.tracing import TracingLLMClient
+from banso.policies.llm_news_policy import LLMNewsPolicy, LLMPolicyError
 from banso.research_context import ResearchContextBuilder
-from banso.synthesis import (
-    LLMSynthesizer,
+from banso.synthesis.llm_synthesizer import LLMSynthesizer
+from banso.synthesis.synthesizer import (
     SynthesisEvidenceGroup,
     SynthesisRequest,
 )
-from banso.tracing import InMemoryTraceSink, SpanRecord, Tracer
+from banso.tracing.trace import InMemoryTraceSink, SpanRecord, Tracer
 
 class StaticResponseClient:
     def __init__(self, response: LLMResponse) -> None:

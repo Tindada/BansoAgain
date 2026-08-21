@@ -2,7 +2,7 @@
 
 import pytest
 
-from banso.llm import config
+import banso.llm.config as config
 
 
 class CapturingClient:

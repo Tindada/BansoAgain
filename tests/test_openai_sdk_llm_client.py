@@ -7,11 +7,13 @@ import httpx
 import openai
 import pytest
 
-from banso.llm import (
-    LLMError,
+from banso.llm.errors import LLMError
+from banso.llm.models import (
     LLMMessage,
     LLMMessageRole,
     LLMRequest,
+)
+from banso.llm.openai_sdk_client import (
     OpenAISDKLLMClient,
     ThinkingModeLLMClient,
 )

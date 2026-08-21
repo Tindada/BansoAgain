@@ -5,31 +5,29 @@ import json
 
 import pytest
 
-from banso.artifacts import InMemoryArtifactStore
-from banso.core import (
+from banso.artifacts.store import InMemoryArtifactStore
+from banso.core.action import (
     AgentAction,
     AgentActionType,
-    AgentState,
-    DefaultStateReducer,
-    ExecutionBudget,
     RetrievalRoute,
-    UserQuery,
 )
 from banso.core.observation import (
     CompletedResearchObservation,
     ResearchObservation,
     RetrievalFailedResearchObservation,
 )
-from banso.core.state import DocumentState
-from banso.documents import Document, EvidenceItem
-from banso.llm import LLMError, LLMRequest, LLMResponse
+from banso.core.reducer import DefaultStateReducer
+from banso.core.state import AgentState, DocumentState, ExecutionBudget, UserQuery
+from banso.documents.models import Document, EvidenceItem
+from banso.llm.errors import LLMError
+from banso.llm.models import LLMRequest, LLMResponse
+from banso.policies.llm_news_policy import LLMNewsPolicy, LLMPolicyError
 from banso.retrieval.models import (
     RetrievalFilterReport,
     SearchResultMergeReport,
     SearchResultSelectionReport,
     SourceClassificationReport,
 )
-from banso.policies import LLMNewsPolicy, LLMPolicyError
 from banso.research_context import ResearchContextBuilder
 
 

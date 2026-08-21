@@ -1,11 +1,11 @@
 """Tests for retrieval result filtering."""
 
-from banso.retrieval import (
+from banso.retrieval.filter import (
     RetrievalFilter,
     RetrievalFilterConfig,
-    SearchResult,
-    normalize_url,
 )
+from banso.retrieval.models import SearchResult
+from banso.retrieval.url_utils import normalize_url
 
 
 def test_retrieval_filter_drops_empty_and_duplicate_results() -> None:

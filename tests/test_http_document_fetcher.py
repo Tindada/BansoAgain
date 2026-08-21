@@ -7,14 +7,11 @@ import httpx
 import pytest
 from pypdf import PdfReader, PdfWriter
 
-from banso.documents import (
-    DocumentFetchError,
-    DocumentFetchRequest,
-    DocumentParseError,
-    DocumentParser,
-    HTTPDocumentFetcher,
-)
-from banso.retrieval import Source, SourceType
+from banso.documents.fetcher import DocumentFetchError, DocumentFetchRequest
+from banso.documents.http_fetcher import HTTPDocumentFetcher
+from banso.documents.parser import DocumentParseError, DocumentParser
+from banso.retrieval.models import Source
+from banso.source_types import SourceType
 from tests.pdf_fixtures import make_text_pdf
 
 

@@ -8,20 +8,18 @@ import pytest
 
 import scripts.evaluate_news_runtime as evaluation_script
 from banso.apps.news_evaluation import NewsEvaluationCase, NewsEvaluationResult
-from banso.artifacts import InMemoryArtifactStore
-from banso.core import (
-    AgentAction,
-    AgentActionType,
-    AgentRuntime,
-    AgentState,
-    ExecutionBudget,
-    RuntimeExecutionError,
-    UserQuery,
-)
+from banso.artifacts.store import InMemoryArtifactStore
+from banso.core.action import AgentAction, AgentActionType
 from banso.core.observation import (
     CompletedResearchObservation,
     Observation,
     StopObservation,
+)
+from banso.core.runtime import AgentRuntime, RuntimeExecutionError
+from banso.core.state import (
+    AgentState,
+    ExecutionBudget,
+    UserQuery,
 )
 from banso.retrieval.models import (
     RetrievalFilterReport,
@@ -29,7 +27,7 @@ from banso.retrieval.models import (
     SearchResultSelectionReport,
     SourceClassificationReport,
 )
-from banso.tracing import (
+from banso.tracing.trace import (
     InMemoryTraceSink,
     SpanRecord,
     Tracer,

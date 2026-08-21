@@ -4,20 +4,16 @@ import asyncio
 
 import pytest
 
-from banso.core import UserQuery
-from banso.documents import (
-    Document,
+from banso.core.state import UserQuery
+from banso.documents.extractor import (
     EvidenceExtractionError,
     EvidenceExtractionRequest,
-    LLMEvidenceExtractor,
 )
-from banso.llm import (
-    FakeLLMClient,
-    LLMError,
-    LLMMessageRole,
-    LLMRequest,
-    LLMResponse,
-)
+from banso.documents.llm_extractor import LLMEvidenceExtractor
+from banso.documents.models import Document
+from banso.llm.errors import LLMError
+from banso.llm.fake import FakeLLMClient
+from banso.llm.models import LLMMessageRole, LLMRequest, LLMResponse
 
 
 class FailingLLMClient:

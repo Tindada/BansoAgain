@@ -3,14 +3,11 @@
 import pytest
 from pydantic import ValidationError
 
-from banso.core import (
+from banso.core.action import (
     AgentAction,
     AgentActionType,
-    AgentState,
-    DefaultStateReducer,
     ResearchActionParams,
     RetrievalRoute,
-    UserQuery,
 )
 from banso.core.observation import (
     CompletedResearchObservation,
@@ -21,6 +18,8 @@ from banso.core.observation import (
     FetchFailure,
     FetchSuccess,
 )
+from banso.core.reducer import DefaultStateReducer
+from banso.core.state import AgentState, UserQuery
 from banso.retrieval.models import (
     RetrievalFilterReport,
     SearchResultMergeReport,

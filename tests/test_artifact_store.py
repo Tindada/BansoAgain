@@ -2,9 +2,9 @@
 
 import pytest
 
-from banso.artifacts import InMemoryArtifactStore
-from banso.documents import Document
-from banso.retrieval import SearchResult
+from banso.artifacts.store import InMemoryArtifactStore
+from banso.documents.models import Document
+from banso.retrieval.models import SearchResult
 
 
 def test_store_rejects_duplicate_artifact_id_without_overwriting() -> None:

@@ -3,9 +3,16 @@
 import pytest
 from pydantic import ValidationError
 
-from banso.core import AgentState, ExecutionBudget, UserQuery
-from banso.core.state import DocumentState, Failure, SearchResultState
-from banso.documents import DocumentFetchError, EvidenceExtractionError
+from banso.core.state import (
+    AgentState,
+    DocumentState,
+    ExecutionBudget,
+    Failure,
+    SearchResultState,
+    UserQuery,
+)
+from banso.documents.extractor import EvidenceExtractionError
+from banso.documents.fetcher import DocumentFetchError
 
 
 def test_state_derived_document_facts() -> None:

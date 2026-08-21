@@ -5,10 +5,10 @@ from datetime import datetime, timezone
 
 import pytest
 
-from banso.benchmarks import GisaSynthesizer
-from banso.core import UserQuery
-from banso.llm import FakeLLMClient
-from banso.synthesis import SynthesisRequest
+from banso.benchmarks.gisa_synthesizer import GisaSynthesizer
+from banso.core.state import UserQuery
+from banso.llm.fake import FakeLLMClient
+from banso.synthesis.synthesizer import SynthesisRequest
 
 
 def _request(answer_type: str) -> SynthesisRequest:

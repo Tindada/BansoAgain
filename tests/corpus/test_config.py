@@ -2,7 +2,7 @@
 
 import pytest
 
-from banso.corpus import config
+import banso.corpus.config as config
 
 
 class _FakeProvider:

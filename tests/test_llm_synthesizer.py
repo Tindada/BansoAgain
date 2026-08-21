@@ -3,13 +3,15 @@
 import asyncio
 from datetime import datetime, timezone
 
-from banso.core import UserQuery
 from banso.core.observation import Citation
-from banso.documents import EvidenceItem
-from banso.llm import FakeLLMClient, LLMMessageRole
-from banso.retrieval import Source, SourceType
-from banso.synthesis import (
-    LLMSynthesizer,
+from banso.core.state import UserQuery
+from banso.documents.models import EvidenceItem
+from banso.llm.fake import FakeLLMClient
+from banso.llm.models import LLMMessageRole
+from banso.retrieval.models import Source
+from banso.source_types import SourceType
+from banso.synthesis.llm_synthesizer import LLMSynthesizer
+from banso.synthesis.synthesizer import (
     SynthesisEvidenceGroup,
     SynthesisRequest,
 )

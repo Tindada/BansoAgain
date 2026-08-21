@@ -5,22 +5,22 @@ from datetime import datetime, timezone
 
 import pytest
 
-from banso.artifacts import InMemoryArtifactStore
-from banso.core import (
+from banso.artifacts.store import InMemoryArtifactStore
+from banso.core.action import (
     AgentAction,
     AgentActionType,
-    AgentState,
-    DefaultStateReducer,
-    ExecutionBudget,
     RetrievalRoute,
-    UserQuery,
 )
 from banso.core.observation import Citation
-from banso.core.state import DocumentState
-from banso.documents import Document, EvidenceItem
-from banso.executors import NewsActionExecutor, ResearchRouteComponents
-from banso.retrieval import FakeRetrievalProvider, Source, SourceType
-from banso.synthesis import SynthesisRequest, SynthesisResult
+from banso.core.reducer import DefaultStateReducer
+from banso.core.state import AgentState, DocumentState, ExecutionBudget, UserQuery
+from banso.documents.models import Document, EvidenceItem
+from banso.executors.news_executor import NewsActionExecutor
+from banso.executors.research_pipeline import ResearchRouteComponents
+from banso.retrieval.fake import FakeRetrievalProvider
+from banso.retrieval.models import Source
+from banso.source_types import SourceType
+from banso.synthesis.synthesizer import SynthesisRequest, SynthesisResult
 
 
 class UnusedFetcher:

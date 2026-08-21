@@ -10,8 +10,8 @@ from banso.apps.news_evaluation import (
     load_evaluation_cases,
     summarize_evaluation_results,
 )
-from banso.artifacts import InMemoryArtifactStore
-from banso.core import AgentAction, AgentActionType, AgentRuntime, AgentState, UserQuery
+from banso.artifacts.store import InMemoryArtifactStore
+from banso.core.action import AgentAction, AgentActionType
 from banso.core.observation import (
     Citation,
     CompletedResearchObservation,
@@ -19,15 +19,18 @@ from banso.core.observation import (
     RetrievalFailedResearchObservation,
     StopObservation,
 )
-from banso.documents import Document, EvidenceItem
-from banso.retrieval import SearchResult, Source, SourceType
+from banso.core.runtime import AgentRuntime
+from banso.core.state import AgentState, UserQuery
+from banso.documents.models import Document, EvidenceItem
+from banso.retrieval.models import SearchResult, Source
 from banso.retrieval.models import (
     RetrievalFilterReport,
     SearchResultMergeReport,
     SearchResultSelectionReport,
     SourceClassificationReport,
 )
-from banso.tracing import InMemoryTraceSink, Tracer
+from banso.source_types import SourceType
+from banso.tracing.trace import InMemoryTraceSink, Tracer
 
 
 def test_load_evaluation_cases(tmp_path) -> None:
