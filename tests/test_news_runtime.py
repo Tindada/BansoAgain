@@ -123,6 +123,20 @@ class FlakyFetcher:
         )
 
 
+class FirstFetchFailingFetcher(RecordingFetcher):
+    async def fetch(self, request: DocumentFetchRequest) -> Document:
+        if not self.requests:
+            self.requests.append(request)
+            raise DocumentFetchError(
+                url=request.url,
+                status_code=403,
+                reason="http_status",
+                message="forbidden",
+                source_error_type="HTTPStatusError",
+            )
+        return await super().fetch(request)
+
+
 class EvidenceExtractor:
     async def extract(
         self,
@@ -412,6 +426,46 @@ def test_global_document_budget_bounds_research_selection() -> None:
     assert len(observation.selection_report.selected_ids) == 2
     assert len(observation.selection_report.deferred_ids) == 2
     assert len(fetcher.requests) == 2
+
+
+def test_fetch_failure_is_backfilled_from_deferred_results() -> None:
+    store = InMemoryArtifactStore()
+    fetcher = FirstFetchFailingFetcher()
+    executor = _executor(
+        store,
+        {
+            RetrievalRoute.WEB: ResearchRouteComponents(
+                StaticRetrievalProvider("web", count=3),
+                fetcher,
+            )
+        },
+    )
+    state = AgentState(
+        query=UserQuery(text="query"),
+        budget=ExecutionBudget(max_results_per_research=2),
+    )
+
+    observation = asyncio.run(
+        executor.execute(
+            AgentAction(
+                type=AgentActionType.RESEARCH,
+                params={"query": "query", "route": "web"},
+            ),
+            state,
+        )
+    )
+
+    assert len(fetcher.requests) == 3
+    assert [outcome.status for outcome in observation.fetch_outcomes] == [
+        "failure",
+        "success",
+        "success",
+    ]
+    assert observation.selection_report.selected_ids == (
+        observation.search_result_ids
+    )
+    assert observation.selection_report.deferred_ids == []
+    assert len(observation.extraction_outcomes) == 2
 
 
 def test_terminal_results_do_not_reenter_result_selection() -> None:

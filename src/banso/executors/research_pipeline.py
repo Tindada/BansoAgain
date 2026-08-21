@@ -1,6 +1,7 @@
 """Internal retrieval-to-evidence pipeline for one research action."""
 
 import asyncio
+from collections import deque
 from collections.abc import Mapping
 from dataclasses import dataclass
 
@@ -157,19 +158,36 @@ class ResearchPipeline:
             "news.research.select",
             attributes={"route": params.route.value},
         ) as span:
-            selection_report = self._select_results(search_result_ids, state)
-            span.set_output(selection_report)
+            candidate_ids, limit = self._select_results(search_result_ids, state)
+            span.set_output({"candidate_ids": candidate_ids, "limit": limit})
 
         with start_span(
             "news.research.fetch",
             attributes={"route": params.route.value},
         ) as span:
-            fetch_outcomes, document_index_updates = await self._fetch_selected(
-                selection_report.selected_ids,
+            (
+                fetch_outcomes,
+                document_index_updates,
+                deferred_ids,
+            ) = await self._fetch_from_queue(
+                candidate_ids,
+                limit,
                 state,
                 components.document_fetcher,
             )
-            span.set_output({"fetch_outcomes": fetch_outcomes})
+            selection_report = SearchResultSelectionReport(
+                candidate_ids=candidate_ids,
+                selected_ids=[
+                    outcome.search_result_id for outcome in fetch_outcomes
+                ],
+                deferred_ids=deferred_ids,
+            )
+            span.set_output(
+                {
+                    "selection_report": selection_report,
+                    "fetch_outcomes": fetch_outcomes,
+                }
+            )
 
         document_ids = self._documents_to_extract(fetch_outcomes, state)
         with start_span(
@@ -244,7 +262,7 @@ class ResearchPipeline:
     def _select_results(
         retrieved_ids: list[str],
         state: AgentState,
-    ) -> SearchResultSelectionReport:
+    ) -> tuple[list[str], int]:
         candidate_ids: list[str] = []
         for result_id in dict.fromkeys([*retrieved_ids, *state.search_results]):
             result_state = state.search_results.get(result_id, SearchResultState())
@@ -254,11 +272,7 @@ class ResearchPipeline:
             state.budget.max_results_per_research,
             state.remaining_document_capacity,
         )
-        return SearchResultSelectionReport(
-            candidate_ids=candidate_ids,
-            selected_ids=candidate_ids[:limit],
-            deferred_ids=candidate_ids[limit:],
-        )
+        return candidate_ids, limit
 
     @staticmethod
     def _documents_to_extract(
@@ -276,17 +290,21 @@ class ResearchPipeline:
             if document_id not in state.documents
         ]
 
-    async def _fetch_selected(
+    async def _fetch_from_queue(
         self,
-        selected_ids: list[str],
+        candidate_ids: list[str],
+        limit: int,
         state: AgentState,
         document_fetcher: DocumentFetcher,
-    ) -> tuple[list[FetchOutcome], dict[str, str]]:
+    ) -> tuple[list[FetchOutcome], dict[str, str], list[str]]:
         outcomes: list[FetchOutcome] = []
         document_index = dict(state.document_index)
         document_index_updates: dict[str, str] = {}
+        new_document_count = 0
+        queue = deque(candidate_ids)
 
-        for result_id in selected_ids:
+        while queue and new_document_count < limit:
+            result_id = queue.popleft()
             result = self.store.get(result_id, SearchResult)
             if result is None:
                 raise ValueError(
@@ -343,6 +361,7 @@ class ResearchPipeline:
                 document_id = self.store.put(document)
                 document_index[normalized_document_url] = document_id
                 document_index_updates[normalized_document_url] = document_id
+                new_document_count += 1
 
             outcomes.append(
                 FetchSuccess(
@@ -352,7 +371,7 @@ class ResearchPipeline:
                 )
             )
 
-        return outcomes, document_index_updates
+        return outcomes, document_index_updates, list(queue)
 
     async def _extract_selected(
         self,
