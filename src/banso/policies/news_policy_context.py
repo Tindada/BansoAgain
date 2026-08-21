@@ -32,6 +32,7 @@ class EvidenceGroup(BaseModel):
     """Representative evidence claims grouped by source document."""
 
     document_ref: str
+    research_refs: list[str]
     lifecycle_status: DocumentLifecycleStatus
     lifecycle_reason: str | None = None
     lifecycle_updated_at_step: int | None = None
@@ -45,6 +46,7 @@ class EvidenceGroup(BaseModel):
 class ResearchHistoryItemBase(BaseModel):
     """Facts shared by successful and failed research actions."""
 
+    research_ref: str
     query: str
     route: RetrievalRoute
     source_domains: list[str] | None = None
@@ -207,6 +209,21 @@ class NewsPolicyContextBuilder:
             for entry in state.action_history
             if isinstance(entry.observation, ResearchObservationBase)
         ]
+        referenced_research = [
+            (f"R{index}", entry.observation)
+            for index, entry in enumerate(research_entries, start=1)
+        ]
+        document_research_refs: dict[str, list[str]] = {}
+        for research_ref, observation in referenced_research:
+            if isinstance(observation, RetrievalFailedResearchObservation):
+                continue
+            document_ids = {
+                state.search_results[result_id].document_id
+                for result_id in observation.search_result_ids
+            }
+            for document_id in document_ids:
+                if document_id is not None:
+                    document_research_refs.setdefault(document_id, []).append(research_ref)
 
         return NewsPolicyContext(
             user_query=PolicyUserQuery(
@@ -227,8 +244,8 @@ class NewsPolicyContextBuilder:
                 ),
             ),
             research_history=[
-                self._build_research_history(entry.observation)
-                for entry in research_entries
+                self._build_research_history(research_ref, observation)
+                for research_ref, observation in referenced_research
             ],
             artifacts=ArtifactSummary(
                 search_result_count=len(state.search_results),
@@ -262,6 +279,7 @@ class NewsPolicyContextBuilder:
             evidence_groups=[
                 self._build_evidence_group(
                     id_to_ref[document_id],
+                    document_research_refs.get(document_id, []),
                     documents[document_id],
                     document_state.lifecycle_status,
                     document_state.lifecycle_reason,
@@ -275,10 +293,12 @@ class NewsPolicyContextBuilder:
 
     def _build_research_history(
         self,
+        research_ref: str,
         observation: ResearchObservation,
     ) -> ResearchHistoryItem:
         if isinstance(observation, RetrievalFailedResearchObservation):
             return RetrievalFailedResearchHistoryItem(
+                research_ref=research_ref,
                 query=observation.query,
                 route=observation.route,
                 source_domains=observation.source_domains,
@@ -299,6 +319,7 @@ class NewsPolicyContextBuilder:
             if isinstance(outcome, ExtractionFailure)
         ]
         return CompletedResearchHistoryItem(
+            research_ref=research_ref,
             query=observation.query,
             route=observation.route,
             source_domains=observation.source_domains,
@@ -318,6 +339,7 @@ class NewsPolicyContextBuilder:
     def _build_evidence_group(
         self,
         document_ref: str,
+        research_refs: list[str],
         document: Document,
         lifecycle_status: DocumentLifecycleStatus,
         lifecycle_reason: str | None,
@@ -327,6 +349,7 @@ class NewsPolicyContextBuilder:
         visible_evidence = evidence[: self.max_evidence_per_document]
         return EvidenceGroup(
             document_ref=document_ref,
+            research_refs=research_refs,
             lifecycle_status=lifecycle_status,
             lifecycle_reason=lifecycle_reason,
             lifecycle_updated_at_step=lifecycle_updated_at_step,

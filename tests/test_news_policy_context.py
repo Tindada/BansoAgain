@@ -18,11 +18,13 @@ from banso.core.observation import (
     CompletedResearchObservation,
     ExtractionSuccess,
     FetchSuccess,
+    RetrievalFailedResearchObservation,
     RetrievalFilterReport,
     SearchResultMergeReport,
     SearchResultSelectionReport,
     SourceClassificationReport,
 )
+from banso.core.state import ActionHistoryEntry, SearchResultState
 from banso.documents import Document, EvidenceItem
 from banso.policies import NewsPolicyContextBuilder
 from banso.retrieval import SearchResult, Source, SourceType
@@ -99,6 +101,20 @@ def _completed_state_and_store() -> tuple[AgentState, InMemoryArtifactStore]:
     return DefaultStateReducer().apply(state, action, observation), store
 
 
+def _research_entry(
+    step_index: int,
+    observation: CompletedResearchObservation | RetrievalFailedResearchObservation,
+) -> ActionHistoryEntry:
+    return ActionHistoryEntry(
+        step_index=step_index,
+        action=AgentAction(
+            type=AgentActionType.RESEARCH,
+            params={"query": observation.query, "route": observation.route.value},
+        ),
+        observation=observation,
+    )
+
+
 def test_context_contains_research_history_and_evidence_groups() -> None:
     state, store = _completed_state_and_store()
     context = NewsPolicyContextBuilder(
@@ -114,14 +130,100 @@ def test_context_contains_research_history_and_evidence_groups() -> None:
     assert context.artifacts.active_evidence_count == 1
     assert context.working_set.active_document_refs == ["D1"]
     assert len(context.research_history) == 1
+    assert context.research_history[0].research_ref == "R1"
     assert context.research_history[0].query == "focused query"
     assert context.research_history[0].source_domains == ["example.com"]
     assert context.research_history[0].selected_results == 1
+    assert context.evidence_groups[0].research_refs == ["R1"]
     assert context.evidence_groups[0].claim_previews == ["Supported claim"]
     dumped = context.model_dump(mode="json")
     assert "candidate_results" not in dumped
     assert "candidate_documents" not in dumped
     assert "work" not in dumped
+
+
+def test_failed_research_still_advances_research_references() -> None:
+    state, store = _completed_state_and_store()
+    failure = RetrievalFailedResearchObservation(
+        query="failed query",
+        route=RetrievalRoute.WEB,
+        provider="test",
+        reason="transport",
+        message="failed",
+        source_error_type="TransportError",
+        retryable=True,
+        attempt_count=1,
+    )
+    state.action_history.insert(0, _research_entry(0, failure))
+
+    context = NewsPolicyContextBuilder(store, [RetrievalRoute.WEB]).build(state)
+
+    assert [item.research_ref for item in context.research_history] == [
+        "R1",
+        "R2",
+    ]
+    assert context.evidence_groups[0].research_refs == ["R2"]
+
+
+def test_deferred_result_keeps_the_research_that_returned_it() -> None:
+    state, store = _completed_state_and_store()
+    completed_entry = state.action_history[0]
+    completed = completed_entry.observation
+    assert isinstance(completed, CompletedResearchObservation)
+    result_id = completed.search_result_ids[0]
+
+    deferred = completed.model_copy(deep=True)
+    deferred.query = "discovery query"
+    deferred.selection_report = SearchResultSelectionReport(
+        candidate_ids=[result_id],
+        selected_ids=[],
+        deferred_ids=[result_id],
+    )
+    deferred.fetch_outcomes = []
+    deferred.extraction_outcomes = []
+    deferred.document_index_updates = {}
+
+    fetched = completed.model_copy(deep=True)
+    fetched.query = "later query"
+    fetched.search_result_ids = []
+    fetched.search_result_merge_report = SearchResultMergeReport(
+        candidate_count=0,
+        new_result_count=0,
+        reused_result_count=0,
+    )
+    state.action_history = [
+        _research_entry(0, deferred),
+        _research_entry(1, fetched),
+    ]
+
+    context = NewsPolicyContextBuilder(store, [RetrievalRoute.WEB]).build(state)
+
+    assert [item.query for item in context.research_history] == [
+        "discovery query",
+        "later query",
+    ]
+    assert context.evidence_groups[0].research_refs == ["R1"]
+
+
+def test_document_research_references_are_ordered_unique_or_empty() -> None:
+    state, store = _completed_state_and_store()
+    first_entry = state.action_history[0]
+    first = first_entry.observation
+    assert isinstance(first, CompletedResearchObservation)
+    state.search_results["redirected-result"] = SearchResultState(
+        document_id="document"
+    )
+    first.search_result_ids.append("redirected-result")
+    second = first.model_copy(deep=True)
+    second.query = "another query"
+    state.action_history.append(_research_entry(1, second))
+
+    context = NewsPolicyContextBuilder(store, [RetrievalRoute.WEB]).build(state)
+
+    assert context.evidence_groups[0].research_refs == ["R1", "R2"]
+    state.action_history = []
+    context = NewsPolicyContextBuilder(store, [RetrievalRoute.WEB]).build(state)
+    assert context.evidence_groups[0].research_refs == []
 
 
 def test_context_limits_visible_claims_without_changing_totals() -> None:
