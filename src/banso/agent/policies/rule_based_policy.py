@@ -1,7 +1,7 @@
 """Rule-based policy implementation for smoke testing."""
 
-from banso.core.action import AgentAction, AgentActionType
-from banso.core.state import AgentState
+from banso.agent.action import AgentAction, AgentActionType
+from banso.agent.state import AgentState
 
 
 class RuleBasedPolicy:

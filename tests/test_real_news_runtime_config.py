@@ -4,9 +4,9 @@ import pytest
 
 import banso.apps.real_news as real_news
 from banso.apps.real_news import enabled_retrieval_routes_from_env
-from banso.core.action import RetrievalRoute
-from banso.executors.news_executor import NewsActionExecutor
-from banso.policies.llm_news_policy import LLMNewsPolicy
+from banso.agent.action import RetrievalRoute
+from banso.agent.executors.news_executor import NewsActionExecutor
+from banso.agent.policies.llm_news_policy import LLMNewsPolicy
 
 
 @pytest.mark.parametrize(

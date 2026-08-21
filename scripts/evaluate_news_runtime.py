@@ -20,8 +20,8 @@ from banso.apps.news_evaluation import (
     summarize_evaluation_results,
 )
 from banso.apps.real_news import build_real_news_runtime
-from banso.core.runtime import RuntimeExecutionError
-from banso.core.state import AgentState, ExecutionBudget, UserQuery
+from banso.agent.runtime import RuntimeExecutionError
+from banso.agent.state import AgentState, ExecutionBudget, UserQuery
 from banso.tracing.trace import SpanRecord
 
 

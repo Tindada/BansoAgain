@@ -11,15 +11,15 @@ from banso.apps.news_evaluation import (
     summarize_evaluation_results,
 )
 from banso.artifacts.store import InMemoryArtifactStore
-from banso.core.action import AgentAction, AgentActionType
-from banso.core.observation import (
+from banso.agent.action import AgentAction, AgentActionType
+from banso.agent.observation import (
     CompletedResearchObservation,
     FinishObservation,
     RetrievalFailedResearchObservation,
     StopObservation,
 )
-from banso.core.runtime import AgentRuntime
-from banso.core.state import AgentState, UserQuery
+from banso.agent.runtime import AgentRuntime
+from banso.agent.state import AgentState, UserQuery
 from banso.documents.models import Document, EvidenceItem
 from banso.retrieval.models import SearchResult
 from banso.retrieval.models import (

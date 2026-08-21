@@ -14,20 +14,20 @@ from banso.corpus.config import build_embedding_provider_from_env
 from banso.corpus.indexing.index import CorpusSearchMode, LanceCorpusIndex
 from banso.corpus.ingestion.registry import SourceRegistry
 from banso.corpus.sqlite_store import SQLiteCorpusStore
-from banso.core.action import RetrievalRoute
-from banso.core.runtime import AgentRuntime
+from banso.agent.action import RetrievalRoute
+from banso.agent.runtime import AgentRuntime
 from banso.documents.http_fetcher import HTTPDocumentFetcher
 from banso.documents.llm_extractor import LLMEvidenceExtractor
-from banso.executors.news_executor import NewsActionExecutor
-from banso.executors.research_pipeline import ResearchRouteComponents
+from banso.agent.executors.news_executor import NewsActionExecutor
+from banso.agent.executors.research_pipeline import ResearchRouteComponents
 from banso.llm.config import (
     build_external_llm_client_from_env,
     build_vllm_llm_client_from_env,
 )
 from banso.llm.openai_sdk_client import ThinkingModeLLMClient
 from banso.llm.tracing import TracingLLMClient
-from banso.policies.llm_news_policy import LLMNewsPolicy
-from banso.research_context import ResearchContextBuilder
+from banso.agent.policies.llm_news_policy import LLMNewsPolicy
+from banso.agent.research_context import ResearchContextBuilder
 from banso.retrieval.source_classifier import (
     SourceClassifier,
     SourceClassifierConfig,

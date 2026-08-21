@@ -6,8 +6,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from banso.artifacts.store import ArtifactStore
-from banso.core.action import ResearchActionParams, RetrievalRoute
-from banso.core.observation import (
+from banso.agent.action import ResearchActionParams, RetrievalRoute
+from banso.agent.observation import (
     CompletedResearchObservation,
     DocumentFetchFailure,
     EvidenceExtractionFailure,
@@ -20,7 +20,7 @@ from banso.core.observation import (
     ResearchObservation,
     RetrievalFailedResearchObservation,
 )
-from banso.core.state import AgentState, SearchResultState
+from banso.agent.state import AgentState, SearchResultState
 from banso.documents.extractor import (
     EvidenceExtractionError,
     EvidenceExtractionRequest,
@@ -32,7 +32,7 @@ from banso.documents.fetcher import (
     DocumentFetcher,
 )
 from banso.documents.models import Document, EvidenceItem
-from banso.executors.retry import RetryPolicy, run_with_retry
+from banso.agent.executors.retry import RetryPolicy, run_with_retry
 from banso.retrieval.filter import RetrievalFilter
 from banso.retrieval.models import (
     RetrievalFilterReport,

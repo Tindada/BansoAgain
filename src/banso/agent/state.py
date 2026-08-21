@@ -5,8 +5,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from banso.core.action import AgentAction, AgentActionType
-from banso.core.observation import Observation
+from banso.agent.action import AgentAction, AgentActionType
+from banso.agent.observation import Observation
 from banso.synthesis.synthesizer import Citation
 
 

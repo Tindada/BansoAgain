@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
-from banso.core.action import AgentActionType, RetrievalRoute
+from banso.agent.action import AgentActionType, RetrievalRoute
 from banso.retrieval.models import (
     RetrievalFilterReport,
     SearchResultMergeReport,

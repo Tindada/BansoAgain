@@ -2,9 +2,9 @@
 
 from typing import Protocol
 
-from banso.core.action import AgentAction
-from banso.core.observation import Observation
-from banso.core.state import AgentState
+from banso.agent.action import AgentAction
+from banso.agent.observation import Observation
+from banso.agent.state import AgentState
 
 
 class ActionExecutor(Protocol):

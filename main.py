@@ -8,8 +8,8 @@ from collections.abc import Sequence
 from dotenv import load_dotenv
 
 from banso.apps.real_news import build_real_news_runtime
-from banso.core.runtime import RuntimeExecutionError
-from banso.core.state import AgentState, UserQuery
+from banso.agent.runtime import RuntimeExecutionError
+from banso.agent.state import AgentState, UserQuery
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:

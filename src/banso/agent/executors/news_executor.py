@@ -3,26 +3,26 @@
 from collections.abc import Mapping
 
 from banso.artifacts.store import ArtifactStore
-from banso.core.action import (
+from banso.agent.action import (
     AgentAction,
     AgentActionType,
     ResearchActionParams,
     RetrievalRoute,
 )
-from banso.core.observation import (
+from banso.agent.observation import (
     CurateEvidenceObservation,
     FinishObservation,
     Observation,
     StopObservation,
 )
-from banso.core.state import AgentState
+from banso.agent.state import AgentState
 from banso.documents.extractor import EvidenceExtractor
 from banso.documents.models import Document, EvidenceItem
-from banso.executors.research_pipeline import (
+from banso.agent.executors.research_pipeline import (
     ResearchPipeline,
     ResearchRouteComponents,
 )
-from banso.executors.retry import RetryPolicy
+from banso.agent.executors.retry import RetryPolicy
 from banso.retrieval.filter import RetrievalFilter
 from banso.retrieval.source_classifier import SourceClassifier
 from banso.synthesis.synthesizer import (

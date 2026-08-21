@@ -13,21 +13,21 @@ import os
 from dotenv import load_dotenv
 
 from banso.artifacts.store import InMemoryArtifactStore
-from banso.core.action import RetrievalRoute
-from banso.core.runtime import AgentRuntime
-from banso.core.state import AgentState, UserQuery
+from banso.agent.action import RetrievalRoute
+from banso.agent.runtime import AgentRuntime
+from banso.agent.state import AgentState, UserQuery
 from banso.documents.fetcher import DocumentFetchRequest
 from banso.documents.llm_extractor import LLMEvidenceExtractor
 from banso.documents.models import Document, EvidenceItem
-from banso.executors.news_executor import NewsActionExecutor
-from banso.executors.research_pipeline import ResearchRouteComponents
+from banso.agent.executors.news_executor import NewsActionExecutor
+from banso.agent.executors.research_pipeline import ResearchRouteComponents
 from banso.llm.config import (
     build_external_llm_client_from_env,
     build_vllm_llm_client_from_env,
 )
 from banso.llm.openai_sdk_client import ThinkingModeLLMClient
-from banso.policies.llm_news_policy import LLMNewsPolicy
-from banso.research_context import ResearchContextBuilder
+from banso.agent.policies.llm_news_policy import LLMNewsPolicy
+from banso.agent.research_context import ResearchContextBuilder
 from banso.retrieval.fake import FakeRetrievalProvider
 from banso.synthesis.llm_synthesizer import LLMSynthesizer
 from banso.tracing.trace import InMemoryTraceSink, Tracer

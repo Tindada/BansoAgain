@@ -6,8 +6,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from banso.artifacts.store import InMemoryArtifactStore
-from banso.core.action import AgentActionType, RetrievalRoute
-from banso.core.state import AgentState, UserQuery
+from banso.agent.action import AgentActionType, RetrievalRoute
+from banso.agent.state import AgentState, UserQuery
 from banso.documents.extractor import EvidenceExtractionRequest
 from banso.documents.llm_extractor import LLMEvidenceExtractor
 from banso.documents.models import Document
@@ -15,8 +15,8 @@ from banso.llm.errors import LLMError
 from banso.llm.models import LLMRequest, LLMResponse, LLMUsage
 from banso.llm.openai_sdk_client import ThinkingModeLLMClient
 from banso.llm.tracing import TracingLLMClient
-from banso.policies.llm_news_policy import LLMNewsPolicy, LLMPolicyError
-from banso.research_context import ResearchContextBuilder
+from banso.agent.policies.llm_news_policy import LLMNewsPolicy, LLMPolicyError
+from banso.agent.research_context import ResearchContextBuilder
 from banso.synthesis.llm_synthesizer import LLMSynthesizer
 from banso.synthesis.synthesizer import (
     SynthesisEvidenceGroup,

@@ -5,17 +5,17 @@ import asyncio
 import pytest
 
 from banso.artifacts.store import InMemoryArtifactStore
-from banso.core.action import AgentAction, AgentActionType, RetrievalRoute
-from banso.core.observation import ExtractionFailure
-from banso.core.state import AgentState, UserQuery
+from banso.agent.action import AgentAction, AgentActionType, RetrievalRoute
+from banso.agent.observation import ExtractionFailure
+from banso.agent.state import AgentState, UserQuery
 from banso.documents.extractor import (
     EvidenceExtractionError,
     EvidenceExtractionRequest,
 )
 from banso.documents.fetcher import DocumentFetchRequest
 from banso.documents.models import Document, EvidenceItem
-from banso.executors.news_executor import NewsActionExecutor
-from banso.executors.research_pipeline import ResearchRouteComponents
+from banso.agent.executors.news_executor import NewsActionExecutor
+from banso.agent.executors.research_pipeline import ResearchRouteComponents
 from banso.retrieval.models import SearchResult
 from banso.retrieval.provider import SearchRequest
 from banso.synthesis.synthesizer import SynthesisRequest, SynthesisResult

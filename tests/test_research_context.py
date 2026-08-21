@@ -5,19 +5,19 @@ from datetime import datetime, timezone
 import pytest
 
 from banso.artifacts.store import InMemoryArtifactStore
-from banso.core.action import (
+from banso.agent.action import (
     AgentAction,
     AgentActionType,
     RetrievalRoute,
 )
-from banso.core.observation import (
+from banso.agent.observation import (
     CompletedResearchObservation,
     ExtractionSuccess,
     FetchSuccess,
     RetrievalFailedResearchObservation,
 )
-from banso.core.reducer import DefaultStateReducer
-from banso.core.state import (
+from banso.agent.reducer import DefaultStateReducer
+from banso.agent.state import (
     ActionHistoryEntry,
     AgentState,
     ExecutionBudget,
@@ -25,7 +25,7 @@ from banso.core.state import (
     UserQuery,
 )
 from banso.documents.models import Document, EvidenceItem
-from banso.research_context import ResearchContextBuilder
+from banso.agent.research_context import ResearchContextBuilder
 from banso.retrieval.models import (
     RetrievalFilterReport,
     SearchResult,

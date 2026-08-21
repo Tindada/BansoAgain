@@ -9,14 +9,14 @@ import pytest
 import scripts.evaluate_news_runtime as evaluation_script
 from banso.apps.news_evaluation import NewsEvaluationCase, NewsEvaluationResult
 from banso.artifacts.store import InMemoryArtifactStore
-from banso.core.action import AgentAction, AgentActionType
-from banso.core.observation import (
+from banso.agent.action import AgentAction, AgentActionType
+from banso.agent.observation import (
     CompletedResearchObservation,
     Observation,
     StopObservation,
 )
-from banso.core.runtime import AgentRuntime, RuntimeExecutionError
-from banso.core.state import (
+from banso.agent.runtime import AgentRuntime, RuntimeExecutionError
+from banso.agent.state import (
     AgentState,
     ExecutionBudget,
     UserQuery,

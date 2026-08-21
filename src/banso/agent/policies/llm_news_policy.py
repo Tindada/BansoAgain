@@ -5,16 +5,16 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from banso.core.action import (
+from banso.agent.action import (
     AgentAction,
     AgentActionType,
     ResearchActionParams,
 )
-from banso.core.state import AgentState
+from banso.agent.state import AgentState
 from banso.llm.client import LLMClient
 from banso.llm.errors import LLMError
 from banso.llm.models import LLMMessage, LLMMessageRole, LLMRequest
-from banso.research_context import (
+from banso.agent.research_context import (
     ResearchContext,
     ResearchContextBuilder,
     document_reference_maps,

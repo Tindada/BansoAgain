@@ -4,23 +4,23 @@ import asyncio
 from collections.abc import Iterable
 
 from banso.artifacts.store import InMemoryArtifactStore
-from banso.core.action import (
+from banso.agent.action import (
     AgentAction,
     AgentActionType,
     RetrievalRoute,
 )
-from banso.core.observation import (
+from banso.agent.observation import (
     CompletedResearchObservation,
     RetrievalFailedResearchObservation,
 )
-from banso.core.reducer import DefaultStateReducer
-from banso.core.runtime import AgentRuntime
-from banso.core.state import AgentState, ExecutionBudget, UserQuery
+from banso.agent.reducer import DefaultStateReducer
+from banso.agent.runtime import AgentRuntime
+from banso.agent.state import AgentState, ExecutionBudget, UserQuery
 from banso.documents.extractor import EvidenceExtractionRequest
 from banso.documents.fetcher import DocumentFetchError, DocumentFetchRequest
 from banso.documents.models import Document, EvidenceItem
-from banso.executors.news_executor import NewsActionExecutor
-from banso.executors.research_pipeline import ResearchRouteComponents
+from banso.agent.executors.news_executor import NewsActionExecutor
+from banso.agent.executors.research_pipeline import ResearchRouteComponents
 from banso.retrieval.models import SearchResult
 from banso.retrieval.provider import RetrievalError, SearchRequest
 from banso.synthesis.synthesizer import Citation, SynthesisRequest, SynthesisResult

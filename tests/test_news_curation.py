@@ -6,16 +6,16 @@ from datetime import datetime, timezone
 import pytest
 
 from banso.artifacts.store import InMemoryArtifactStore
-from banso.core.action import (
+from banso.agent.action import (
     AgentAction,
     AgentActionType,
     RetrievalRoute,
 )
-from banso.core.reducer import DefaultStateReducer
-from banso.core.state import AgentState, DocumentState, ExecutionBudget, UserQuery
+from banso.agent.reducer import DefaultStateReducer
+from banso.agent.state import AgentState, DocumentState, ExecutionBudget, UserQuery
 from banso.documents.models import Document, EvidenceItem
-from banso.executors.news_executor import NewsActionExecutor
-from banso.executors.research_pipeline import ResearchRouteComponents
+from banso.agent.executors.news_executor import NewsActionExecutor
+from banso.agent.executors.research_pipeline import ResearchRouteComponents
 from banso.retrieval.fake import FakeRetrievalProvider
 from banso.source import Source, SourceType
 from banso.synthesis.synthesizer import Citation, SynthesisRequest, SynthesisResult

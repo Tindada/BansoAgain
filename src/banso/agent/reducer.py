@@ -2,8 +2,8 @@
 
 from typing import Protocol
 
-from banso.core.action import AgentAction, AgentActionType
-from banso.core.observation import (
+from banso.agent.action import AgentAction, AgentActionType
+from banso.agent.observation import (
     CompletedResearchObservation,
     CurateEvidenceObservation,
     ExtractionFailure,
@@ -15,7 +15,7 @@ from banso.core.observation import (
     FinishObservation,
     Observation,
 )
-from banso.core.state import (
+from banso.agent.state import (
     ActionHistoryEntry,
     AgentState,
     DocumentState,

@@ -6,15 +6,15 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, Field
 
 from banso.artifacts.store import ArtifactStore
-from banso.core.action import RetrievalRoute
-from banso.core.observation import (
+from banso.agent.action import RetrievalRoute
+from banso.agent.observation import (
     ExtractionFailure,
     FetchFailure,
     ResearchObservation,
     ResearchObservationBase,
     RetrievalFailedResearchObservation,
 )
-from banso.core.state import AgentState, DocumentLifecycleStatus
+from banso.agent.state import AgentState, DocumentLifecycleStatus
 from banso.documents.models import Document, EvidenceItem
 from banso.retrieval.url_utils import publisher_domain
 from banso.source import Source, SourceType

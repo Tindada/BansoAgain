@@ -6,29 +6,29 @@ import json
 import pytest
 
 from banso.artifacts.store import InMemoryArtifactStore
-from banso.core.action import (
+from banso.agent.action import (
     AgentAction,
     AgentActionType,
     RetrievalRoute,
 )
-from banso.core.observation import (
+from banso.agent.observation import (
     CompletedResearchObservation,
     ResearchObservation,
     RetrievalFailedResearchObservation,
 )
-from banso.core.reducer import DefaultStateReducer
-from banso.core.state import AgentState, DocumentState, ExecutionBudget, UserQuery
+from banso.agent.reducer import DefaultStateReducer
+from banso.agent.state import AgentState, DocumentState, ExecutionBudget, UserQuery
 from banso.documents.models import Document, EvidenceItem
 from banso.llm.errors import LLMError
 from banso.llm.models import LLMRequest, LLMResponse
-from banso.policies.llm_news_policy import LLMNewsPolicy, LLMPolicyError
+from banso.agent.policies.llm_news_policy import LLMNewsPolicy, LLMPolicyError
 from banso.retrieval.models import (
     RetrievalFilterReport,
     SearchResultMergeReport,
     SearchResultSelectionReport,
     SourceClassificationReport,
 )
-from banso.research_context import ResearchContextBuilder
+from banso.agent.research_context import ResearchContextBuilder
 
 
 class StaticClient:

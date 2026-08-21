@@ -27,9 +27,9 @@ from banso.benchmarks.gisa import (
     select_gisa_cases,
 )
 from banso.benchmarks.gisa_synthesizer import GisaSynthesizer
-from banso.core.action import AgentActionType
-from banso.core.runtime import RuntimeExecutionError
-from banso.core.state import AgentState, ExecutionBudget, UserQuery
+from banso.agent.action import AgentActionType
+from banso.agent.runtime import RuntimeExecutionError
+from banso.agent.state import AgentState, ExecutionBudget, UserQuery
 from banso.tracing.trace import SpanRecord
 
 

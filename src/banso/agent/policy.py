@@ -2,8 +2,8 @@
 
 from typing import Protocol
 
-from banso.core.action import AgentAction
-from banso.core.state import AgentState
+from banso.agent.action import AgentAction
+from banso.agent.state import AgentState
 
 
 class Policy(Protocol):

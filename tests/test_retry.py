@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from banso.executors.retry import RetryPolicy, run_with_retry
+from banso.agent.executors.retry import RetryPolicy, run_with_retry
 
 
 class RetryError(Exception):

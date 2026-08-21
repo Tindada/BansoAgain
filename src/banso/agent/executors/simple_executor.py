@@ -1,13 +1,13 @@
 """Simple action executor implementation for smoke testing."""
 
-from banso.core.action import AgentAction, AgentActionType, ResearchActionParams
-from banso.core.observation import (
+from banso.agent.action import AgentAction, AgentActionType, ResearchActionParams
+from banso.agent.observation import (
     CompletedResearchObservation,
     FinishObservation,
     Observation,
     StopObservation,
 )
-from banso.core.state import AgentState
+from banso.agent.state import AgentState
 from banso.retrieval.models import (
     RetrievalFilterReport,
     SearchResultMergeReport,

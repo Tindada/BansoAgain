@@ -4,10 +4,10 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from banso.core.executor import ActionExecutor
-from banso.core.policy import Policy
-from banso.core.reducer import DefaultStateReducer, StateReducer
-from banso.core.state import AgentState
+from banso.agent.executor import ActionExecutor
+from banso.agent.policy import Policy
+from banso.agent.reducer import DefaultStateReducer, StateReducer
+from banso.agent.state import AgentState
 from banso.tracing.trace import Tracer
 
 

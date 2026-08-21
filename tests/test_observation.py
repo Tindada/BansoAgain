@@ -3,12 +3,12 @@
 import pytest
 from pydantic import ValidationError
 
-from banso.core.action import AgentAction, AgentActionType
-from banso.core.observation import (
+from banso.agent.action import AgentAction, AgentActionType
+from banso.agent.observation import (
     ExtractionSuccess,
     FinishObservation,
 )
-from banso.core.state import ActionHistoryEntry
+from banso.agent.state import ActionHistoryEntry
 from banso.synthesis.synthesizer import Citation
 
 

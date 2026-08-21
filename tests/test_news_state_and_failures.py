@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from banso.core.state import (
+from banso.agent.state import (
     AgentState,
     DocumentState,
     ExecutionBudget,
