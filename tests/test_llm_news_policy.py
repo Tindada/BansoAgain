@@ -155,15 +155,23 @@ def test_selects_research_with_an_enabled_route() -> None:
     assert action.type == AgentActionType.RESEARCH
     assert action.params == {"query": "focused query", "route": "web"}
     prompt = json.loads(client.requests[0].messages[1].content)
-    assert prompt["available_actions"] == ["research", "stop"]
+    assert set(prompt) == {"context"}
     assert prompt["context"]["enabled_routes"] == ["web"]
     assert "candidate_results" not in prompt["context"]
     assert "candidate_documents" not in prompt["context"]
-    assert "research_refs" in client.requests[0].messages[0].content
-    research_instruction = prompt["action_instructions"]["research"]
-    assert "source_domains" in research_instruction
-    assert "only valid for web" in research_instruction
-    assert "bare domain" in research_instruction
+    system_prompt = client.requests[0].messages[0].content
+    assert "research_refs" in system_prompt
+    assert "\n  research:\n    Instruction:" in system_prompt
+    assert "only valid for web" in system_prompt
+    assert (
+        '    Params: {"query": "<non-empty string>", "route": "web|local", '
+        '"source_domains": ["<bare domain>"]}'
+    ) in system_prompt
+    output_format = system_prompt.split("Output format:\n", 1)[1].splitlines()[0]
+    assert output_format == (
+        '{"type": "<research|stop>", "params": <matching Params object>, '
+        '"rationale": "<brief decision reason>"}'
+    )
 
 
 def test_selects_web_research_with_source_domains() -> None:
@@ -424,8 +432,8 @@ def test_last_step_exposes_only_finish_or_stop() -> None:
     action = asyncio.run(policy.select_action(state))
 
     assert action.type == AgentActionType.FINISH
-    prompt = json.loads(client.requests[0].messages[1].content)
-    assert prompt["available_actions"] == ["finish", "stop"]
+    system_prompt = client.requests[0].messages[0].content
+    assert '"type": "<finish|stop>"' in system_prompt
 
 
 def test_last_step_without_active_evidence_exposes_only_stop() -> None:
@@ -441,5 +449,5 @@ def test_last_step_without_active_evidence_exposes_only_stop() -> None:
     action = asyncio.run(policy.select_action(state))
 
     assert action.type == AgentActionType.STOP
-    prompt = json.loads(client.requests[0].messages[1].content)
-    assert prompt["available_actions"] == ["stop"]
+    system_prompt = client.requests[0].messages[0].content
+    assert '"type": "<stop>"' in system_prompt
