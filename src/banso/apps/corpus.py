@@ -11,18 +11,15 @@ from typing import Sequence
 import httpx
 from dotenv import load_dotenv
 
-from banso.corpus import (
-    CorpusDocumentStatus,
-    CorpusSearchMode,
-    CorpusSyncService,
-    LanceCorpusIndex,
-    SQLiteCorpusStore,
-    SourceRegistry,
-)
 from banso.corpus.config import build_embedding_provider_from_env
+from banso.corpus.indexing.index import CorpusSearchMode, LanceCorpusIndex
 from banso.corpus.ingestion.discovery_fetcher import DiscoveryEndpointFetcher
 from banso.corpus.ingestion.page_fetcher import CorpusPageFetcher
+from banso.corpus.ingestion.registry import SourceRegistry
 from banso.corpus.ingestion.robots import RobotsChecker
+from banso.corpus.ingestion.sync import CorpusSyncService
+from banso.corpus.models import CorpusDocumentStatus
+from banso.corpus.sqlite_store import SQLiteCorpusStore
 
 DEFAULT_REGISTRY_PATH = Path("config/trusted_sources.json")
 DEFAULT_DATABASE_PATH = Path("data/corpus.sqlite3")

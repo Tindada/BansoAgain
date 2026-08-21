@@ -12,25 +12,25 @@ import os
 
 from dotenv import load_dotenv
 
-from banso.artifacts import InMemoryArtifactStore
-from banso.core import AgentRuntime, AgentState, RetrievalRoute, UserQuery
-from banso.documents import (
-    Document,
-    DocumentFetchRequest,
-    EvidenceItem,
-    LLMEvidenceExtractor,
-)
-from banso.executors import NewsActionExecutor, ResearchRouteComponents
-from banso.llm import (
-    ThinkingModeLLMClient,
+from banso.artifacts.store import InMemoryArtifactStore
+from banso.core.action import RetrievalRoute
+from banso.core.runtime import AgentRuntime
+from banso.core.state import AgentState, UserQuery
+from banso.documents.fetcher import DocumentFetchRequest
+from banso.documents.llm_extractor import LLMEvidenceExtractor
+from banso.documents.models import Document, EvidenceItem
+from banso.executors.news_executor import NewsActionExecutor
+from banso.executors.research_pipeline import ResearchRouteComponents
+from banso.llm.config import (
     build_external_llm_client_from_env,
     build_vllm_llm_client_from_env,
 )
-from banso.policies import LLMNewsPolicy
+from banso.llm.openai_sdk_client import ThinkingModeLLMClient
+from banso.policies.llm_news_policy import LLMNewsPolicy
 from banso.research_context import ResearchContextBuilder
-from banso.retrieval import FakeRetrievalProvider
-from banso.synthesis import LLMSynthesizer
-from banso.tracing import InMemoryTraceSink, Tracer
+from banso.retrieval.fake import FakeRetrievalProvider
+from banso.synthesis.llm_synthesizer import LLMSynthesizer
+from banso.tracing.trace import InMemoryTraceSink, Tracer
 
 
 class SampleNewsDocumentFetcher:

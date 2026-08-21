@@ -5,7 +5,9 @@ import re
 
 from banso.documents.extractor import EvidenceExtractionError, EvidenceExtractionRequest
 from banso.documents.models import EvidenceItem
-from banso.llm import LLMClient, LLMError, LLMMessage, LLMMessageRole, LLMRequest
+from banso.llm.client import LLMClient
+from banso.llm.errors import LLMError
+from banso.llm.models import LLMMessage, LLMMessageRole, LLMRequest
 
 
 EVIDENCE_OUTPUT_FORMAT = (

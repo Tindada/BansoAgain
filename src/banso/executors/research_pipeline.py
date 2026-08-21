@@ -5,7 +5,7 @@ from collections import deque
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from banso.artifacts import ArtifactStore
+from banso.artifacts.store import ArtifactStore
 from banso.core.action import ResearchActionParams, RetrievalRoute
 from banso.core.observation import (
     CompletedResearchObservation,
@@ -21,33 +21,30 @@ from banso.core.observation import (
     RetrievalFailedResearchObservation,
 )
 from banso.core.state import AgentState, SearchResultState
-from banso.documents import (
-    Document,
-    DocumentFetchError,
-    DocumentFetchRequest,
-    DocumentFetcher,
+from banso.documents.extractor import (
     EvidenceExtractionError,
     EvidenceExtractionRequest,
     EvidenceExtractor,
-    EvidenceItem,
 )
-from banso.retrieval import (
-    RetrievalProvider,
-    RetrievalError,
-    SearchRequest,
-    SearchResult,
-    SourceClassifier,
-    normalize_url,
+from banso.documents.fetcher import (
+    DocumentFetchError,
+    DocumentFetchRequest,
+    DocumentFetcher,
 )
+from banso.documents.models import Document, EvidenceItem
+from banso.executors.retry import RetryPolicy, run_with_retry
 from banso.retrieval.filter import RetrievalFilter
 from banso.retrieval.models import (
     RetrievalFilterReport,
+    SearchResult,
     SearchResultMergeReport,
     SearchResultSelectionReport,
     SourceClassificationReport,
 )
-from banso.executors.retry import RetryPolicy, run_with_retry
-from banso.tracing import start_span
+from banso.retrieval.provider import RetrievalError, RetrievalProvider, SearchRequest
+from banso.retrieval.source_classifier import SourceClassifier
+from banso.retrieval.url_utils import normalize_url
+from banso.tracing.trace import start_span
 
 
 @dataclass(frozen=True)

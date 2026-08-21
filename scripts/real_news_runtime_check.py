@@ -13,10 +13,11 @@ import os
 from dotenv import load_dotenv
 
 from banso.apps.real_news import build_real_news_runtime
-from banso.core import AgentActionType, AgentState, UserQuery
+from banso.core.action import AgentActionType
 from banso.core.observation import ResearchObservation
-from banso.documents import Document, EvidenceItem
-from banso.retrieval import SearchResult
+from banso.core.state import AgentState, UserQuery
+from banso.documents.models import Document, EvidenceItem
+from banso.retrieval.models import SearchResult
 
 
 def parse_args() -> argparse.Namespace:

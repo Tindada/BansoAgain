@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
-from banso.artifacts import ArtifactStore
+from banso.artifacts.store import ArtifactStore
 from banso.core.action import RetrievalRoute
 from banso.core.observation import (
     ExtractionFailure,
@@ -15,9 +15,10 @@ from banso.core.observation import (
     RetrievalFailedResearchObservation,
 )
 from banso.core.state import AgentState, DocumentLifecycleStatus
-from banso.documents import Document, EvidenceItem
-from banso.retrieval import Source, SourceType
+from banso.documents.models import Document, EvidenceItem
+from banso.retrieval.models import Source
 from banso.retrieval.url_utils import publisher_domain
+from banso.source_types import SourceType
 
 
 class SourceView(BaseModel):

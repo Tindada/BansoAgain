@@ -9,7 +9,8 @@ import os
 
 from dotenv import load_dotenv
 
-from banso.retrieval import SearchRequest, TavilyRetrievalProvider
+from banso.retrieval.provider import SearchRequest
+from banso.retrieval.tavily_provider import TavilyRetrievalProvider
 
 
 def build_tavily_provider() -> TavilyRetrievalProvider:

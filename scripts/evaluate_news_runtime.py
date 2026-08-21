@@ -20,8 +20,9 @@ from banso.apps.news_evaluation import (
     summarize_evaluation_results,
 )
 from banso.apps.real_news import build_real_news_runtime
-from banso.core import AgentState, ExecutionBudget, RuntimeExecutionError, UserQuery
-from banso.tracing import SpanRecord
+from banso.core.runtime import RuntimeExecutionError
+from banso.core.state import AgentState, ExecutionBudget, UserQuery
+from banso.tracing.trace import SpanRecord
 
 
 DEFAULT_CASES = Path("evaluations/ai_professional_news.jsonl")

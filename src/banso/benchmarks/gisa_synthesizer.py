@@ -11,8 +11,13 @@ from pydantic import (
 )
 
 from banso.benchmarks.gisa import GisaAnswerType, render_gisa_tsv
-from banso.llm import LLMClient, LLMMessage, LLMMessageRole, LLMRequest
-from banso.synthesis import SynthesisEvidenceGroup, SynthesisRequest, SynthesisResult
+from banso.llm.client import LLMClient
+from banso.llm.models import LLMMessage, LLMMessageRole, LLMRequest
+from banso.synthesis.synthesizer import (
+    SynthesisEvidenceGroup,
+    SynthesisRequest,
+    SynthesisResult,
+)
 
 
 SYSTEM_PROMPT = (

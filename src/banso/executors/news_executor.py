@@ -2,7 +2,7 @@
 
 from collections.abc import Mapping
 
-from banso.artifacts import ArtifactStore
+from banso.artifacts.store import ArtifactStore
 from banso.core.action import (
     AgentAction,
     AgentActionType,
@@ -16,15 +16,20 @@ from banso.core.observation import (
     StopObservation,
 )
 from banso.core.state import AgentState
-from banso.documents import Document, EvidenceExtractor, EvidenceItem
+from banso.documents.extractor import EvidenceExtractor
+from banso.documents.models import Document, EvidenceItem
 from banso.executors.research_pipeline import (
     ResearchPipeline,
     ResearchRouteComponents,
 )
 from banso.executors.retry import RetryPolicy
-from banso.retrieval import SourceClassifier
 from banso.retrieval.filter import RetrievalFilter
-from banso.synthesis import SynthesisEvidenceGroup, Synthesizer, SynthesisRequest
+from banso.retrieval.source_classifier import SourceClassifier
+from banso.synthesis.synthesizer import (
+    SynthesisEvidenceGroup,
+    SynthesisRequest,
+    Synthesizer,
+)
 
 
 class NewsActionExecutor:

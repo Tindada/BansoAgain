@@ -3,7 +3,8 @@
 import re
 
 from banso.core.observation import Citation
-from banso.llm import LLMClient, LLMMessage, LLMMessageRole, LLMRequest
+from banso.llm.client import LLMClient
+from banso.llm.models import LLMMessage, LLMMessageRole, LLMRequest
 from banso.synthesis.synthesizer import (
     SynthesisEvidenceGroup,
     SynthesisRequest,

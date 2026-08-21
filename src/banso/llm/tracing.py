@@ -7,7 +7,7 @@ from typing import Any
 
 from banso.llm.client import LLMClient
 from banso.llm.models import LLMRequest, LLMResponse
-from banso.tracing import start_span
+from banso.tracing.trace import start_span
 
 
 class TracingLLMClient:

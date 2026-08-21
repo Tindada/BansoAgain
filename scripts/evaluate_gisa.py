@@ -16,25 +16,21 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 
 from banso.apps.real_news import RealNewsRuntimeBundle, build_real_news_runtime
-from banso.benchmarks import (
+from banso.benchmarks.gisa import (
     GisaAnswerType,
     GisaCase,
     GisaPrediction,
     GisaQuestionType,
-    GisaSynthesizer,
     export_gisa_predictions,
     load_gisa_cases,
     select_balanced_gisa_cases,
     select_gisa_cases,
 )
-from banso.core import (
-    AgentActionType,
-    AgentState,
-    ExecutionBudget,
-    RuntimeExecutionError,
-    UserQuery,
-)
-from banso.tracing import SpanRecord
+from banso.benchmarks.gisa_synthesizer import GisaSynthesizer
+from banso.core.action import AgentActionType
+from banso.core.runtime import RuntimeExecutionError
+from banso.core.state import AgentState, ExecutionBudget, UserQuery
+from banso.tracing.trace import SpanRecord
 
 
 DEFAULT_CASES = Path("evaluations/gisa/derived/questions.jsonl")

@@ -8,7 +8,7 @@ from banso.core.executor import ActionExecutor
 from banso.core.policy import Policy
 from banso.core.reducer import DefaultStateReducer, StateReducer
 from banso.core.state import AgentState
-from banso.tracing import Tracer
+from banso.tracing.trace import Tracer
 
 
 class AgentResult(BaseModel):

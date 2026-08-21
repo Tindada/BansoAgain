@@ -7,12 +7,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from banso.artifacts import ArtifactStore
-from banso.core import (
-    AgentAction,
-    AgentActionType,
-    RuntimeRunResult,
-)
+from banso.artifacts.store import ArtifactStore
+from banso.core.action import AgentAction, AgentActionType
 from banso.core.observation import (
     Citation,
     CompletedResearchObservation,
@@ -22,8 +18,9 @@ from banso.core.observation import (
     RetrievalFailedResearchObservation,
     validate_observation,
 )
-from banso.retrieval import SearchResult
-from banso.tracing import SpanRecord
+from banso.core.runtime import RuntimeRunResult
+from banso.retrieval.models import SearchResult
+from banso.tracing.trace import SpanRecord
 
 
 class NewsEvaluationCase(BaseModel):

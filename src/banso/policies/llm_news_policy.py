@@ -11,7 +11,9 @@ from banso.core.action import (
     ResearchActionParams,
 )
 from banso.core.state import AgentState
-from banso.llm import LLMClient, LLMError, LLMMessage, LLMMessageRole, LLMRequest
+from banso.llm.client import LLMClient
+from banso.llm.errors import LLMError
+from banso.llm.models import LLMMessage, LLMMessageRole, LLMRequest
 from banso.research_context import (
     ResearchContext,
     ResearchContextBuilder,
