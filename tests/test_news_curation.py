@@ -129,7 +129,7 @@ def test_curation_rejects_invalid_transition_and_active_overflow() -> None:
     with pytest.raises(ValueError, match="invalid lifecycle"):
         asyncio.run(executor.execute(invalid, state))
 
-    state.budget = ExecutionBudget(max_document_fetches=2, max_active_documents=1)
+    state.budget = ExecutionBudget(max_active_documents=1)
     overflow = AgentAction(
         type=AgentActionType.CURATE_EVIDENCE,
         params={
@@ -181,7 +181,7 @@ def test_finish_uses_only_active_documents_and_evidence() -> None:
 def test_finish_rejects_active_overflow() -> None:
     state, store = _state_and_store()
     state.documents["b"].lifecycle_status = "active"
-    state.budget = ExecutionBudget(max_document_fetches=2, max_active_documents=1)
+    state.budget = ExecutionBudget(max_active_documents=1)
 
     with pytest.raises(ValueError, match="requires curation"):
         asyncio.run(

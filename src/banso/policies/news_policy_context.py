@@ -86,7 +86,6 @@ class BudgetSummary(BaseModel):
 
     remaining_steps: int
     remaining_researches: int
-    remaining_document_capacity: int
     max_results_per_research: int
     max_active_documents: int
     active_document_overflow: int
@@ -220,7 +219,6 @@ class NewsPolicyContextBuilder:
             budget=BudgetSummary(
                 remaining_steps=state.remaining_steps,
                 remaining_researches=state.remaining_research_capacity,
-                remaining_document_capacity=state.remaining_document_capacity,
                 max_results_per_research=state.budget.max_results_per_research,
                 max_active_documents=state.budget.max_active_documents,
                 active_document_overflow=max(

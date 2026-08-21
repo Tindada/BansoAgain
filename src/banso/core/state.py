@@ -15,16 +15,7 @@ class ExecutionBudget(BaseModel):
     max_steps: int = 12
     max_researches: int = Field(default=3, ge=0)
     max_results_per_research: int = Field(default=4, ge=1)
-    max_document_fetches: int = 8
-    max_active_documents: int | None = Field(default=None, ge=1)
-
-    @model_validator(mode="after")
-    def validate_active_document_limit(self) -> "ExecutionBudget":
-        if self.max_active_documents is None:
-            self.max_active_documents = self.max_document_fetches
-        elif self.max_active_documents > self.max_document_fetches:
-            raise ValueError("max_active_documents cannot exceed max_document_fetches")
-        return self
+    max_active_documents: int = Field(default=8, ge=1)
 
 
 class UserQuery(BaseModel):
@@ -109,11 +100,6 @@ class AgentState(BaseModel):
             for entry in self.action_history
         )
         return max(self.budget.max_researches - completed, 0)
-
-    @property
-    def remaining_document_capacity(self) -> int:
-        """Return the number of unique documents the run may still collect."""
-        return max(self.budget.max_document_fetches - len(self.documents), 0)
 
     @property
     def active_document_count(self) -> int:

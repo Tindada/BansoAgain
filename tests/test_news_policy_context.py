@@ -56,7 +56,7 @@ def _completed_state_and_store() -> tuple[AgentState, InMemoryArtifactStore]:
     state = AgentState(
         query=UserQuery(text="question", language="en"),
         reference_time=datetime(2026, 8, 1, tzinfo=timezone.utc),
-        budget=ExecutionBudget(max_researches=3, max_document_fetches=6),
+        budget=ExecutionBudget(max_researches=3, max_active_documents=6),
     )
     action = AgentAction(
         type=AgentActionType.RESEARCH,
@@ -109,7 +109,6 @@ def test_context_contains_research_history_and_evidence_groups() -> None:
     assert context.enabled_routes == [RetrievalRoute.LOCAL, RetrievalRoute.WEB]
     assert "language" not in context.user_query.model_dump()
     assert context.budget.remaining_researches == 2
-    assert context.budget.remaining_document_capacity == 5
     assert context.artifacts.search_result_count == 1
     assert context.artifacts.document_count == 1
     assert context.artifacts.active_evidence_count == 1

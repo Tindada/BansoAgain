@@ -11,7 +11,6 @@ from banso.documents import DocumentFetchError, EvidenceExtractionError
 def test_state_derived_document_facts() -> None:
     state = AgentState(
         query=UserQuery(text="test"),
-        budget=ExecutionBudget(max_document_fetches=2),
         search_results={
             "pending": SearchResultState(),
             "failed": SearchResultState(
@@ -24,7 +23,6 @@ def test_state_derived_document_facts() -> None:
         },
     )
 
-    assert state.remaining_document_capacity == 0
     assert state.active_document_count == 1
     assert state.has_curatable_documents is True
 
@@ -32,8 +30,7 @@ def test_state_derived_document_facts() -> None:
 @pytest.mark.parametrize(
     "budget",
     [
-        {"max_document_fetches": 3, "max_active_documents": 0},
-        {"max_document_fetches": 3, "max_active_documents": 4},
+        {"max_active_documents": 0},
         {"max_researches": -1},
         {"max_results_per_research": 0},
     ],

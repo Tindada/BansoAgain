@@ -84,8 +84,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-steps", type=int, default=12)
     parser.add_argument("--max-researches", type=int, default=3)
     parser.add_argument("--max-results-per-research", type=int, default=4)
-    parser.add_argument("--max-document-fetches", type=int, default=8)
-    parser.add_argument("--max-active-documents", type=int)
+    parser.add_argument("--max-active-documents", type=int, default=8)
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -157,7 +156,6 @@ def build_manifest(
             "max_steps": args.max_steps,
             "max_researches": args.max_researches,
             "max_results_per_research": args.max_results_per_research,
-            "max_document_fetches": args.max_document_fetches,
             "max_active_documents": args.max_active_documents,
         },
         "runtime": (
@@ -186,7 +184,6 @@ def execution_budget(args: argparse.Namespace) -> ExecutionBudget:
         max_steps=args.max_steps,
         max_researches=args.max_researches,
         max_results_per_research=args.max_results_per_research,
-        max_document_fetches=args.max_document_fetches,
         max_active_documents=args.max_active_documents,
     )
 

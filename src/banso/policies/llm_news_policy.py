@@ -301,10 +301,7 @@ class LLMNewsPolicy:
             )
 
         actions: list[AgentActionType] = []
-        if (
-            state.remaining_research_capacity > 0
-            and state.remaining_document_capacity > 0
-        ):
+        if state.remaining_research_capacity > 0:
             actions.append(AgentActionType.RESEARCH)
         if state.has_curatable_documents:
             actions.append(AgentActionType.CURATE_EVIDENCE)

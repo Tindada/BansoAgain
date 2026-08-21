@@ -32,16 +32,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cases", type=Path, default=DEFAULT_CASES)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--limit", type=int)
-    parser.add_argument("--max-document-fetches", type=int, default=6)
-    parser.add_argument("--max-active-documents", type=int)
+    parser.add_argument("--max-active-documents", type=int, default=6)
     return parser.parse_args()
 
 
 async def run_case(
     case,
     *,
-    max_document_fetches: int,
-    max_active_documents: int | None,
+    max_active_documents: int,
 ) -> tuple[NewsEvaluationResult, list[SpanRecord]]:
     print(f"running {case.id}: {case.query}", flush=True)
     spans: list[SpanRecord] = []
@@ -57,7 +55,6 @@ async def run_case(
                     time_range=case.time_range,
                 ),
                 budget=ExecutionBudget(
-                    max_document_fetches=max_document_fetches,
                     max_active_documents=max_active_documents,
                 ),
             )
@@ -115,7 +112,6 @@ async def main(args: argparse.Namespace) -> None:
         for case in cases:
             result, spans = await run_case(
                 case,
-                max_document_fetches=args.max_document_fetches,
                 max_active_documents=args.max_active_documents,
             )
             results.append(result)
@@ -143,7 +139,6 @@ async def main(args: argparse.Namespace) -> None:
             "cases_path": str(args.cases),
             "results_path": str(output_path),
             "traces_path": str(traces_path),
-            "max_document_fetches": args.max_document_fetches,
             "max_active_documents": args.max_active_documents,
             "retrieval_routes": retrieval_routes,
             "corpus_search_mode": (

@@ -158,8 +158,8 @@ class ResearchPipeline:
             "news.research.select",
             attributes={"route": params.route.value},
         ) as span:
-            candidate_ids, limit = self._select_results(search_result_ids, state)
-            span.set_output({"candidate_ids": candidate_ids, "limit": limit})
+            candidate_ids = self._select_results(search_result_ids, state)
+            span.set_output({"candidate_ids": candidate_ids})
 
         with start_span(
             "news.research.fetch",
@@ -171,7 +171,7 @@ class ResearchPipeline:
                 deferred_ids,
             ) = await self._fetch_from_queue(
                 candidate_ids,
-                limit,
+                state.budget.max_results_per_research,
                 state,
                 components.document_fetcher,
             )
@@ -262,17 +262,13 @@ class ResearchPipeline:
     def _select_results(
         retrieved_ids: list[str],
         state: AgentState,
-    ) -> tuple[list[str], int]:
+    ) -> list[str]:
         candidate_ids: list[str] = []
         for result_id in dict.fromkeys([*retrieved_ids, *state.search_results]):
             result_state = state.search_results.get(result_id, SearchResultState())
             if result_state.document_id is None and result_state.failure is None:
                 candidate_ids.append(result_id)
-        limit = min(
-            state.budget.max_results_per_research,
-            state.remaining_document_capacity,
-        )
-        return candidate_ids, limit
+        return candidate_ids
 
     @staticmethod
     def _documents_to_extract(

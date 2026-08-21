@@ -374,7 +374,6 @@ def test_retrieval_failure_is_recorded_without_artifacts_and_consumes_budget() -
     assert failure.source_domains == ["x.com"]
     assert state.current_step == 2
     assert state.remaining_research_capacity == 2
-    assert state.remaining_document_capacity == state.budget.max_document_fetches
     assert state.search_results == {}
     assert state.documents == {}
     spans = sink.get_trace(output.trace_id)
@@ -398,34 +397,6 @@ def test_non_retryable_retrieval_failure_is_not_retried() -> None:
     assert provider.attempt_count == 1
     assert isinstance(observation, RetrievalFailedResearchObservation)
     assert observation.status_code == 400
-
-
-def test_global_document_budget_bounds_research_selection() -> None:
-    store = InMemoryArtifactStore()
-    provider = StaticRetrievalProvider("web", count=4)
-    fetcher = RecordingFetcher()
-    executor = _executor(
-        store,
-        {RetrievalRoute.WEB: ResearchRouteComponents(provider, fetcher)},
-    )
-    state = AgentState(
-        query=UserQuery(text="query"),
-        budget=ExecutionBudget(max_document_fetches=2),
-    )
-
-    observation = asyncio.run(
-        executor.execute(
-            AgentAction(
-                type=AgentActionType.RESEARCH,
-                params={"query": "query", "route": "web"},
-            ),
-            state,
-        )
-    )
-
-    assert len(observation.selection_report.selected_ids) == 2
-    assert len(observation.selection_report.deferred_ids) == 2
-    assert len(fetcher.requests) == 2
 
 
 def test_fetch_failure_is_backfilled_from_deferred_results() -> None:
