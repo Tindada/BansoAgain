@@ -12,9 +12,9 @@ from banso.core.action import (
 )
 from banso.core.state import AgentState
 from banso.llm import LLMClient, LLMError, LLMMessage, LLMMessageRole, LLMRequest
-from banso.policies.news_policy_context import (
-    NewsPolicyContext,
-    NewsPolicyContextBuilder,
+from banso.research_context import (
+    ResearchContext,
+    ResearchContextBuilder,
     document_reference_maps,
 )
 
@@ -110,7 +110,7 @@ class LLMNewsPolicy:
     def __init__(
         self,
         client: LLMClient,
-        context_builder: NewsPolicyContextBuilder,
+        context_builder: ResearchContextBuilder,
         *,
         model: str | None = None,
         temperature: float | None = 0.0,
@@ -180,7 +180,7 @@ class LLMNewsPolicy:
         )
 
     @staticmethod
-    def _build_user_prompt(context: NewsPolicyContext) -> str:
+    def _build_user_prompt(context: ResearchContext) -> str:
         return json.dumps(
             {"context": context.model_dump(mode="json", exclude_none=True)},
             ensure_ascii=False,
@@ -206,7 +206,7 @@ class LLMNewsPolicy:
     def _validate_action(
         self,
         output: _LLMActionOutput,
-        context: NewsPolicyContext,
+        context: ResearchContext,
         available_actions: list[AgentActionType],
         state: AgentState,
     ) -> AgentAction:
@@ -238,7 +238,7 @@ class LLMNewsPolicy:
     @staticmethod
     def _validate_research_params(
         raw_params: dict[str, Any],
-        context: NewsPolicyContext,
+        context: ResearchContext,
     ) -> dict[str, Any]:
         try:
             params = ResearchActionParams.model_validate(raw_params)

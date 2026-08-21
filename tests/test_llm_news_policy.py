@@ -27,7 +27,8 @@ from banso.core.observation import (
 from banso.core.state import DocumentState
 from banso.documents import Document, EvidenceItem
 from banso.llm import LLMError, LLMRequest, LLMResponse
-from banso.policies import LLMNewsPolicy, LLMPolicyError, NewsPolicyContextBuilder
+from banso.policies import LLMNewsPolicy, LLMPolicyError
+from banso.research_context import ResearchContextBuilder
 
 
 class StaticClient:
@@ -54,7 +55,7 @@ def _policy(
     client = StaticClient(output)
     policy = LLMNewsPolicy(
         client,
-        NewsPolicyContextBuilder(
+        ResearchContextBuilder(
             store or InMemoryArtifactStore(),
             routes or [RetrievalRoute.WEB],
         ),
@@ -338,7 +339,7 @@ def test_rejects_invalid_curation_refs(
 def test_wraps_llm_errors() -> None:
     policy = LLMNewsPolicy(
         RaisingClient(),
-        NewsPolicyContextBuilder(
+        ResearchContextBuilder(
             InMemoryArtifactStore(),
             [RetrievalRoute.WEB],
         ),

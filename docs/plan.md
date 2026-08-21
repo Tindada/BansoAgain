@@ -68,7 +68,7 @@
   `None`，成功形成 Evidence 后成为 active，空证据或终态失败成为 unusable，
   shelved 只来自 Agent 精筛。
 - 内存 ArtifactStore 已保证同 ID 不可覆盖，并在写入、读取和列举时提供隔离快照。
-- 已实现新闻专用的 `NewsPolicyContextBuilder`，从 State 和 ArtifactStore
+- 已实现 `ResearchContextBuilder`，从 State 和 ArtifactStore
   确定性构造用户查询、参考时间、剩余预算、搜索历史、资源生命周期摘要以及有界的
   Search Result、Document 和分组 Evidence 预览，并显式标记省略数量。
 - `reference_time` 在运行初始化时固定，并通过 Policy Context 为“最近”“本周”
@@ -199,7 +199,7 @@ STOP
 - Policy Context 显示 active、shelved、unusable 状态及 active 超限数量；超限时
   `FINISH` 暂不可用，但 `STOP` 仍作为模型可自主选择的放弃作答动作保留。
 - 输出可校验的结构化 `AgentAction`，不允许生成任意工具调用。
-- `LLMNewsPolicy` 内部使用 `NewsPolicyContextBuilder`，根据 State 和 ArtifactStore
+- `LLMNewsPolicy` 内部使用 `ResearchContextBuilder`，根据 State 和 ArtifactStore
   构造模型可见的决策事实；通用 `Policy` 接口继续只返回 `AgentAction`。
 - 向模型提供 query、预算、语义化执行历史、有界 artifact context 和可用 action，
   不直接暴露完整 State，也不在 State 中重复保存 artifact summary。

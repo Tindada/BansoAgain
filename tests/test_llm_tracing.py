@@ -20,7 +20,8 @@ from banso.llm import (
     ThinkingModeLLMClient,
     TracingLLMClient,
 )
-from banso.policies import LLMNewsPolicy, LLMPolicyError, NewsPolicyContextBuilder
+from banso.policies import LLMNewsPolicy, LLMPolicyError
+from banso.research_context import ResearchContextBuilder
 from banso.synthesis import (
     LLMSynthesizer,
     SynthesisEvidenceGroup,
@@ -70,7 +71,7 @@ async def _run_successful_calls() -> list[SpanRecord]:
                 '{"type":"stop","params":{},"rationale":"Done."}',
                 "policy-call",
             ),
-            NewsPolicyContextBuilder(
+            ResearchContextBuilder(
                 InMemoryArtifactStore(),
                 [RetrievalRoute.WEB],
             ),
@@ -221,7 +222,7 @@ async def _run_with_trace(
 def test_parse_failure_keeps_successful_llm_call_separate() -> None:
     policy = LLMNewsPolicy(
         _client("not json", "invalid-call"),
-        NewsPolicyContextBuilder(
+        ResearchContextBuilder(
             InMemoryArtifactStore(),
             [RetrievalRoute.WEB],
         ),
@@ -247,7 +248,7 @@ def test_parse_failure_keeps_successful_llm_call_separate() -> None:
 def test_provider_failure_marks_llm_call_as_error_and_keeps_prompt() -> None:
     policy = LLMNewsPolicy(
         TracingLLMClient(FailingClient()),
-        NewsPolicyContextBuilder(
+        ResearchContextBuilder(
             InMemoryArtifactStore(),
             [RetrievalRoute.WEB],
         ),

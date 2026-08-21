@@ -24,7 +24,8 @@ from banso.llm import (
     build_external_llm_client_from_env,
     build_vllm_llm_client_from_env,
 )
-from banso.policies import LLMNewsPolicy, NewsPolicyContextBuilder
+from banso.policies import LLMNewsPolicy
+from banso.research_context import ResearchContextBuilder
 from banso.retrieval import (
     SourceClassifier,
     SourceClassifierConfig,
@@ -136,7 +137,7 @@ def build_real_news_runtime(
 
     policy = LLMNewsPolicy(
         client=policy_llm_client,
-        context_builder=NewsPolicyContextBuilder(store, enabled_routes),
+        context_builder=ResearchContextBuilder(store, enabled_routes),
     )
     runtime = AgentRuntime(
         policy=policy,

@@ -26,7 +26,8 @@ from banso.llm import (
     build_external_llm_client_from_env,
     build_vllm_llm_client_from_env,
 )
-from banso.policies import LLMNewsPolicy, NewsPolicyContextBuilder
+from banso.policies import LLMNewsPolicy
+from banso.research_context import ResearchContextBuilder
 from banso.retrieval import FakeRetrievalProvider
 from banso.synthesis import LLMSynthesizer
 from banso.tracing import InMemoryTraceSink, Tracer
@@ -63,7 +64,7 @@ async def main() -> None:
     runtime = AgentRuntime(
         policy=LLMNewsPolicy(
             evidence_llm_client,
-            NewsPolicyContextBuilder(store, [RetrievalRoute.WEB]),
+            ResearchContextBuilder(store, [RetrievalRoute.WEB]),
         ),
         executor=NewsActionExecutor(
             store=store,

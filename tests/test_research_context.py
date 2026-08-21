@@ -1,4 +1,4 @@
-"""Tests for the evidence-oriented news policy context."""
+"""Tests for the evidence-oriented research context."""
 
 from datetime import datetime, timezone
 
@@ -26,7 +26,7 @@ from banso.core.observation import (
 )
 from banso.core.state import ActionHistoryEntry, SearchResultState
 from banso.documents import Document, EvidenceItem
-from banso.policies import NewsPolicyContextBuilder
+from banso.research_context import ResearchContextBuilder
 from banso.retrieval import SearchResult, Source, SourceType
 
 
@@ -117,7 +117,7 @@ def _research_entry(
 
 def test_context_contains_research_history_and_evidence_groups() -> None:
     state, store = _completed_state_and_store()
-    context = NewsPolicyContextBuilder(
+    context = ResearchContextBuilder(
         store,
         [RetrievalRoute.LOCAL, RetrievalRoute.WEB],
     ).build(state)
@@ -156,7 +156,7 @@ def test_failed_research_still_advances_research_references() -> None:
     )
     state.action_history.insert(0, _research_entry(0, failure))
 
-    context = NewsPolicyContextBuilder(store, [RetrievalRoute.WEB]).build(state)
+    context = ResearchContextBuilder(store, [RetrievalRoute.WEB]).build(state)
 
     assert [item.research_ref for item in context.research_history] == [
         "R1",
@@ -196,7 +196,7 @@ def test_deferred_result_keeps_the_research_that_returned_it() -> None:
         _research_entry(1, fetched),
     ]
 
-    context = NewsPolicyContextBuilder(store, [RetrievalRoute.WEB]).build(state)
+    context = ResearchContextBuilder(store, [RetrievalRoute.WEB]).build(state)
 
     assert [item.query for item in context.research_history] == [
         "discovery query",
@@ -218,11 +218,11 @@ def test_document_research_references_are_ordered_unique_or_empty() -> None:
     second.query = "another query"
     state.action_history.append(_research_entry(1, second))
 
-    context = NewsPolicyContextBuilder(store, [RetrievalRoute.WEB]).build(state)
+    context = ResearchContextBuilder(store, [RetrievalRoute.WEB]).build(state)
 
     assert context.evidence_groups[0].research_refs == ["R1", "R2"]
     state.action_history = []
-    context = NewsPolicyContextBuilder(store, [RetrievalRoute.WEB]).build(state)
+    context = ResearchContextBuilder(store, [RetrievalRoute.WEB]).build(state)
     assert context.evidence_groups[0].research_refs == []
 
 
@@ -237,7 +237,7 @@ def test_context_limits_visible_claims_without_changing_totals() -> None:
     store.put(second)
     state.documents["document"].evidence_ids.append(second.id)
 
-    context = NewsPolicyContextBuilder(
+    context = ResearchContextBuilder(
         store,
         [RetrievalRoute.WEB],
         max_evidence_per_document=1,
@@ -251,7 +251,7 @@ def test_context_limits_visible_claims_without_changing_totals() -> None:
 
 def test_document_references_are_stable_across_lifecycle_changes() -> None:
     state, store = _completed_state_and_store()
-    builder = NewsPolicyContextBuilder(store, [RetrievalRoute.WEB])
+    builder = ResearchContextBuilder(store, [RetrievalRoute.WEB])
 
     before = builder.build(state)
     state.documents["document"].lifecycle_status = "shelved"
@@ -264,9 +264,9 @@ def test_document_references_are_stable_across_lifecycle_changes() -> None:
 
 def test_context_rejects_missing_artifacts_and_invalid_configuration() -> None:
     with pytest.raises(ValueError, match="at least one"):
-        NewsPolicyContextBuilder(InMemoryArtifactStore(), [])
+        ResearchContextBuilder(InMemoryArtifactStore(), [])
     with pytest.raises(ValueError, match="unique"):
-        NewsPolicyContextBuilder(
+        ResearchContextBuilder(
             InMemoryArtifactStore(),
             [RetrievalRoute.WEB, RetrievalRoute.WEB],
         )
@@ -274,7 +274,7 @@ def test_context_rejects_missing_artifacts_and_invalid_configuration() -> None:
     state, store = _completed_state_and_store()
     state.documents["missing"] = state.documents["document"].model_copy(deep=True)
     with pytest.raises(ValueError, match="missing"):
-        NewsPolicyContextBuilder(store, [RetrievalRoute.WEB]).build(state)
+        ResearchContextBuilder(store, [RetrievalRoute.WEB]).build(state)
 
 
 def test_state_reference_time_defaults_to_utc() -> None:

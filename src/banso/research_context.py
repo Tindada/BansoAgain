@@ -1,4 +1,4 @@
-"""Decision context exposed to the LLM-backed news policy."""
+"""Research context derived from agent state and stored artifacts."""
 
 from datetime import datetime
 from typing import Annotated, Literal
@@ -20,8 +20,8 @@ from banso.retrieval import Source, SourceType
 from banso.retrieval.url_utils import publisher_domain
 
 
-class PolicySourceView(BaseModel):
-    """Compact source identity visible to the policy."""
+class SourceView(BaseModel):
+    """Compact source identity exposed in the research context."""
 
     name: str | None = None
     domain: str
@@ -37,7 +37,7 @@ class EvidenceGroup(BaseModel):
     lifecycle_reason: str | None = None
     lifecycle_updated_at_step: int | None = None
     document_title: str
-    source: PolicySourceView
+    source: SourceView
     published_at: datetime | None = None
     evidence_count: int
     claim_previews: list[str]
@@ -114,18 +114,18 @@ class WorkingSetSummary(BaseModel):
     shelved_document_refs: list[str]
 
 
-class PolicyUserQuery(BaseModel):
-    """User query fields relevant to policy decisions."""
+class UserQueryView(BaseModel):
+    """User query fields relevant to the research process."""
 
     text: str
     region: str | None = None
     time_range: str | None = None
 
 
-class NewsPolicyContext(BaseModel):
-    """Compact facts visible to the LLM news policy."""
+class ResearchContext(BaseModel):
+    """Compact facts describing the current research run."""
 
-    user_query: PolicyUserQuery
+    user_query: UserQueryView
     reference_time: datetime
     enabled_routes: list[RetrievalRoute]
     budget: BudgetSummary
@@ -147,8 +147,8 @@ def document_reference_maps(state: AgentState) -> tuple[dict[str, str], dict[str
     }
 
 
-class NewsPolicyContextBuilder:
-    """Build deterministic LLM decision context from state and artifacts."""
+class ResearchContextBuilder:
+    """Build deterministic research context from state and artifacts."""
 
     def __init__(
         self,
@@ -172,8 +172,8 @@ class NewsPolicyContextBuilder:
         self.max_evidence_per_document = max_evidence_per_document
         self.max_claim_chars = max_claim_chars
 
-    def build(self, state: AgentState) -> NewsPolicyContext:
-        """Resolve state facts and artifacts into bounded decision context."""
+    def build(self, state: AgentState) -> ResearchContext:
+        """Resolve state facts and artifacts into bounded research context."""
         documents = {
             document_id: self._load(document_id, Document)
             for document_id in state.documents
@@ -225,8 +225,8 @@ class NewsPolicyContextBuilder:
                 if document_id is not None:
                     document_research_refs.setdefault(document_id, []).append(research_ref)
 
-        return NewsPolicyContext(
-            user_query=PolicyUserQuery(
+        return ResearchContext(
+            user_query=UserQueryView(
                 text=state.query.text,
                 region=state.query.region,
                 time_range=state.query.time_range,
@@ -364,9 +364,9 @@ class NewsPolicyContextBuilder:
         )
 
     @staticmethod
-    def _build_source(source: Source | None, item_url: str) -> PolicySourceView:
+    def _build_source(source: Source | None, item_url: str) -> SourceView:
         domain = publisher_domain(item_url)
-        return PolicySourceView(
+        return SourceView(
             name=source.name if source is not None else domain or None,
             domain=domain,
             type=source.type if source is not None else SourceType.UNKNOWN,
