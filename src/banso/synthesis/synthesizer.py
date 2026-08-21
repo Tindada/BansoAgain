@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from banso.core.observation import Citation
 from banso.core.state import UserQuery
 from banso.documents.models import EvidenceItem
-from banso.retrieval.models import Source
+from banso.source import Source
 
 
 class SynthesisEvidenceGroup(BaseModel):

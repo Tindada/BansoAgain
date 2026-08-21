@@ -8,8 +8,7 @@ from banso.core.state import UserQuery
 from banso.documents.models import EvidenceItem
 from banso.llm.fake import FakeLLMClient
 from banso.llm.models import LLMMessageRole
-from banso.retrieval.models import Source
-from banso.source_types import SourceType
+from banso.source import Source, SourceType
 from banso.synthesis.llm_synthesizer import LLMSynthesizer
 from banso.synthesis.synthesizer import (
     SynthesisEvidenceGroup,

@@ -6,15 +6,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from banso.source_types import SourceType
-
-
-class Source(BaseModel):
-    """Information source metadata."""
-
-    name: str
-    url: str | None = None
-    type: SourceType = SourceType.UNKNOWN
+from banso.source import Source
 
 
 class SearchResult(BaseModel):

@@ -1,8 +1,8 @@
 """Fake retrieval provider for local smoke tests."""
 
-from banso.retrieval.models import SearchResult, Source
+from banso.retrieval.models import SearchResult
 from banso.retrieval.provider import SearchRequest
-from banso.source_types import SourceType
+from banso.source import Source, SourceType
 
 
 class FakeRetrievalProvider:

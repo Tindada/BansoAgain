@@ -6,12 +6,11 @@ from pydantic import BaseModel, Field, field_validator
 
 from banso.retrieval.models import (
     SearchResult,
-    Source,
     SourceClassificationRecord,
     SourceClassificationReport,
 )
 from banso.retrieval.url_utils import publisher_domain, publisher_home_url
-from banso.source_types import SourceType
+from banso.source import Source, SourceType
 
 
 class SourceClassifierConfig(BaseModel):

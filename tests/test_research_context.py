@@ -31,10 +31,9 @@ from banso.retrieval.models import (
     SearchResult,
     SearchResultMergeReport,
     SearchResultSelectionReport,
-    Source,
     SourceClassificationReport,
 )
-from banso.source_types import SourceType
+from banso.source import Source, SourceType
 
 
 def _completed_state_and_store() -> tuple[AgentState, InMemoryArtifactStore]:

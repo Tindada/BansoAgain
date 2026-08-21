@@ -15,7 +15,7 @@ from pydantic import (
     model_validator,
 )
 
-from banso.source_types import SourceType
+from banso.source import SourceType
 
 
 _DOMAIN_PATTERN = re.compile(

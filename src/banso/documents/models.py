@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
-from banso.retrieval.models import Source
+from banso.source import Source
 
 
 class Document(BaseModel):

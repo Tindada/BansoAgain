@@ -10,9 +10,10 @@ from banso.corpus.models import CorpusDocument, CorpusDocumentStatus
 from banso.corpus.sqlite_store import SQLiteCorpusStore
 from banso.documents.fetcher import DocumentFetchRequest, DocumentFetcher
 from banso.documents.models import Document
-from banso.retrieval.models import SearchResult, Source
+from banso.retrieval.models import SearchResult
 from banso.retrieval.provider import SearchRequest
 from banso.retrieval.url_utils import publisher_home_url
+from banso.source import Source
 
 
 class LocalCorpusRetrievalProvider:

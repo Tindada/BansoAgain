@@ -5,14 +5,14 @@ from typing import Any
 import httpx
 
 from banso.http_errors import classify_httpx_error
-from banso.retrieval.models import SearchResult, Source
+from banso.retrieval.models import SearchResult
 from banso.retrieval.url_utils import publisher_domain, publisher_home_url
 from banso.retrieval.provider import (
     RetrievalError,
     RetrievalProvider,
     SearchRequest,
 )
-from banso.source_types import SourceType
+from banso.source import Source, SourceType
 
 
 class TavilyRetrievalProvider(RetrievalProvider):

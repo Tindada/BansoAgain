@@ -1,11 +1,11 @@
 """Tests for deterministic search result source classification."""
 
-from banso.retrieval.models import SearchResult, Source
+from banso.retrieval.models import SearchResult
 from banso.retrieval.source_classifier import (
     SourceClassifier,
     SourceClassifierConfig,
 )
-from banso.source_types import SourceType
+from banso.source import Source, SourceType
 
 
 def test_classifier_enriches_recognized_source() -> None:

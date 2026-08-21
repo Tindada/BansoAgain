@@ -16,9 +16,8 @@ from banso.core.observation import (
 )
 from banso.core.state import AgentState, DocumentLifecycleStatus
 from banso.documents.models import Document, EvidenceItem
-from banso.retrieval.models import Source
 from banso.retrieval.url_utils import publisher_domain
-from banso.source_types import SourceType
+from banso.source import Source, SourceType
 
 
 class SourceView(BaseModel):

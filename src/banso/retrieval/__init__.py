@@ -1,6 +1,6 @@
 """Search and retrieval provider contracts."""
 
-from banso.retrieval.models import SearchResult, Source
+from banso.retrieval.models import SearchResult
 from banso.retrieval.provider import (
     RetrievalError,
     RetrievalFailureReason,
@@ -13,5 +13,4 @@ __all__ = [
     "RetrievalProvider",
     "SearchRequest",
     "SearchResult",
-    "Source",
 ]

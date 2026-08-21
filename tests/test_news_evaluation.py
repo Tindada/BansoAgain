@@ -22,14 +22,14 @@ from banso.core.observation import (
 from banso.core.runtime import AgentRuntime
 from banso.core.state import AgentState, UserQuery
 from banso.documents.models import Document, EvidenceItem
-from banso.retrieval.models import SearchResult, Source
+from banso.retrieval.models import SearchResult
 from banso.retrieval.models import (
     RetrievalFilterReport,
     SearchResultMergeReport,
     SearchResultSelectionReport,
     SourceClassificationReport,
 )
-from banso.source_types import SourceType
+from banso.source import Source, SourceType
 from banso.tracing.trace import InMemoryTraceSink, Tracer
 
 

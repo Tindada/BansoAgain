@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from banso.documents.models import Document
 from banso.http_errors import is_retryable_http_status
-from banso.retrieval.models import Source
+from banso.source import Source
 
 
 DocumentFetchFailureReason = Literal[

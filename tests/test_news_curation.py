@@ -18,8 +18,7 @@ from banso.documents.models import Document, EvidenceItem
 from banso.executors.news_executor import NewsActionExecutor
 from banso.executors.research_pipeline import ResearchRouteComponents
 from banso.retrieval.fake import FakeRetrievalProvider
-from banso.retrieval.models import Source
-from banso.source_types import SourceType
+from banso.source import Source, SourceType
 from banso.synthesis.synthesizer import SynthesisRequest, SynthesisResult
 
 

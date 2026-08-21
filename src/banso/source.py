@@ -1,6 +1,8 @@
-"""Shared source classification types."""
+"""Shared information source models."""
 
 from enum import StrEnum
+
+from pydantic import BaseModel
 
 
 class SourceType(StrEnum):
@@ -14,3 +16,11 @@ class SourceType(StrEnum):
     SOCIAL = "social"
     AGGREGATOR = "aggregator"
     UNKNOWN = "unknown"
+
+
+class Source(BaseModel):
+    """Information source metadata."""
+
+    name: str
+    url: str | None = None
+    type: SourceType = SourceType.UNKNOWN

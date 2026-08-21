@@ -10,8 +10,7 @@ from pypdf import PdfReader, PdfWriter
 from banso.documents.fetcher import DocumentFetchError, DocumentFetchRequest
 from banso.documents.http_fetcher import HTTPDocumentFetcher
 from banso.documents.parser import DocumentParseError, DocumentParser
-from banso.retrieval.models import Source
-from banso.source_types import SourceType
+from banso.source import Source, SourceType
 from tests.pdf_fixtures import make_text_pdf
 
 
