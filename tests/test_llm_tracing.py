@@ -90,7 +90,7 @@ async def _run_successful_calls() -> list[SpanRecord]:
         )
         evidence = await extractor.extract(
             EvidenceExtractionRequest(
-                query=UserQuery(text="Latest product news"),
+                query="Latest product news",
                 document=document,
             )
         )
@@ -101,7 +101,7 @@ async def _run_successful_calls() -> list[SpanRecord]:
         )
         result = await synthesizer.synthesize(
             SynthesisRequest(
-                query=UserQuery(text="Latest product news"),
+                query="Latest product news",
                 reference_time=datetime(2026, 8, 13, tzinfo=timezone.utc),
                 evidence_groups=[
                     SynthesisEvidenceGroup(
@@ -285,7 +285,7 @@ async def _run_concurrent_extractions() -> list[SpanRecord]:
             *(
                 extractor.extract(
                     EvidenceExtractionRequest(
-                        query=UserQuery(text="query"),
+                        query="query",
                         document=document,
                     )
                 )

@@ -1,7 +1,6 @@
 """Fake synthesizer for local smoke tests."""
 
-from banso.core.observation import Citation
-from banso.synthesis.synthesizer import SynthesisRequest, SynthesisResult
+from banso.synthesis.synthesizer import Citation, SynthesisRequest, SynthesisResult
 
 
 class FakeSynthesizer:
@@ -24,6 +23,6 @@ class FakeSynthesizer:
             for index, group in enumerate(request.evidence_groups, start=1)
         ]
         return SynthesisResult(
-            answer=f"Fake summary for '{request.query.text}': {' '.join(summaries)}",
+            answer=f"Fake summary for '{request.query}': {' '.join(summaries)}",
             citations=citations,
         )

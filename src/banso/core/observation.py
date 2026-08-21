@@ -11,6 +11,7 @@ from banso.retrieval.models import (
     SearchResultSelectionReport,
     SourceClassificationReport,
 )
+from banso.synthesis.synthesizer import Citation
 
 
 class ObservationModel(BaseModel):
@@ -98,14 +99,6 @@ ExtractionOutcome = Annotated[
 
 
 # Action observations
-
-
-class Citation(ObservationModel):
-    """A source-group reference used in the synthesized answer."""
-
-    reference: str = Field(pattern=r"^S[1-9]\d*$")
-    document_id: str = Field(min_length=1)
-    source_url: str = Field(min_length=1)
 
 
 class ResearchObservationBase(ObservationModel):

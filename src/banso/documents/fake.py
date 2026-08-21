@@ -1,6 +1,5 @@
 """Fake document components for local smoke tests."""
 
-from banso.core.state import UserQuery
 from banso.documents.extractor import EvidenceExtractionRequest
 from banso.documents.models import Document, EvidenceItem
 from banso.documents.fetcher import DocumentFetchRequest
@@ -39,5 +38,5 @@ class FakeEvidenceExtractor:
         ][: request.max_items_per_chunk]
 
 
-def _build_fake_claim(query: UserQuery, document: Document) -> str:
-    return f"Fake evidence for '{query.text}' from '{document.title}'."
+def _build_fake_claim(query: str, document: Document) -> str:
+    return f"Fake evidence for '{query}' from '{document.title}'."

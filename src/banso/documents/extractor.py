@@ -5,13 +5,12 @@ from typing import Any, Protocol
 from pydantic import BaseModel, Field
 
 from banso.documents.models import Document, EvidenceItem
-from banso.core.state import UserQuery
 
 
 class EvidenceExtractionRequest(BaseModel):
     """Structured request for extracting evidence from a document."""
 
-    query: UserQuery
+    query: str
     document: Document
     max_items_per_chunk: int = 5
     metadata: dict[str, Any] = Field(default_factory=dict)

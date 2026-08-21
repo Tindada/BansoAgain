@@ -6,14 +6,13 @@ from datetime import datetime, timezone
 import pytest
 
 from banso.benchmarks.gisa_synthesizer import GisaSynthesizer
-from banso.core.state import UserQuery
 from banso.llm.fake import FakeLLMClient
 from banso.synthesis.synthesizer import SynthesisRequest
 
 
 def _request(answer_type: str) -> SynthesisRequest:
     return SynthesisRequest(
-        query=UserQuery(text="Benchmark question"),
+        query="Benchmark question",
         reference_time=datetime(2026, 8, 19, tzinfo=timezone.utc),
         metadata={"gisa": {"answer_type": answer_type}},
     )

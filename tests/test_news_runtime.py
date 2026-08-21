@@ -10,7 +10,6 @@ from banso.core.action import (
     RetrievalRoute,
 )
 from banso.core.observation import (
-    Citation,
     CompletedResearchObservation,
     RetrievalFailedResearchObservation,
 )
@@ -24,7 +23,7 @@ from banso.executors.news_executor import NewsActionExecutor
 from banso.executors.research_pipeline import ResearchRouteComponents
 from banso.retrieval.models import SearchResult
 from banso.retrieval.provider import RetrievalError, SearchRequest
-from banso.synthesis.synthesizer import SynthesisRequest, SynthesisResult
+from banso.synthesis.synthesizer import Citation, SynthesisRequest, SynthesisResult
 from banso.tracing.trace import InMemoryTraceSink, Tracer
 
 

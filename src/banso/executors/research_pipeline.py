@@ -394,7 +394,7 @@ class ResearchPipeline:
         ]:
             async with semaphore:
                 request = EvidenceExtractionRequest(
-                    query=state.query,
+                    query=state.query.text,
                     document=document,
                 )
                 attempt = await run_with_retry(

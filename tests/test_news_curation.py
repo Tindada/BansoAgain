@@ -11,7 +11,6 @@ from banso.core.action import (
     AgentActionType,
     RetrievalRoute,
 )
-from banso.core.observation import Citation
 from banso.core.reducer import DefaultStateReducer
 from banso.core.state import AgentState, DocumentState, ExecutionBudget, UserQuery
 from banso.documents.models import Document, EvidenceItem
@@ -19,7 +18,7 @@ from banso.executors.news_executor import NewsActionExecutor
 from banso.executors.research_pipeline import ResearchRouteComponents
 from banso.retrieval.fake import FakeRetrievalProvider
 from banso.source import Source, SourceType
-from banso.synthesis.synthesizer import SynthesisRequest, SynthesisResult
+from banso.synthesis.synthesizer import Citation, SynthesisRequest, SynthesisResult
 
 
 class UnusedFetcher:
@@ -91,7 +90,10 @@ def _state_and_store() -> tuple[AgentState, InMemoryArtifactStore]:
             evidence_ids=[evidence.id],
             lifecycle_status=status,
         )
-    return AgentState(query=UserQuery(text="query"), documents=documents), store
+    return AgentState(
+        query=UserQuery(text="query", language="en", time_range="week"),
+        documents=documents,
+    ), store
 
 
 def test_curation_is_reversible_without_changing_artifacts() -> None:
@@ -167,6 +169,9 @@ def test_finish_uses_only_active_documents_and_evidence() -> None:
 
     assert observation.final_answer == "answer"
     assert synthesizer.request is not None
+    assert synthesizer.request.query == state.query.text
+    assert synthesizer.request.language == state.query.language
+    assert synthesizer.request.time_range == state.query.time_range
     assert synthesizer.request.reference_time == state.reference_time
     assert len(synthesizer.request.evidence_groups) == 1
     group = synthesizer.request.evidence_groups[0]

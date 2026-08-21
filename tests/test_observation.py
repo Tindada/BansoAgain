@@ -5,11 +5,11 @@ from pydantic import ValidationError
 
 from banso.core.action import AgentAction, AgentActionType
 from banso.core.observation import (
-    Citation,
     ExtractionSuccess,
     FinishObservation,
 )
 from banso.core.state import ActionHistoryEntry
+from banso.synthesis.synthesizer import Citation
 
 
 def test_observation_round_trips_as_json_inside_history() -> None:

@@ -4,7 +4,6 @@ import asyncio
 
 import pytest
 
-from banso.core.state import UserQuery
 from banso.documents.extractor import (
     EvidenceExtractionError,
     EvidenceExtractionRequest,
@@ -65,7 +64,7 @@ async def _run_llm_evidence_extractor() -> None:
         max_tokens=1_234,
     )
     request = EvidenceExtractionRequest(
-        query=UserQuery(text="latest AI product news"),
+        query="latest AI product news",
         document=_document(),
     )
 
@@ -103,7 +102,7 @@ async def _run_invalid_json_case() -> None:
     with pytest.raises(EvidenceExtractionError) as caught:
         await extractor.extract(
             EvidenceExtractionRequest(
-                query=UserQuery(text="latest AI product news"),
+                query="latest AI product news",
                 document=_document(),
             )
         )
@@ -116,7 +115,7 @@ async def _run_empty_array_case() -> None:
 
     evidence = await extractor.extract(
         EvidenceExtractionRequest(
-            query=UserQuery(text="latest AI product news"),
+            query="latest AI product news",
             document=_document(),
         )
     )
@@ -132,7 +131,7 @@ async def _run_compatible_json_wrappers_case() -> None:
         extractor = LLMEvidenceExtractor(client=FakeLLMClient(content=content))
         evidence = await extractor.extract(
             EvidenceExtractionRequest(
-                query=UserQuery(text="latest AI product news"),
+                query="latest AI product news",
                 document=_document(),
             )
         )
@@ -147,7 +146,7 @@ async def _run_invalid_schema_case() -> None:
     with pytest.raises(EvidenceExtractionError) as caught:
         await extractor.extract(
             EvidenceExtractionRequest(
-                query=UserQuery(text="latest AI product news"),
+                query="latest AI product news",
                 document=_document(),
             )
         )
@@ -162,7 +161,7 @@ async def _run_llm_error_case() -> None:
     with pytest.raises(EvidenceExtractionError) as caught:
         await extractor.extract(
             EvidenceExtractionRequest(
-                query=UserQuery(text="latest AI product news"),
+                query="latest AI product news",
                 document=document,
             )
         )
@@ -189,7 +188,7 @@ async def _run_chunked_document_case() -> None:
 
     evidence = await extractor.extract(
         EvidenceExtractionRequest(
-            query=UserQuery(text="latest AI product news"),
+            query="latest AI product news",
             document=document,
         )
     )
@@ -212,7 +211,7 @@ async def _run_later_chunk_failure_case() -> None:
     client = ChunkingLLMClient(fail_on_call=2)
     extractor = LLMEvidenceExtractor(client=client, max_input_bytes=1_000)
     request = EvidenceExtractionRequest(
-        query=UserQuery(text="latest AI product news"),
+        query="latest AI product news",
         document=document,
     )
     chunk_count = len(extractor._split_document(request))
@@ -240,7 +239,7 @@ async def _run_document_chunk_limit_case() -> None:
     with pytest.raises(EvidenceExtractionError) as caught:
         await extractor.extract(
             EvidenceExtractionRequest(
-                query=UserQuery(text="latest AI product news"),
+                query="latest AI product news",
                 document=document,
             )
         )

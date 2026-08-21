@@ -143,7 +143,9 @@ class NewsActionExecutor:
 
         result = await self.synthesizer.synthesize(
             SynthesisRequest(
-                query=state.query,
+                query=state.query.text,
+                language=state.query.language,
+                time_range=state.query.time_range,
                 reference_time=state.reference_time,
                 evidence_groups=evidence_groups,
                 metadata=state.synthesis_metadata,

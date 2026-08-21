@@ -6,7 +6,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, model_validator
 
 from banso.core.action import AgentAction, AgentActionType
-from banso.core.observation import Citation, Observation
+from banso.core.observation import Observation
+from banso.synthesis.synthesizer import Citation
 
 
 class ExecutionBudget(BaseModel):

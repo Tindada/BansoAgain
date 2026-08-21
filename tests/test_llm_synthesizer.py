@@ -3,14 +3,13 @@
 import asyncio
 from datetime import datetime, timezone
 
-from banso.core.observation import Citation
-from banso.core.state import UserQuery
 from banso.documents.models import EvidenceItem
 from banso.llm.fake import FakeLLMClient
 from banso.llm.models import LLMMessageRole
 from banso.source import Source, SourceType
 from banso.synthesis.llm_synthesizer import LLMSynthesizer
 from banso.synthesis.synthesizer import (
+    Citation,
     SynthesisEvidenceGroup,
     SynthesisRequest,
 )
@@ -19,11 +18,9 @@ from banso.synthesis.synthesizer import (
 def _request() -> SynthesisRequest:
     published_at = datetime(2026, 8, 12, tzinfo=timezone.utc)
     return SynthesisRequest(
-        query=UserQuery(
-            text="latest AI company news",
-            language="English",
-            time_range="past 7 days",
-        ),
+        query="latest AI company news",
+        language="English",
+        time_range="past 7 days",
         reference_time=datetime(2026, 8, 13, tzinfo=timezone.utc),
         evidence_groups=[
             SynthesisEvidenceGroup(

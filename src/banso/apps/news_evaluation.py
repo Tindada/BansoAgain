@@ -10,7 +10,6 @@ from pydantic import BaseModel, Field
 from banso.artifacts.store import ArtifactStore
 from banso.core.action import AgentAction, AgentActionType
 from banso.core.observation import (
-    Citation,
     CompletedResearchObservation,
     ExtractionFailure,
     FetchFailure,
@@ -20,6 +19,7 @@ from banso.core.observation import (
 )
 from banso.core.runtime import RuntimeRunResult
 from banso.retrieval.models import SearchResult
+from banso.synthesis.synthesizer import Citation
 from banso.tracing.trace import SpanRecord
 
 

@@ -13,7 +13,6 @@ from banso.apps.news_evaluation import (
 from banso.artifacts.store import InMemoryArtifactStore
 from banso.core.action import AgentAction, AgentActionType
 from banso.core.observation import (
-    Citation,
     CompletedResearchObservation,
     FinishObservation,
     RetrievalFailedResearchObservation,
@@ -30,6 +29,7 @@ from banso.retrieval.models import (
     SourceClassificationReport,
 )
 from banso.source import Source, SourceType
+from banso.synthesis.synthesizer import Citation
 from banso.tracing.trace import InMemoryTraceSink, Tracer
 
 

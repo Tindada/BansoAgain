@@ -3,12 +3,20 @@
 from datetime import datetime
 from typing import Any, Protocol
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
-from banso.core.observation import Citation
-from banso.core.state import UserQuery
 from banso.documents.models import EvidenceItem
 from banso.source import Source
+
+
+class Citation(BaseModel):
+    """A source-group reference used in the synthesized answer."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reference: str = Field(pattern=r"^S[1-9]\d*$")
+    document_id: str = Field(min_length=1)
+    source_url: str = Field(min_length=1)
 
 
 class SynthesisEvidenceGroup(BaseModel):
@@ -25,7 +33,9 @@ class SynthesisEvidenceGroup(BaseModel):
 class SynthesisRequest(BaseModel):
     """Structured request for synthesizing a final answer."""
 
-    query: UserQuery
+    query: str
+    language: str | None = None
+    time_range: str | None = None
     reference_time: datetime
     evidence_groups: list[SynthesisEvidenceGroup] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)

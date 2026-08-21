@@ -2,10 +2,10 @@
 
 import re
 
-from banso.core.observation import Citation
 from banso.llm.client import LLMClient
 from banso.llm.models import LLMMessage, LLMMessageRole, LLMRequest
 from banso.synthesis.synthesizer import (
+    Citation,
     SynthesisEvidenceGroup,
     SynthesisRequest,
     SynthesisResult,
@@ -77,13 +77,13 @@ class LLMSynthesizer:
             for index, group in enumerate(request.evidence_groups, start=1)
         ]
         evidence_block = "\n\n".join(group_blocks) or "No evidence provided."
-        time_range = request.query.time_range or "Not specified"
+        time_range = request.time_range or "Not specified"
         answer_language = (
-            request.query.language or "Match the language of the user query"
+            request.language or "Match the language of the user query"
         )
 
         return (
-            f"User query:\n{request.query.text}\n\n"
+            f"User query:\n{request.query}\n\n"
             f"Reference time:\n{request.reference_time.isoformat()}\n\n"
             f"Requested time range:\n{time_range}\n\n"
             f"Answer language:\n{answer_language}\n\n"

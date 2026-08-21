@@ -246,7 +246,7 @@ class LLMEvidenceExtractor:
     ) -> str:
         document = request.document
         return (
-            f"User query:\n{request.query.text}\n\n"
+            f"User query:\n{request.query}\n\n"
             "Maximum evidence items for this document chunk: "
             f"{request.max_items_per_chunk}\n\n"
             f"Document title:\n{document.title}\n\n"

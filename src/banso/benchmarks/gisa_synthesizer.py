@@ -139,7 +139,7 @@ class GisaSynthesizer:
         ]
         evidence = "\n\n".join(evidence_blocks) or "No evidence was collected."
         return (
-            f"Question:\n{request.query.text}\n\n"
+            f"Question:\n{request.query}\n\n"
             f"Reference time:\n{request.reference_time.isoformat()}\n\n"
             f"Answer type:\n{answer_type.value}\n\n"
             f"Required JSON schema:\n{self._json_schema_instruction(answer_type)}\n\n"
