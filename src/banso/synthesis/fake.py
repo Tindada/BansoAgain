@@ -1,6 +1,7 @@
 """Fake synthesizer for local smoke tests."""
 
-from banso.synthesis.synthesizer import Citation, SynthesisRequest, SynthesisResult
+from banso.core.observation import Citation
+from banso.synthesis.synthesizer import SynthesisRequest, SynthesisResult
 
 
 class FakeSynthesizer:

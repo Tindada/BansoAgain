@@ -19,15 +19,17 @@ from banso.core.observation import (
     ExtractionSuccess,
     FetchSuccess,
     RetrievalFailedResearchObservation,
-    RetrievalFilterReport,
-    SearchResultMergeReport,
-    SearchResultSelectionReport,
-    SourceClassificationReport,
 )
 from banso.core.state import ActionHistoryEntry, SearchResultState
 from banso.documents import Document, EvidenceItem
 from banso.research_context import ResearchContextBuilder
 from banso.retrieval import SearchResult, Source, SourceType
+from banso.retrieval.models import (
+    RetrievalFilterReport,
+    SearchResultMergeReport,
+    SearchResultSelectionReport,
+    SourceClassificationReport,
+)
 
 
 def _completed_state_and_store() -> tuple[AgentState, InMemoryArtifactStore]:

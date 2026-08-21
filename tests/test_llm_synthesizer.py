@@ -4,11 +4,11 @@ import asyncio
 from datetime import datetime, timezone
 
 from banso.core import UserQuery
+from banso.core.observation import Citation
 from banso.documents import EvidenceItem
 from banso.llm import FakeLLMClient, LLMMessageRole
 from banso.retrieval import Source, SourceType
 from banso.synthesis import (
-    Citation,
     LLMSynthesizer,
     SynthesisEvidenceGroup,
     SynthesisRequest,

@@ -20,6 +20,8 @@ from banso.core.observation import (
     ExtractionSuccess,
     FetchFailure,
     FetchSuccess,
+)
+from banso.retrieval.models import (
     RetrievalFilterReport,
     SearchResultMergeReport,
     SearchResultSelectionReport,

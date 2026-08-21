@@ -4,10 +4,9 @@ from banso.retrieval.fake import FakeRetrievalProvider
 from banso.retrieval.filter import (
     RetrievalFilter,
     RetrievalFilterConfig,
-    RetrievalFilterReport,
     RetrievalFilterResult,
 )
-from banso.retrieval.models import SearchResult, Source, SourceType
+from banso.retrieval.models import SearchResult, Source
 from banso.retrieval.provider import (
     RetrievalError,
     RetrievalFailureReason,
@@ -22,12 +21,12 @@ from banso.retrieval.source_classifier import (
 )
 from banso.retrieval.tavily_provider import TavilyRetrievalProvider
 from banso.retrieval.url_utils import normalize_url
+from banso.source_types import SourceType
 
 __all__ = [
     "FakeRetrievalProvider",
     "RetrievalFilter",
     "RetrievalFilterConfig",
-    "RetrievalFilterReport",
     "RetrievalFilterResult",
     "RetrievalError",
     "RetrievalFailureReason",

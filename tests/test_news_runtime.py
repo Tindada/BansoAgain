@@ -15,6 +15,7 @@ from banso.core import (
     UserQuery,
 )
 from banso.core.observation import (
+    Citation,
     CompletedResearchObservation,
     RetrievalFailedResearchObservation,
 )
@@ -27,7 +28,7 @@ from banso.documents import (
 )
 from banso.executors import NewsActionExecutor, ResearchRouteComponents
 from banso.retrieval import RetrievalError, SearchRequest, SearchResult
-from banso.synthesis import Citation, SynthesisRequest, SynthesisResult
+from banso.synthesis import SynthesisRequest, SynthesisResult
 from banso.tracing import InMemoryTraceSink, Tracer
 
 

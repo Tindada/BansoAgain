@@ -2,9 +2,9 @@
 
 import re
 
+from banso.core.observation import Citation
 from banso.llm import LLMClient, LLMMessage, LLMMessageRole, LLMRequest
 from banso.synthesis.synthesizer import (
-    Citation,
     SynthesisEvidenceGroup,
     SynthesisRequest,
     SynthesisResult,

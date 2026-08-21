@@ -5,13 +5,15 @@ from banso.core.observation import (
     CompletedResearchObservation,
     FinishObservation,
     Observation,
+    StopObservation,
+)
+from banso.core.state import AgentState
+from banso.retrieval.models import (
     RetrievalFilterReport,
     SearchResultMergeReport,
     SearchResultSelectionReport,
     SourceClassificationReport,
-    StopObservation,
 )
-from banso.core.state import AgentState
 
 
 class SimpleActionExecutor:

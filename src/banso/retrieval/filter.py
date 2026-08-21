@@ -4,8 +4,7 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field
 
-from banso.core.observation import RetrievalFilterReport
-from banso.retrieval.models import SearchResult
+from banso.retrieval.models import RetrievalFilterReport, SearchResult
 from banso.retrieval.url_utils import normalize_url
 
 

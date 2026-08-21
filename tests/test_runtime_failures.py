@@ -21,11 +21,13 @@ from banso.core import (
 from banso.core.observation import (
     CompletedResearchObservation,
     Observation,
+    StopObservation,
+)
+from banso.retrieval.models import (
     RetrievalFilterReport,
     SearchResultMergeReport,
     SearchResultSelectionReport,
     SourceClassificationReport,
-    StopObservation,
 )
 from banso.tracing import (
     InMemoryTraceSink,

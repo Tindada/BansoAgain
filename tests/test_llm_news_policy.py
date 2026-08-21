@@ -19,14 +19,16 @@ from banso.core.observation import (
     CompletedResearchObservation,
     ResearchObservation,
     RetrievalFailedResearchObservation,
+)
+from banso.core.state import DocumentState
+from banso.documents import Document, EvidenceItem
+from banso.llm import LLMError, LLMRequest, LLMResponse
+from banso.retrieval.models import (
     RetrievalFilterReport,
     SearchResultMergeReport,
     SearchResultSelectionReport,
     SourceClassificationReport,
 )
-from banso.core.state import DocumentState
-from banso.documents import Document, EvidenceItem
-from banso.llm import LLMError, LLMRequest, LLMResponse
 from banso.policies import LLMNewsPolicy, LLMPolicyError
 from banso.research_context import ResearchContextBuilder
 

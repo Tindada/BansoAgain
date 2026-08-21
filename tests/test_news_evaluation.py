@@ -17,14 +17,16 @@ from banso.core.observation import (
     CompletedResearchObservation,
     FinishObservation,
     RetrievalFailedResearchObservation,
-    RetrievalFilterReport,
-    SearchResultMergeReport,
-    SearchResultSelectionReport,
-    SourceClassificationReport,
     StopObservation,
 )
 from banso.documents import Document, EvidenceItem
 from banso.retrieval import SearchResult, Source, SourceType
+from banso.retrieval.models import (
+    RetrievalFilterReport,
+    SearchResultMergeReport,
+    SearchResultSelectionReport,
+    SourceClassificationReport,
+)
 from banso.tracing import InMemoryTraceSink, Tracer
 
 

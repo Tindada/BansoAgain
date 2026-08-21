@@ -15,11 +15,12 @@ from banso.core import (
     RetrievalRoute,
     UserQuery,
 )
+from banso.core.observation import Citation
 from banso.core.state import DocumentState
 from banso.documents import Document, EvidenceItem
 from banso.executors import NewsActionExecutor, ResearchRouteComponents
 from banso.retrieval import FakeRetrievalProvider, Source, SourceType
-from banso.synthesis import Citation, SynthesisRequest, SynthesisResult
+from banso.synthesis import SynthesisRequest, SynthesisResult
 
 
 class UnusedFetcher:

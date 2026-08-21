@@ -19,10 +19,6 @@ from banso.core.observation import (
     FetchSuccess,
     ResearchObservation,
     RetrievalFailedResearchObservation,
-    RetrievalFilterReport,
-    SearchResultMergeReport,
-    SearchResultSelectionReport,
-    SourceClassificationReport,
 )
 from banso.core.state import AgentState, SearchResultState
 from banso.documents import (
@@ -44,6 +40,12 @@ from banso.retrieval import (
     normalize_url,
 )
 from banso.retrieval.filter import RetrievalFilter
+from banso.retrieval.models import (
+    RetrievalFilterReport,
+    SearchResultMergeReport,
+    SearchResultSelectionReport,
+    SourceClassificationReport,
+)
 from banso.executors.retry import RetryPolicy, run_with_retry
 from banso.tracing import start_span
 
