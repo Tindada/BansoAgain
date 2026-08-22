@@ -32,7 +32,8 @@ ACTION_INSTRUCTIONS = {
     AgentActionType.RESEARCH: (
         "Atomically retrieve search results through one route, select relevant "
         "results, fetch documents, and extract evidence for one specific information "
-        "need. source_domains is optional and only valid for "
+        "need. query is the search query sent to the selected route. source_domains "
+        "is optional and only valid for "
         "web. Each value must be a bare domain without a scheme, port, path, or "
         "wildcard; omit it for an unrestricted search. Use it when the user requests "
         "specific sites or a broader search did not find the needed source, but do "
@@ -177,8 +178,8 @@ class LLMNewsPolicy:
             f'{{"type": "<{action_types}>", "params": <matching Params object>, '
             '"rationale": "<brief decision reason>"}\n'
             "Return exactly one JSON object matching this format with no additional "
-            "keys. The rationale must not contain hidden chain-of-thought. Do not "
-            "include markdown."
+            "keys. The rationale must be a brief decision reason. Do not include "
+            "markdown."
         )
 
     @staticmethod
