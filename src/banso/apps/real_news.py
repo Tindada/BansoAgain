@@ -28,6 +28,7 @@ from banso.llm.openai_sdk_client import ThinkingModeLLMClient
 from banso.llm.tracing import TracingLLMClient
 from banso.agent.policies.llm_news_policy import LLMNewsPolicy
 from banso.agent.research_context import ResearchContextBuilder
+from banso.agent.selection.llm_selector import LLMSearchResultSelector
 from banso.retrieval.source_classifier import (
     SourceClassifier,
     SourceClassifierConfig,
@@ -89,7 +90,7 @@ def build_real_news_runtime(
     )
 
     base_local_llm_client = build_vllm_llm_client_from_env()
-    policy_llm_client = TracingLLMClient(
+    agent_llm_client = TracingLLMClient(
         ThinkingModeLLMClient(base_local_llm_client)
     )
     extraction_llm_client = TracingLLMClient(
@@ -138,9 +139,10 @@ def build_real_news_runtime(
             ),
         )
 
+    context_builder = ResearchContextBuilder(store, enabled_routes)
     policy = LLMNewsPolicy(
-        client=policy_llm_client,
-        context_builder=ResearchContextBuilder(store, enabled_routes),
+        client=agent_llm_client,
+        context_builder=context_builder,
     )
     runtime = AgentRuntime(
         policy=policy,
@@ -150,6 +152,10 @@ def build_real_news_runtime(
             evidence_extractor=LLMEvidenceExtractor(client=extraction_llm_client),
             synthesizer=synthesizer_class(client=external_llm_client),
             source_classifier=source_classifier,
+            search_result_selector=LLMSearchResultSelector(
+                agent_llm_client,
+                context_builder,
+            ),
             max_extraction_concurrency=int(
                 os.getenv("BANSO_MAX_EXTRACTION_CONCURRENCY", "4")
             ),

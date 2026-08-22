@@ -7,6 +7,7 @@ from banso.apps.real_news import enabled_retrieval_routes_from_env
 from banso.agent.action import RetrievalRoute
 from banso.agent.executors.news_executor import NewsActionExecutor
 from banso.agent.policies.llm_news_policy import LLMNewsPolicy
+from banso.agent.selection.llm_selector import LLMSearchResultSelector
 
 
 @pytest.mark.parametrize(
@@ -75,6 +76,10 @@ def test_web_only_runtime_builds_only_the_web_route(monkeypatch) -> None:
 
     assert isinstance(bundle.runtime.policy, LLMNewsPolicy)
     assert isinstance(bundle.runtime.executor, NewsActionExecutor)
+    selector = bundle.runtime.executor.research_pipeline.search_result_selector
+    assert isinstance(selector, LLMSearchResultSelector)
+    assert selector.client is bundle.runtime.policy.client
+    assert selector.context_builder is bundle.runtime.policy.context_builder
     extractor = bundle.runtime.executor.research_pipeline.evidence_extractor
     assert extractor.client.client.thinking_extra_body == thinking_extra_body
     assert set(bundle.runtime.executor.research_routes) == {RetrievalRoute.WEB}
