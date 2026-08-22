@@ -15,6 +15,11 @@ from banso.agent.observation import (
 )
 from banso.agent.reducer import DefaultStateReducer
 from banso.agent.runtime import AgentRuntime
+from banso.agent.selection.selector import (
+    SearchResultSelection,
+    SearchResultSelectionRequest,
+    SearchResultSelector,
+)
 from banso.agent.state import AgentState, ExecutionBudget, UserQuery
 from banso.documents.extractor import EvidenceExtractionRequest
 from banso.documents.fetcher import DocumentFetchError, DocumentFetchRequest
@@ -167,16 +172,30 @@ class RecordingSynthesizer:
         )
 
 
+class SecondResultSelector:
+    def __init__(self) -> None:
+        self.requests: list[SearchResultSelectionRequest] = []
+
+    async def select(
+        self,
+        request: SearchResultSelectionRequest,
+    ) -> SearchResultSelection:
+        self.requests.append(request)
+        return SearchResultSelection(selected_ids=[request.candidates[1].id])
+
+
 def _executor(
     store: InMemoryArtifactStore,
     routes: dict[RetrievalRoute, ResearchRouteComponents],
     synthesizer: RecordingSynthesizer | None = None,
+    search_result_selector: SearchResultSelector | None = None,
 ) -> NewsActionExecutor:
     return NewsActionExecutor(
         store=store,
         research_routes=routes,
         evidence_extractor=EvidenceExtractor(),
         synthesizer=synthesizer or RecordingSynthesizer(),
+        search_result_selector=search_result_selector,
     )
 
 
@@ -192,7 +211,7 @@ def _web_executor(provider) -> NewsActionExecutor:
     )
 
 
-def test_research_routes_and_processes_selected_results_atomically() -> None:
+def test_research_routes_and_bounds_new_documents_atomically() -> None:
     store = InMemoryArtifactStore()
     web = StaticRetrievalProvider("web", count=3)
     local = StaticRetrievalProvider("local")
@@ -218,19 +237,42 @@ def test_research_routes_and_processes_selected_results_atomically() -> None:
 
     assert isinstance(observation, CompletedResearchObservation)
     assert len(observation.search_result_ids) == 3
-    assert (
-        observation.selection_report.selected_ids
-        == observation.search_result_ids[:2]
-    )
-    assert (
-        observation.selection_report.deferred_ids
-        == observation.search_result_ids[2:]
-    )
+    assert observation.selection_report.selected_ids == observation.search_result_ids
     assert len(observation.fetch_outcomes) == 2
     assert len(observation.extraction_outcomes) == 2
     assert len(web_fetcher.requests) == 2
     assert not local.requests
     assert not local_fetcher.requests
+
+
+def test_injected_selector_controls_which_candidates_are_processed() -> None:
+    store = InMemoryArtifactStore()
+    provider = StaticRetrievalProvider("web", count=3)
+    fetcher = RecordingFetcher()
+    selector = SecondResultSelector()
+    executor = _executor(
+        store,
+        {RetrievalRoute.WEB: ResearchRouteComponents(provider, fetcher)},
+        search_result_selector=selector,
+    )
+
+    observation = asyncio.run(
+        executor.execute(
+            AgentAction(
+                type=AgentActionType.RESEARCH,
+                params={"query": "specific gap", "route": "web"},
+            ),
+            AgentState(query=UserQuery(text="overall question")),
+        )
+    )
+
+    selected_id = observation.search_result_ids[1]
+    assert selector.requests[0].research_query == "specific gap"
+    assert [result.id for result in selector.requests[0].candidates] == (
+        observation.search_result_ids
+    )
+    assert observation.selection_report.selected_ids == [selected_id]
+    assert fetcher.requests[0].url.endswith("/2")
 
 
 def test_runtime_researches_then_finishes_from_active_evidence() -> None:
@@ -395,7 +437,7 @@ def test_non_retryable_retrieval_failure_is_not_retried() -> None:
     assert observation.status_code == 400
 
 
-def test_fetch_failure_is_backfilled_from_deferred_results() -> None:
+def test_fetch_continues_after_failure_until_reaching_document_limit() -> None:
     store = InMemoryArtifactStore()
     fetcher = FirstFetchFailingFetcher()
     executor = _executor(
@@ -431,7 +473,6 @@ def test_fetch_failure_is_backfilled_from_deferred_results() -> None:
     assert observation.selection_report.selected_ids == (
         observation.search_result_ids
     )
-    assert observation.selection_report.deferred_ids == []
     assert len(observation.extraction_outcomes) == 2
 
 
@@ -465,7 +506,7 @@ def test_terminal_results_do_not_reenter_result_selection() -> None:
     assert second_observation.fetch_outcomes == []
 
 
-def test_deferred_results_reenter_the_next_result_selection() -> None:
+def test_unprocessed_results_reenter_the_next_result_selection() -> None:
     store = InMemoryArtifactStore()
     provider = StaticRetrievalProvider("web", count=3)
     executor = _executor(
@@ -487,7 +528,7 @@ def test_deferred_results_reenter_the_next_result_selection() -> None:
     )
     first_observation = asyncio.run(executor.execute(first_action, state))
     state = DefaultStateReducer().apply(state, first_action, first_observation)
-    expected_result_id = first_observation.selection_report.deferred_ids[0]
+    expected_result_id = first_observation.search_result_ids[1]
     provider.count = 0
 
     second_observation = asyncio.run(
@@ -501,7 +542,6 @@ def test_deferred_results_reenter_the_next_result_selection() -> None:
     )
 
     assert second_observation.search_result_ids == []
-    assert second_observation.selection_report.selected_ids == [expected_result_id]
     assert second_observation.fetch_outcomes[0].search_result_id == expected_result_id
 
 
@@ -530,8 +570,7 @@ def test_result_limit_bounds_fetch_and_extraction_together() -> None:
         )
     )
 
-    assert len(observation.selection_report.selected_ids) == 1
-    assert len(observation.selection_report.deferred_ids) == 2
+    assert observation.selection_report.selected_ids == observation.search_result_ids
     assert len(observation.fetch_outcomes) == 1
     assert len(observation.extraction_outcomes) == 1
 

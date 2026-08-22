@@ -20,6 +20,14 @@ from banso.agent.observation import (
     ResearchObservation,
     RetrievalFailedResearchObservation,
 )
+from banso.agent.selection.passthrough_selector import (
+    PassthroughSearchResultSelector,
+)
+from banso.agent.selection.selector import (
+    SearchResultSelection,
+    SearchResultSelectionRequest,
+    SearchResultSelector,
+)
 from banso.agent.state import AgentState, SearchResultState
 from banso.documents.extractor import (
     EvidenceExtractionError,
@@ -66,6 +74,7 @@ class ResearchPipeline:
         *,
         retrieval_filter: RetrievalFilter | None = None,
         source_classifier: SourceClassifier | None = None,
+        search_result_selector: SearchResultSelector | None = None,
         max_extraction_concurrency: int = 4,
         fetch_retry_policy: RetryPolicy | None = None,
         extraction_retry_policy: RetryPolicy | None = None,
@@ -81,6 +90,9 @@ class ResearchPipeline:
         self.evidence_extractor = evidence_extractor
         self.retrieval_filter = retrieval_filter or RetrievalFilter()
         self.source_classifier = source_classifier or SourceClassifier()
+        self.search_result_selector = (
+            search_result_selector or PassthroughSearchResultSelector()
+        )
         self.max_extraction_concurrency = max_extraction_concurrency
         self.fetch_retry_policy = fetch_retry_policy or RetryPolicy()
         self.extraction_retry_policy = extraction_retry_policy or RetryPolicy()
@@ -157,36 +169,35 @@ class ResearchPipeline:
             "news.research.select",
             attributes={"route": params.route.value},
         ) as span:
-            candidate_ids = self._select_results(search_result_ids, state)
-            span.set_output({"candidate_ids": candidate_ids})
+            candidates = self._candidate_results(search_result_ids, state)
+            if candidates:
+                selection = await self.search_result_selector.select(
+                    SearchResultSelectionRequest(
+                        research_query=params.query,
+                        candidates=candidates,
+                        state=state,
+                    )
+                )
+                selected_results = self._resolve_selection(selection, candidates)
+            else:
+                selected_results = []
+            selection_report = SearchResultSelectionReport(
+                candidate_ids=[result.id for result in candidates],
+                selected_ids=[result.id for result in selected_results],
+            )
+            span.set_output({"selection_report": selection_report})
 
         with start_span(
             "news.research.fetch",
             attributes={"route": params.route.value},
         ) as span:
-            (
-                fetch_outcomes,
-                document_index_updates,
-                deferred_ids,
-            ) = await self._fetch_from_queue(
-                candidate_ids,
+            fetch_outcomes, document_index_updates = await self._fetch_from_queue(
+                selected_results,
                 state.budget.max_results_per_research,
                 state,
                 components.document_fetcher,
             )
-            selection_report = SearchResultSelectionReport(
-                candidate_ids=candidate_ids,
-                selected_ids=[
-                    outcome.search_result_id for outcome in fetch_outcomes
-                ],
-                deferred_ids=deferred_ids,
-            )
-            span.set_output(
-                {
-                    "selection_report": selection_report,
-                    "fetch_outcomes": fetch_outcomes,
-                }
-            )
+            span.set_output({"fetch_outcomes": fetch_outcomes})
 
         document_ids = self._documents_to_extract(fetch_outcomes, state)
         with start_span(
@@ -257,17 +268,39 @@ class ResearchPipeline:
             classified.report,
         )
 
-    @staticmethod
-    def _select_results(
+    def _candidate_results(
+        self,
         retrieved_ids: list[str],
         state: AgentState,
-    ) -> list[str]:
-        candidate_ids: list[str] = []
+    ) -> list[SearchResult]:
+        candidates: list[SearchResult] = []
         for result_id in dict.fromkeys([*retrieved_ids, *state.search_results]):
             result_state = state.search_results.get(result_id, SearchResultState())
             if result_state.document_id is None and result_state.failure is None:
-                candidate_ids.append(result_id)
-        return candidate_ids
+                result = self.store.get(result_id, SearchResult)
+                if result is None:
+                    raise ValueError(
+                        "SearchResult artifact is missing or has the wrong type: "
+                        f"{result_id}"
+                    )
+                candidates.append(result)
+        return candidates
+
+    @staticmethod
+    def _resolve_selection(
+        selection: SearchResultSelection,
+        candidates: list[SearchResult],
+    ) -> list[SearchResult]:
+        selected_id_set = set(selection.selected_ids)
+        unknown_ids = selected_id_set - {candidate.id for candidate in candidates}
+        if unknown_ids:
+            raise ValueError(
+                "search result selector returned unknown IDs: "
+                + ", ".join(sorted(unknown_ids))
+            )
+        return [
+            candidate for candidate in candidates if candidate.id in selected_id_set
+        ]
 
     @staticmethod
     def _documents_to_extract(
@@ -287,25 +320,20 @@ class ResearchPipeline:
 
     async def _fetch_from_queue(
         self,
-        candidate_ids: list[str],
+        candidates: list[SearchResult],
         limit: int,
         state: AgentState,
         document_fetcher: DocumentFetcher,
-    ) -> tuple[list[FetchOutcome], dict[str, str], list[str]]:
+    ) -> tuple[list[FetchOutcome], dict[str, str]]:
         outcomes: list[FetchOutcome] = []
         document_index = dict(state.document_index)
         document_index_updates: dict[str, str] = {}
         new_document_count = 0
-        queue = deque(candidate_ids)
+        queue = deque(candidates)
 
         while queue and new_document_count < limit:
-            result_id = queue.popleft()
-            result = self.store.get(result_id, SearchResult)
-            if result is None:
-                raise ValueError(
-                    "SearchResult artifact is missing or has the wrong type: "
-                    f"{result_id}"
-                )
+            result = queue.popleft()
+            result_id = result.id
 
             document_id = document_index.get(self._normalize_url(result.url))
             if document_id is not None:
@@ -366,7 +394,7 @@ class ResearchPipeline:
                 )
             )
 
-        return outcomes, document_index_updates, list(queue)
+        return outcomes, document_index_updates
 
     async def _extract_selected(
         self,

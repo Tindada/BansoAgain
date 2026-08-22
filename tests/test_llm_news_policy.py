@@ -91,7 +91,6 @@ def _empty_research(
         selection_report=SearchResultSelectionReport(
             candidate_ids=result_ids,
             selected_ids=result_ids,
-            deferred_ids=[],
         ),
         fetch_outcomes=[],
         document_index_updates={},

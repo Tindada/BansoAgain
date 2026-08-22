@@ -51,7 +51,6 @@ def _research_observation() -> CompletedResearchObservation:
         selection_report=SearchResultSelectionReport(
             candidate_ids=["result-1"],
             selected_ids=["result-1"],
-            deferred_ids=[],
         ),
         fetch_outcomes=[
             FetchSuccess(
@@ -111,38 +110,6 @@ def test_research_action_params_reject_invalid_source_domains(
             route=route,
             source_domains=source_domains,
         )
-
-
-@pytest.mark.parametrize(
-    "report",
-    [
-        {
-            "candidate_ids": ["a", "a"],
-            "selected_ids": ["a"],
-            "deferred_ids": [],
-        },
-        {
-            "candidate_ids": ["a", "b"],
-            "selected_ids": ["a"],
-            "deferred_ids": ["a"],
-        },
-        {
-            "candidate_ids": ["a", "b"],
-            "selected_ids": ["a"],
-            "deferred_ids": [],
-        },
-        {
-            "candidate_ids": ["a", "b", "c"],
-            "selected_ids": ["c", "a"],
-            "deferred_ids": ["b"],
-        },
-    ],
-)
-def test_selection_report_requires_a_unique_complete_partition(
-    report: dict[str, list[str]],
-) -> None:
-    with pytest.raises(ValidationError):
-        SearchResultSelectionReport(**report)
 
 
 def test_research_observation_reduces_the_entire_artifact_chain() -> None:

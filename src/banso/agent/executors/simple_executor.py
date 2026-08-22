@@ -44,7 +44,6 @@ class SimpleActionExecutor:
                 selection_report=SearchResultSelectionReport(
                     candidate_ids=[],
                     selected_ids=[],
-                    deferred_ids=[],
                 ),
                 fetch_outcomes=[],
                 document_index_updates={},

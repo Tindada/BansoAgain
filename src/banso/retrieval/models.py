@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from banso.source import Source
 
@@ -68,34 +68,7 @@ class SourceClassificationReport(RetrievalReportModel):
 
 
 class SearchResultSelectionReport(RetrievalReportModel):
-    """How one research action partitioned its ordered result candidates."""
+    """Candidate results and the ordered subset selected for processing."""
 
     candidate_ids: list[str]
     selected_ids: list[str]
-    deferred_ids: list[str]
-
-    @model_validator(mode="after")
-    def validate_partition(self) -> "SearchResultSelectionReport":
-        groups = {
-            "candidate_ids": self.candidate_ids,
-            "selected_ids": self.selected_ids,
-            "deferred_ids": self.deferred_ids,
-        }
-        for name, values in groups.items():
-            if len(set(values)) != len(values):
-                raise ValueError(f"{name} must contain unique IDs")
-
-        partition = [*self.selected_ids, *self.deferred_ids]
-        if len(partition) != len(set(partition)):
-            raise ValueError("selection groups must be disjoint")
-        if set(partition) != set(self.candidate_ids):
-            raise ValueError("selection groups must partition candidate_ids")
-        candidate_order = {
-            candidate_id: index
-            for index, candidate_id in enumerate(self.candidate_ids)
-        }
-        for name in ("selected_ids", "deferred_ids"):
-            values = groups[name]
-            if values != sorted(values, key=candidate_order.__getitem__):
-                raise ValueError(f"{name} must preserve candidate order")
-        return self

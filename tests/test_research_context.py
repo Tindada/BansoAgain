@@ -94,7 +94,6 @@ def _completed_state_and_store() -> tuple[AgentState, InMemoryArtifactStore]:
         selection_report=SearchResultSelectionReport(
             candidate_ids=[result.id],
             selected_ids=[result.id],
-            deferred_ids=[],
         ),
         fetch_outcomes=[
             FetchSuccess(search_result_id=result.id, document_id=document.id)
@@ -171,23 +170,22 @@ def test_failed_research_still_advances_research_references() -> None:
     assert context.evidence_groups[0].research_refs == ["R2"]
 
 
-def test_deferred_result_keeps_the_research_that_returned_it() -> None:
+def test_unprocessed_result_keeps_the_research_that_returned_it() -> None:
     state, store = _completed_state_and_store()
     completed_entry = state.action_history[0]
     completed = completed_entry.observation
     assert isinstance(completed, CompletedResearchObservation)
     result_id = completed.search_result_ids[0]
 
-    deferred = completed.model_copy(deep=True)
-    deferred.query = "discovery query"
-    deferred.selection_report = SearchResultSelectionReport(
+    discovered = completed.model_copy(deep=True)
+    discovered.query = "discovery query"
+    discovered.selection_report = SearchResultSelectionReport(
         candidate_ids=[result_id],
         selected_ids=[],
-        deferred_ids=[result_id],
     )
-    deferred.fetch_outcomes = []
-    deferred.extraction_outcomes = []
-    deferred.document_index_updates = {}
+    discovered.fetch_outcomes = []
+    discovered.extraction_outcomes = []
+    discovered.document_index_updates = {}
 
     fetched = completed.model_copy(deep=True)
     fetched.query = "later query"
@@ -198,7 +196,7 @@ def test_deferred_result_keeps_the_research_that_returned_it() -> None:
         reused_result_count=0,
     )
     state.action_history = [
-        _research_entry(0, deferred),
+        _research_entry(0, discovered),
         _research_entry(1, fetched),
     ]
 

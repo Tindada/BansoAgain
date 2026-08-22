@@ -15,6 +15,7 @@ from banso.agent.observation import (
     Observation,
     StopObservation,
 )
+from banso.agent.selection.selector import SearchResultSelector
 from banso.agent.state import AgentState
 from banso.documents.extractor import EvidenceExtractor
 from banso.documents.models import Document, EvidenceItem
@@ -43,6 +44,7 @@ class NewsActionExecutor:
         synthesizer: Synthesizer,
         retrieval_filter: RetrievalFilter | None = None,
         source_classifier: SourceClassifier | None = None,
+        search_result_selector: SearchResultSelector | None = None,
         max_extraction_concurrency: int = 4,
         fetch_retry_policy: RetryPolicy | None = None,
         extraction_retry_policy: RetryPolicy | None = None,
@@ -56,6 +58,7 @@ class NewsActionExecutor:
             evidence_extractor=evidence_extractor,
             retrieval_filter=retrieval_filter,
             source_classifier=source_classifier,
+            search_result_selector=search_result_selector,
             max_extraction_concurrency=max_extraction_concurrency,
             fetch_retry_policy=fetch_retry_policy,
             extraction_retry_policy=extraction_retry_policy,

@@ -110,7 +110,6 @@ class Executor:
             selection_report=SearchResultSelectionReport(
                 candidate_ids=result_ids,
                 selected_ids=result_ids,
-                deferred_ids=[],
             ),
             fetch_outcomes=[
                 {

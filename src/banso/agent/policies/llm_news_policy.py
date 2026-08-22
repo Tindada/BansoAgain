@@ -30,9 +30,9 @@ SYSTEM_PROMPT = (
 
 ACTION_INSTRUCTIONS = {
     AgentActionType.RESEARCH: (
-        "Atomically retrieve search results through one route, select a bounded "
-        "provider-ordered subset, fetch documents, and extract evidence for one "
-        "specific information need. source_domains is optional and only valid for "
+        "Atomically retrieve search results through one route, select relevant "
+        "results, fetch documents, and extract evidence for one specific information "
+        "need. source_domains is optional and only valid for "
         "web. Each value must be a bare domain without a scheme, port, path, or "
         "wildcard; omit it for an unrestricted search. Use it when the user requests "
         "specific sites or a broader search did not find the needed source, but do "

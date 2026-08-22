@@ -60,7 +60,6 @@ class CompletedResearchHistoryItem(ResearchHistoryItemBase):
     new_results: int
     reused_results: int
     selected_results: int
-    deferred_results: int
     fetch_successes: int
     fetch_failures: int
     extraction_successes: int
@@ -327,7 +326,6 @@ class ResearchContextBuilder:
             new_results=observation.search_result_merge_report.new_result_count,
             reused_results=observation.search_result_merge_report.reused_result_count,
             selected_results=len(observation.selection_report.selected_ids),
-            deferred_results=len(observation.selection_report.deferred_ids),
             fetch_successes=len(observation.fetch_outcomes) - len(fetch_failures),
             fetch_failures=len(fetch_failures),
             extraction_successes=(
