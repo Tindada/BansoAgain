@@ -28,7 +28,7 @@ from banso.agent.selection.selector import (
     SearchResultSelectionRequest,
     SearchResultSelector,
 )
-from banso.agent.state import AgentState, SearchResultState
+from banso.agent.state import AgentState
 from banso.documents.extractor import (
     EvidenceExtractionError,
     EvidenceExtractionRequest,
@@ -169,7 +169,21 @@ class ResearchPipeline:
             "news.research.select",
             attributes={"route": params.route.value},
         ) as span:
-            candidates = self._candidate_results(search_result_ids, state)
+            candidates: list[SearchResult] = []
+            for result_id in search_result_ids:
+                result_state = state.search_results.get(result_id)
+                if result_state is not None and (
+                    result_state.document_id is not None
+                    or result_state.failure is not None
+                ):
+                    continue
+                result = self.store.get(result_id, SearchResult)
+                if result is None:
+                    raise ValueError(
+                        "SearchResult artifact is missing or has the wrong type: "
+                        f"{result_id}"
+                    )
+                candidates.append(result)
             if candidates:
                 selection = await self.search_result_selector.select(
                     SearchResultSelectionRequest(
@@ -267,24 +281,6 @@ class ResearchPipeline:
             filtered.report,
             classified.report,
         )
-
-    def _candidate_results(
-        self,
-        retrieved_ids: list[str],
-        state: AgentState,
-    ) -> list[SearchResult]:
-        candidates: list[SearchResult] = []
-        for result_id in dict.fromkeys([*retrieved_ids, *state.search_results]):
-            result_state = state.search_results.get(result_id, SearchResultState())
-            if result_state.document_id is None and result_state.failure is None:
-                result = self.store.get(result_id, SearchResult)
-                if result is None:
-                    raise ValueError(
-                        "SearchResult artifact is missing or has the wrong type: "
-                        f"{result_id}"
-                    )
-                candidates.append(result)
-        return candidates
 
     @staticmethod
     def _resolve_selection(

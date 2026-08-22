@@ -506,7 +506,7 @@ def test_terminal_results_do_not_reenter_result_selection() -> None:
     assert second_observation.fetch_outcomes == []
 
 
-def test_unprocessed_results_reenter_the_next_result_selection() -> None:
+def test_unprocessed_results_do_not_enter_the_next_research() -> None:
     store = InMemoryArtifactStore()
     provider = StaticRetrievalProvider("web", count=3)
     executor = _executor(
@@ -528,7 +528,6 @@ def test_unprocessed_results_reenter_the_next_result_selection() -> None:
     )
     first_observation = asyncio.run(executor.execute(first_action, state))
     state = DefaultStateReducer().apply(state, first_action, first_observation)
-    expected_result_id = first_observation.search_result_ids[1]
     provider.count = 0
 
     second_observation = asyncio.run(
@@ -542,7 +541,8 @@ def test_unprocessed_results_reenter_the_next_result_selection() -> None:
     )
 
     assert second_observation.search_result_ids == []
-    assert second_observation.fetch_outcomes[0].search_result_id == expected_result_id
+    assert second_observation.selection_report.candidate_ids == []
+    assert second_observation.fetch_outcomes == []
 
 
 def test_result_limit_bounds_fetch_and_extraction_together() -> None:
