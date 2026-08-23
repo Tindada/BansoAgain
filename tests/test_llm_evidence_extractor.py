@@ -104,8 +104,7 @@ async def _run_llm_evidence_extractor() -> None:
     assert "Company A announces AI product" in user_prompt
     assert "Company A announced a new AI product on Monday." in user_prompt
     system_prompt = llm_request.messages[0].content
-    assert "Markdown table" in system_prompt
-    assert "prior knowledge" in system_prompt
+    assert "Use only the Document text as evidence" in system_prompt
     assert (
         '{"evidence_text":"<evidence digest or empty string>",'
         '"rationale":"<brief reason for including or omitting evidence>"}'
@@ -167,7 +166,7 @@ async def _run_llm_error_case() -> None:
 async def _run_chunked_document_case() -> None:
     document = _document().model_copy(
         update={
-            "text": ("第一段证据。" * 8) + "\n\n" + ("Second paragraph. " * 8),
+            "text": ("第一段证据。" * 40) + "\n\n" + ("Second paragraph. " * 40),
         }
     )
     client = ChunkingLLMClient(no_evidence_on_call=2)
@@ -196,7 +195,7 @@ async def _run_chunked_document_case() -> None:
 
 
 async def _run_later_chunk_failure_case() -> None:
-    document = _document().model_copy(update={"text": "x" * 250})
+    document = _document().model_copy(update={"text": "x" * 1_500})
     client = ChunkingLLMClient(fail_on_call=2)
     extractor = LLMEvidenceExtractor(client=client, max_input_bytes=1_400)
     request = EvidenceExtractionRequest(
@@ -217,7 +216,7 @@ async def _run_later_chunk_failure_case() -> None:
 
 
 async def _run_document_chunk_limit_case() -> None:
-    document = _document().model_copy(update={"text": "x" * 250})
+    document = _document().model_copy(update={"text": "x" * 1_500})
     client = ChunkingLLMClient()
     extractor = LLMEvidenceExtractor(
         client=client,
