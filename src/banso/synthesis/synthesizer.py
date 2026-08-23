@@ -5,7 +5,6 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from banso.documents.models import EvidenceItem
 from banso.source import Source
 
 
@@ -27,7 +26,7 @@ class SynthesisEvidenceGroup(BaseModel):
     source_url: str
     source: Source | None = None
     published_at: datetime | None = None
-    evidence: list[EvidenceItem] = Field(default_factory=list)
+    evidence_text: str = Field(min_length=1)
 
 
 class SynthesisRequest(BaseModel):

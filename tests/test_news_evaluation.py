@@ -20,7 +20,7 @@ from banso.agent.observation import (
 )
 from banso.agent.runtime import AgentRuntime
 from banso.agent.state import AgentState, UserQuery
-from banso.documents.models import Document, EvidenceItem
+from banso.documents.models import Document, DocumentEvidence
 from banso.retrieval.models import SearchResult
 from banso.retrieval.models import (
     RetrievalFilterReport,
@@ -123,7 +123,7 @@ class Executor:
                 {
                     "status": "success",
                     "document_id": "document",
-                    "evidence_ids": ["evidence"],
+                    "evidence_id": "evidence",
                 }
             ],
         )
@@ -150,11 +150,10 @@ def test_extract_evaluation_result_reads_composite_research_observation() -> Non
         )
     )
     store.put(
-        EvidenceItem(
+        DocumentEvidence(
             id="evidence",
             document_id="document",
-            claim="claim",
-            source_url="https://example.com/article",
+            text="claim",
         )
     )
     sink = InMemoryTraceSink()
@@ -179,7 +178,8 @@ def test_extract_evaluation_result_reads_composite_research_observation() -> Non
     assert result.filtered_result_count == 1
     assert result.classified_result_count == 1
     assert result.document_count == 1
-    assert result.evidence_count == 1
+    assert result.evidence_chars == 5
+    assert result.active_evidence_chars == 5
     assert result.preferred_source_type_match is True
     assert result.step_durations["research"] >= 0
 
@@ -194,8 +194,8 @@ def test_summarize_evaluation_results() -> None:
             passed_minimums=True,
             document_count=2,
             active_document_count=1,
-            evidence_count=3,
-            active_evidence_count=2,
+            evidence_chars=30,
+            active_evidence_chars=20,
             citations=[
                 Citation(
                     reference="S1",
@@ -212,6 +212,8 @@ def test_summarize_evaluation_results() -> None:
     assert summary["case_count"] == 2
     assert summary["completed_count"] == 1
     assert summary["average_documents"] == 1.0
+    assert summary["average_evidence_chars"] == 15.0
+    assert summary["average_active_evidence_chars"] == 10.0
 
 
 def test_evaluation_reports_handled_retrieval_failures_separately() -> None:

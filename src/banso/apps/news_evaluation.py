@@ -18,6 +18,7 @@ from banso.agent.observation import (
     validate_observation,
 )
 from banso.agent.runtime import RuntimeRunResult
+from banso.documents.models import DocumentEvidence
 from banso.retrieval.models import SearchResult
 from banso.synthesis.synthesizer import Citation
 from banso.tracing.trace import SpanRecord
@@ -34,7 +35,6 @@ class NewsEvaluationCase(BaseModel):
     time_range: str | None = None
     preferred_source_types: list[str] = Field(default_factory=list)
     min_documents: int = 1
-    min_evidence: int = 1
     min_citations: int = 1
     notes: str | None = None
 
@@ -60,8 +60,8 @@ class NewsEvaluationResult(BaseModel):
     active_document_count: int = 0
     shelved_document_count: int = 0
     unusable_document_count: int = 0
-    evidence_count: int = 0
-    active_evidence_count: int = 0
+    evidence_chars: int = 0
+    active_evidence_chars: int = 0
     curation_action_count: int = 0
     citations: list[Citation] = Field(default_factory=list)
     source_domains: list[str] = Field(default_factory=list)
@@ -100,9 +100,17 @@ def extract_evaluation_result(
     """Convert a runtime output into stable evaluation fields."""
 
     state = output.result.state
-    evidence_count = sum(
-        len(document.evidence_ids) for document in state.documents.values()
-    )
+    evidence_chars = 0
+    active_evidence_chars = 0
+    for document in state.documents.values():
+        if document.evidence_id is None:
+            continue
+        evidence = store.get(document.evidence_id, DocumentEvidence)
+        if evidence is None:
+            raise ValueError(f"Invalid DocumentEvidence: {document.evidence_id}")
+        evidence_chars += len(evidence.text)
+        if document.lifecycle_status == "active":
+            active_evidence_chars += len(evidence.text)
     active_document_count = sum(
         document.lifecycle_status == "active"
         for document in state.documents.values()
@@ -114,11 +122,6 @@ def extract_evaluation_result(
     unusable_document_count = sum(
         document.lifecycle_status == "unusable"
         for document in state.documents.values()
-    )
-    active_evidence_count = sum(
-        len(document.evidence_ids)
-        for document in state.documents.values()
-        if document.lifecycle_status == "active"
     )
     curation_action_count = sum(
         entry.action.type == AgentActionType.CURATE_EVIDENCE
@@ -201,7 +204,6 @@ def extract_evaluation_result(
     passed_minimums = (
         state.done
         and active_document_count >= case.min_documents
-        and active_evidence_count >= case.min_evidence
         and len(state.citations) >= case.min_citations
         and bool(state.final_answer)
     )
@@ -227,8 +229,8 @@ def extract_evaluation_result(
         active_document_count=active_document_count,
         shelved_document_count=shelved_document_count,
         unusable_document_count=unusable_document_count,
-        evidence_count=evidence_count,
-        active_evidence_count=active_evidence_count,
+        evidence_chars=evidence_chars,
+        active_evidence_chars=active_evidence_chars,
         curation_action_count=curation_action_count,
         citations=state.citations,
         source_domains=source_domains,
@@ -343,9 +345,11 @@ def summarize_evaluation_results(results: list[NewsEvaluationResult]) -> dict[st
         "with_unusable_documents_count": sum(
             result.unusable_document_count > 0 for result in results
         ),
-        "with_evidence_count": sum(result.evidence_count > 0 for result in results),
-        "with_active_evidence_count": sum(
-            result.active_evidence_count > 0 for result in results
+        "with_evidence_text_count": sum(
+            result.evidence_chars > 0 for result in results
+        ),
+        "with_active_evidence_text_count": sum(
+            result.active_evidence_chars > 0 for result in results
         ),
         "with_citations_count": sum(bool(result.citations) for result in results),
         "total_curation_actions": sum(
@@ -391,11 +395,11 @@ def summarize_evaluation_results(results: list[NewsEvaluationResult]) -> dict[st
         "average_unusable_documents": round(
             sum(result.unusable_document_count for result in results) / count, 2
         ),
-        "average_evidence": round(
-            sum(result.evidence_count for result in results) / count, 2
+        "average_evidence_chars": round(
+            sum(result.evidence_chars for result in results) / count, 2
         ),
-        "average_active_evidence": round(
-            sum(result.active_evidence_count for result in results) / count, 2
+        "average_active_evidence_chars": round(
+            sum(result.active_evidence_chars for result in results) / count, 2
         ),
         "average_action_seconds": round(
             sum(result.total_action_seconds for result in results) / count, 2

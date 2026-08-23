@@ -122,7 +122,8 @@ class LLMSearchResultSelector:
                                 "document_title",
                                 "source",
                                 "published_at",
-                                "claim_previews",
+                                "evidence_preview",
+                                "evidence_truncated",
                             },
                             exclude_none=True,
                         )

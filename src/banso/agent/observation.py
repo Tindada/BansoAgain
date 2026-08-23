@@ -2,7 +2,7 @@
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from banso.agent.action import AgentActionType, RetrievalRoute
 from banso.retrieval.models import (
@@ -73,14 +73,8 @@ class ExtractionSuccess(ObservationModel):
 
     status: Literal["success"] = "success"
     document_id: str
-    evidence_ids: list[str]
+    evidence_id: str | None = None
     attempt_count: int = Field(default=1, ge=1)
-
-    @model_validator(mode="after")
-    def validate_unique_evidence_ids(self) -> "ExtractionSuccess":
-        if len(set(self.evidence_ids)) != len(self.evidence_ids):
-            raise ValueError("evidence_ids must be unique")
-        return self
 
 
 class ExtractionFailure(ObservationModel):

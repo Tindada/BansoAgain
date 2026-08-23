@@ -5,7 +5,7 @@ from banso.documents.extractor import (
     EvidenceExtractionRequest,
     EvidenceExtractor,
 )
-from banso.documents.models import Document, EvidenceItem
+from banso.documents.models import Document, DocumentEvidence
 from banso.documents.fetcher import (
     DocumentFetchError,
     DocumentFetcher,
@@ -14,11 +14,11 @@ from banso.documents.fetcher import (
 
 __all__ = [
     "Document",
+    "DocumentEvidence",
     "DocumentFetchError",
     "DocumentFetcher",
     "DocumentFetchRequest",
     "EvidenceExtractionError",
     "EvidenceExtractionRequest",
     "EvidenceExtractor",
-    "EvidenceItem",
 ]

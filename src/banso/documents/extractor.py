@@ -4,7 +4,7 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel, Field
 
-from banso.documents.models import Document, EvidenceItem
+from banso.documents.models import Document
 
 
 class EvidenceExtractionRequest(BaseModel):
@@ -12,7 +12,6 @@ class EvidenceExtractionRequest(BaseModel):
 
     query: str
     document: Document
-    max_items_per_chunk: int = 5
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -30,8 +29,8 @@ class EvidenceExtractionError(Exception):
 
 
 class EvidenceExtractor(Protocol):
-    """Extracts evidence items from documents."""
+    """Distills query-relevant evidence text from documents."""
 
-    async def extract(self, request: EvidenceExtractionRequest) -> list[EvidenceItem]:
-        """Return evidence items extracted from a document."""
+    async def extract(self, request: EvidenceExtractionRequest) -> str | None:
+        """Return query-relevant text distilled from a document, if any."""
         ...

@@ -13,7 +13,7 @@ from banso.documents.extractor import (
     EvidenceExtractionRequest,
 )
 from banso.documents.fetcher import DocumentFetchRequest
-from banso.documents.models import Document, EvidenceItem
+from banso.documents.models import Document, DocumentEvidence
 from banso.agent.executors.news_executor import NewsActionExecutor
 from banso.agent.executors.research_pipeline import ResearchRouteComponents
 from banso.retrieval.models import SearchResult
@@ -56,7 +56,7 @@ class TrackingExtractor:
         self.fail_document = fail_document
         self.call_counts: dict[str, int] = {}
 
-    async def extract(self, request: EvidenceExtractionRequest) -> list[EvidenceItem]:
+    async def extract(self, request: EvidenceExtractionRequest) -> str:
         self.call_counts[request.document.id] = (
             self.call_counts.get(request.document.id, 0) + 1
         )
@@ -66,13 +66,12 @@ class TrackingExtractor:
         self.active -= 1
         if request.document.id == self.fail_document:
             raise EvidenceExtractionError("failed", reason="llm_error")
-        return [
-            EvidenceItem(
-                document_id=request.document.id,
-                claim=request.document.id,
-                source_url=request.document.url,
-            )
-        ]
+        return request.document.id
+
+
+class EmptyExtractor:
+    async def extract(self, request: EvidenceExtractionRequest) -> None:
+        return None
 
 
 def _action() -> AgentAction:
@@ -129,6 +128,28 @@ def test_known_extraction_failure_is_isolated() -> None:
     assert failures[0].document_id == "document-1"
     assert failures[0].attempt_count == 2
     assert extractor.call_counts["document-1"] == 2
+
+
+def test_no_relevant_evidence_does_not_create_artifacts() -> None:
+    store = InMemoryArtifactStore()
+    executor = NewsActionExecutor(
+        store=store,
+        research_routes={
+            RetrievalRoute.WEB: ResearchRouteComponents(Provider(), Fetcher())
+        },
+        evidence_extractor=EmptyExtractor(),
+        synthesizer=Synthesizer(),
+    )
+
+    observation = asyncio.run(
+        executor.execute(_action(), AgentState(query=UserQuery(text="query")))
+    )
+
+    assert all(
+        outcome.evidence_id is None
+        for outcome in observation.extraction_outcomes
+    )
+    assert store.list(DocumentEvidence) == []
 
 
 def test_extraction_concurrency_must_be_positive() -> None:

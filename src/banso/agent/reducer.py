@@ -71,8 +71,8 @@ def _apply_extraction_outcomes(
         if document is None:
             raise ValueError(f"extraction outcome contains an unknown document: {document_id}")
         if isinstance(outcome, ExtractionSuccess):
-            document.evidence_ids = list(outcome.evidence_ids)
-            if outcome.evidence_ids:
+            document.evidence_id = outcome.evidence_id
+            if outcome.evidence_id is not None:
                 document.lifecycle_status = "active"
             else:
                 document.lifecycle_status = "unusable"

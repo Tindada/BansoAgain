@@ -1,7 +1,7 @@
 """Fake document components for local smoke tests."""
 
 from banso.documents.extractor import EvidenceExtractionRequest
-from banso.documents.models import Document, EvidenceItem
+from banso.documents.models import Document
 from banso.documents.fetcher import DocumentFetchRequest
 
 
@@ -19,24 +19,14 @@ class FakeDocumentFetcher:
 
 
 class FakeEvidenceExtractor:
-    """Returns deterministic evidence items without LLM extraction."""
+    """Returns deterministic evidence text without LLM extraction."""
 
     async def extract(
         self,
         request: EvidenceExtractionRequest,
-    ) -> list[EvidenceItem]:
-        claim = _build_fake_claim(request.query, request.document)
-        return [
-            EvidenceItem(
-                document_id=request.document.id,
-                claim=claim,
-                supporting_text=request.document.text,
-                source_url=request.document.url,
-                published_at=request.document.published_at,
-                confidence=1.0,
-            )
-        ][: request.max_items_per_chunk]
+    ) -> str:
+        return _build_fake_evidence(request.query, request.document)
 
 
-def _build_fake_claim(query: str, document: Document) -> str:
+def _build_fake_evidence(query: str, document: Document) -> str:
     return f"Fake evidence for '{query}' from '{document.title}'."

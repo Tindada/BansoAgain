@@ -62,7 +62,7 @@ def _research_observation() -> CompletedResearchObservation:
         extraction_outcomes=[
             ExtractionSuccess(
                 document_id="document-1",
-                evidence_ids=["evidence-1"],
+                evidence_id="evidence-1",
             )
         ],
     )
@@ -126,7 +126,7 @@ def test_research_observation_reduces_the_entire_artifact_chain() -> None:
     )
 
     assert next_state.search_results["result-1"].document_id == "document-1"
-    assert next_state.documents["document-1"].evidence_ids == ["evidence-1"]
+    assert next_state.documents["document-1"].evidence_id == "evidence-1"
     assert next_state.documents["document-1"].lifecycle_status == "active"
     assert next_state.action_history[0].observation.type == AgentActionType.RESEARCH
 
@@ -199,7 +199,7 @@ def test_reducer_marks_empty_extraction_success_unusable() -> None:
     observation = _research_observation().model_copy(
         update={
             "extraction_outcomes": [
-                ExtractionSuccess(document_id="document-1", evidence_ids=[])
+                ExtractionSuccess(document_id="document-1")
             ]
         }
     )

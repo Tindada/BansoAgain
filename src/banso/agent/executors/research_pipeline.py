@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from banso.artifacts.store import ArtifactStore
 from banso.agent.action import ResearchActionParams, RetrievalRoute
+from banso.agent.executors.retry import RetryPolicy, run_with_retry
 from banso.agent.observation import (
     CompletedResearchObservation,
     DocumentFetchFailure,
@@ -39,8 +40,7 @@ from banso.documents.fetcher import (
     DocumentFetchRequest,
     DocumentFetcher,
 )
-from banso.documents.models import Document, EvidenceItem
-from banso.agent.executors.retry import RetryPolicy, run_with_retry
+from banso.documents.models import Document, DocumentEvidence
 from banso.retrieval.filter import RetrievalFilter
 from banso.retrieval.models import (
     RetrievalFilterReport,
@@ -412,7 +412,7 @@ class ResearchPipeline:
             document: Document,
         ) -> tuple[
             Document,
-            list[EvidenceItem] | None,
+            str | None,
             EvidenceExtractionError | None,
             int,
         ]:
@@ -450,18 +450,17 @@ class ResearchPipeline:
                     )
                 )
                 continue
-            if evidence is None:
-                raise AssertionError("successful extraction returned no evidence list")
-            for item in evidence:
-                if item.document_id != document.id:
-                    raise ValueError(
-                        f"EvidenceItem {item.id} references document "
-                        f"{item.document_id}, expected {document.id}"
-                    )
+            evidence_id = (
+                self.store.put(
+                    DocumentEvidence(document_id=document.id, text=evidence)
+                )
+                if evidence is not None
+                else None
+            )
             outcomes.append(
                 ExtractionSuccess(
                     document_id=document.id,
-                    evidence_ids=[self.store.put(item) for item in evidence],
+                    evidence_id=evidence_id,
                     attempt_count=attempt_count,
                 )
             )

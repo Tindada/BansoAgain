@@ -30,6 +30,7 @@ from banso.benchmarks.gisa_synthesizer import GisaSynthesizer
 from banso.agent.action import AgentActionType
 from banso.agent.runtime import RuntimeExecutionError
 from banso.agent.state import AgentState, ExecutionBudget, UserQuery
+from banso.documents.models import DocumentEvidence
 from banso.tracing.trace import SpanRecord
 
 
@@ -50,7 +51,7 @@ class GisaEvaluationResult(BaseModel):
     step_count: int = 0
     research_count: int = 0
     document_count: int = 0
-    evidence_count: int = 0
+    evidence_chars: int = 0
     total_seconds: float = 0.0
     error_type: str | None = None
     error_message: str | None = None
@@ -216,6 +217,14 @@ async def run_case(
         )
         state = output.result.state
         spans = bundle.trace_sink.get_trace(output.trace_id)
+        evidence_chars = 0
+        for document in state.documents.values():
+            if document.evidence_id is None:
+                continue
+            evidence = bundle.store.get(document.evidence_id, DocumentEvidence)
+            if evidence is None:
+                raise ValueError(f"Invalid DocumentEvidence: {document.evidence_id}")
+            evidence_chars += len(evidence.text)
         result = GisaEvaluationResult(
             case_id=case.id,
             answer_type=case.answer_type,
@@ -231,9 +240,7 @@ async def run_case(
                 for entry in state.action_history
             ),
             document_count=len(state.documents),
-            evidence_count=sum(
-                len(document.evidence_ids) for document in state.documents.values()
-            ),
+            evidence_chars=evidence_chars,
             total_seconds=total_trace_seconds(spans),
         )
     except RuntimeExecutionError as error:
@@ -259,7 +266,8 @@ async def run_case(
         )
     print(
         f"finished GISA {case.id}: prediction={result.prediction is not None}, "
-        f"documents={result.document_count}, evidence={result.evidence_count}",
+        f"documents={result.document_count}, "
+        f"evidence_chars={result.evidence_chars}",
         flush=True,
     )
     return result, spans
@@ -274,7 +282,7 @@ def summarize(results: list[GisaEvaluationResult]) -> dict[str, object]:
         ),
         "error_count": sum(result.error_type is not None for result in results),
         "total_documents": sum(result.document_count for result in results),
-        "total_evidence": sum(result.evidence_count for result in results),
+        "total_evidence_chars": sum(result.evidence_chars for result in results),
         "total_seconds": sum(result.total_seconds for result in results),
     }
 

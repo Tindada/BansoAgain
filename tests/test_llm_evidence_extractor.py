@@ -1,6 +1,7 @@
 """Tests for the LLM-backed evidence extractor."""
 
 import asyncio
+import json
 
 import pytest
 
@@ -21,8 +22,13 @@ class FailingLLMClient:
 
 
 class ChunkingLLMClient:
-    def __init__(self, fail_on_call: int | None = None) -> None:
+    def __init__(
+        self,
+        fail_on_call: int | None = None,
+        no_evidence_on_call: int | None = None,
+    ) -> None:
         self.fail_on_call = fail_on_call
+        self.no_evidence_on_call = no_evidence_on_call
         self.requests: list[LLMRequest] = []
 
     async def generate(self, request: LLMRequest) -> LLMResponse:
@@ -30,7 +36,18 @@ class ChunkingLLMClient:
         call_number = len(self.requests)
         if call_number == self.fail_on_call:
             raise LLMError(RuntimeError("chunk request failed"))
-        return LLMResponse(content=f'[{{"claim":"chunk-{call_number}"}}]')
+        if call_number == self.no_evidence_on_call:
+            return LLMResponse(content=_response(""))
+        return LLMResponse(content=_response(f"chunk-{call_number}"))
+
+
+def _response(evidence_text: str) -> str:
+    return json.dumps(
+        {
+            "evidence_text": evidence_text,
+            "rationale": "The chunk contains directly relevant information.",
+        }
+    )
 
 
 def _document() -> Document:
@@ -45,19 +62,18 @@ def _document() -> Document:
 def _document_text_from_request(request: LLMRequest) -> str:
     user_prompt = request.messages[1].content
     document_text = user_prompt.split("Document text:\n", maxsplit=1)[1]
-    return document_text.split("\n\nReturn only the JSON array", maxsplit=1)[0]
+    return document_text.split("\n\nReturn only the JSON object", maxsplit=1)[0]
 
 
 async def _run_llm_evidence_extractor() -> None:
-    client = FakeLLMClient(
-        content=(
-            "["
-            '{"claim":"Company A announced a new AI product.",'
-            '"supporting_text":"Company A announced a new AI product on Monday.",'
-            '"confidence":0.9}'
-            "]"
-        )
+    digest = (
+        "Company A announced a new AI product on Monday.\n\n"
+        "- Availability begins Monday.\n\n"
+        "| Availability | Channel |\n"
+        "|---|---|\n"
+        "| Future | API |"
     )
+    client = FakeLLMClient(content=_response(digest))
     extractor = LLMEvidenceExtractor(
         client=client,
         model="fake-model",
@@ -70,21 +86,14 @@ async def _run_llm_evidence_extractor() -> None:
 
     evidence = await extractor.extract(request)
 
-    assert len(evidence) == 1
-    assert evidence[0].document_id == "doc-1"
-    assert evidence[0].claim == "Company A announced a new AI product."
-    assert evidence[0].supporting_text == (
-        "Company A announced a new AI product on Monday."
-    )
-    assert evidence[0].source_url == "https://example.com/news"
-    assert evidence[0].confidence == 0.9
-    assert evidence[0].metadata["extractor"] == "llm"
+    assert evidence == digest
 
     assert len(client.requests) == 1
     llm_request = client.requests[0]
     assert llm_request.model == "fake-model"
     assert llm_request.temperature == 0.0
     assert llm_request.max_tokens == 1_234
+    assert llm_request.response_format == {"type": "json_object"}
     assert [message.role for message in llm_request.messages] == [
         LLMMessageRole.SYSTEM,
         LLMMessageRole.USER,
@@ -94,24 +103,33 @@ async def _run_llm_evidence_extractor() -> None:
     assert "latest AI product news" in user_prompt
     assert "Company A announces AI product" in user_prompt
     assert "Company A announced a new AI product on Monday." in user_prompt
+    system_prompt = llm_request.messages[0].content
+    assert "Markdown table" in system_prompt
+    assert "prior knowledge" in system_prompt
+    assert (
+        '{"evidence_text":"<evidence digest or empty string>",'
+        '"rationale":"<brief reason for including or omitting evidence>"}'
+        in system_prompt
+    )
 
 
-async def _run_invalid_json_case() -> None:
-    client = FakeLLMClient(content="not json")
-    extractor = LLMEvidenceExtractor(client=client)
-    with pytest.raises(EvidenceExtractionError) as caught:
-        await extractor.extract(
-            EvidenceExtractionRequest(
-                query="latest AI product news",
-                document=_document(),
+async def _run_invalid_response_case() -> None:
+    for content in ("not json", '{"evidence_text": "text"}'):
+        extractor = LLMEvidenceExtractor(client=FakeLLMClient(content=content))
+        with pytest.raises(EvidenceExtractionError) as caught:
+            await extractor.extract(
+                EvidenceExtractionRequest(
+                    query="latest AI product news",
+                    document=_document(),
+                )
             )
-        )
 
-    assert caught.value.reason == "invalid_json"
+        assert caught.value.reason == "invalid_response"
+        assert "chunk_index=1" in str(caught.value)
 
 
-async def _run_empty_array_case() -> None:
-    extractor = LLMEvidenceExtractor(client=FakeLLMClient(content="[]"))
+async def _run_no_relevant_evidence_case() -> None:
+    extractor = LLMEvidenceExtractor(client=FakeLLMClient(content=_response("")))
 
     evidence = await extractor.extract(
         EvidenceExtractionRequest(
@@ -120,38 +138,7 @@ async def _run_empty_array_case() -> None:
         )
     )
 
-    assert evidence == []
-
-
-async def _run_compatible_json_wrappers_case() -> None:
-    for content in (
-        '```json\n[{"claim":"Company A announced a product."}]\n```',
-        '{"claims":[{"claim":"Company A announced a product."}]}',
-    ):
-        extractor = LLMEvidenceExtractor(client=FakeLLMClient(content=content))
-        evidence = await extractor.extract(
-            EvidenceExtractionRequest(
-                query="latest AI product news",
-                document=_document(),
-            )
-        )
-        assert [item.claim for item in evidence] == [
-            "Company A announced a product."
-        ]
-
-
-async def _run_invalid_schema_case() -> None:
-    extractor = LLMEvidenceExtractor(client=FakeLLMClient(content='{"claim":"x"}'))
-
-    with pytest.raises(EvidenceExtractionError) as caught:
-        await extractor.extract(
-            EvidenceExtractionRequest(
-                query="latest AI product news",
-                document=_document(),
-            )
-        )
-
-    assert caught.value.reason == "invalid_schema"
+    assert evidence is None
 
 
 async def _run_llm_error_case() -> None:
@@ -183,8 +170,8 @@ async def _run_chunked_document_case() -> None:
             "text": ("第一段证据。" * 8) + "\n\n" + ("Second paragraph. " * 8),
         }
     )
-    client = ChunkingLLMClient()
-    extractor = LLMEvidenceExtractor(client=client, max_input_bytes=1_000)
+    client = ChunkingLLMClient(no_evidence_on_call=2)
+    extractor = LLMEvidenceExtractor(client=client, max_input_bytes=1_400)
 
     evidence = await extractor.extract(
         EvidenceExtractionRequest(
@@ -198,18 +185,20 @@ async def _run_chunked_document_case() -> None:
         document.text
     )
     assert all(
-        sum(len(message.content.encode("utf-8")) for message in item.messages) <= 1_000
+        sum(len(message.content.encode("utf-8")) for message in item.messages) <= 1_400
         for item in client.requests
     )
-    assert [item.claim for item in evidence] == [
-        f"chunk-{index}" for index in range(1, len(client.requests) + 1)
-    ]
+    assert evidence == "\n\n".join(
+        f"chunk-{index}"
+        for index in range(1, len(client.requests) + 1)
+        if index != 2
+    )
 
 
 async def _run_later_chunk_failure_case() -> None:
-    document = _document().model_copy(update={"text": "x" * 80})
+    document = _document().model_copy(update={"text": "x" * 250})
     client = ChunkingLLMClient(fail_on_call=2)
-    extractor = LLMEvidenceExtractor(client=client, max_input_bytes=1_000)
+    extractor = LLMEvidenceExtractor(client=client, max_input_bytes=1_400)
     request = EvidenceExtractionRequest(
         query="latest AI product news",
         document=document,
@@ -228,11 +217,11 @@ async def _run_later_chunk_failure_case() -> None:
 
 
 async def _run_document_chunk_limit_case() -> None:
-    document = _document().model_copy(update={"text": "x" * 80})
+    document = _document().model_copy(update={"text": "x" * 250})
     client = ChunkingLLMClient()
     extractor = LLMEvidenceExtractor(
         client=client,
-        max_input_bytes=1_000,
+        max_input_bytes=1_400,
         max_chunks_per_document=1,
     )
 
@@ -257,20 +246,12 @@ def test_llm_evidence_extractor() -> None:
     asyncio.run(_run_llm_evidence_extractor())
 
 
-def test_llm_evidence_extractor_raises_for_invalid_json() -> None:
-    asyncio.run(_run_invalid_json_case())
+def test_llm_evidence_extractor_rejects_invalid_json_output() -> None:
+    asyncio.run(_run_invalid_response_case())
 
 
-def test_llm_evidence_extractor_accepts_empty_array() -> None:
-    asyncio.run(_run_empty_array_case())
-
-
-def test_llm_evidence_extractor_accepts_compatible_json_wrappers() -> None:
-    asyncio.run(_run_compatible_json_wrappers_case())
-
-
-def test_llm_evidence_extractor_raises_for_invalid_schema() -> None:
-    asyncio.run(_run_invalid_schema_case())
+def test_llm_evidence_extractor_accepts_empty_evidence_text() -> None:
+    asyncio.run(_run_no_relevant_evidence_case())
 
 
 def test_llm_evidence_extractor_records_llm_failure_input_sizes() -> None:

@@ -11,7 +11,7 @@ class FakeSynthesizer:
             return SynthesisResult(answer="No evidence was available to synthesize.")
 
         summaries = [
-            f"{' '.join(item.claim for item in group.evidence)} [S{index}]"
+            f"{group.evidence_text} [S{index}]"
             for index, group in enumerate(request.evidence_groups, start=1)
         ]
         citations = [

@@ -60,9 +60,9 @@ DocumentLifecycleStatus = Literal["active", "shelved", "unusable"]
 
 
 class DocumentState(BaseModel):
-    """Run-scoped processing state and evidence references for one document."""
+    """Run-scoped processing state and evidence reference for one document."""
 
-    evidence_ids: list[str] = Field(default_factory=list)
+    evidence_id: str | None = None
     lifecycle_status: DocumentLifecycleStatus | None = None
     lifecycle_reason: str | None = None
     lifecycle_updated_at_step: int | None = Field(default=None, ge=0)

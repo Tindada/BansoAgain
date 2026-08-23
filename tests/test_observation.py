@@ -1,13 +1,7 @@
 """Tests for structured action observations."""
 
-import pytest
-from pydantic import ValidationError
-
 from banso.agent.action import AgentAction, AgentActionType
-from banso.agent.observation import (
-    ExtractionSuccess,
-    FinishObservation,
-)
+from banso.agent.observation import FinishObservation
 from banso.agent.state import ActionHistoryEntry
 from banso.synthesis.synthesizer import Citation
 
@@ -32,11 +26,3 @@ def test_observation_round_trips_as_json_inside_history() -> None:
 
     assert restored == entry
     assert isinstance(restored.observation, FinishObservation)
-
-
-def test_extraction_success_rejects_duplicate_evidence_ids() -> None:
-    with pytest.raises(ValidationError, match="evidence_ids must be unique"):
-        ExtractionSuccess(
-            document_id="document-1",
-            evidence_ids=["evidence-1", "evidence-1"],
-        )

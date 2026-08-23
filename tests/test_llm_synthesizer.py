@@ -3,7 +3,6 @@
 import asyncio
 from datetime import datetime, timezone
 
-from banso.documents.models import EvidenceItem
 from banso.llm.fake import FakeLLMClient
 from banso.llm.models import LLMMessageRole
 from banso.source import Source, SourceType
@@ -29,28 +28,16 @@ def _request() -> SynthesisRequest:
                 source_url="https://example.com/a",
                 source=Source(name="Example News", type=SourceType.NEWS),
                 published_at=published_at,
-                evidence=[
-                    EvidenceItem(
-                        document_id="doc-1",
-                        claim="Company A announced a new AI product.",
-                        supporting_text=(
-                            "Company A announced the product on Monday."
-                        ),
-                        source_url="https://example.com/a",
-                    )
-                ],
+                evidence_text=(
+                    "Company A announced a new AI product.\n\n"
+                    "- The product was announced on Monday."
+                ),
             ),
             SynthesisEvidenceGroup(
                 document_id="doc-2",
                 title="Market reaction",
                 source_url="https://example.com/a",
-                evidence=[
-                    EvidenceItem(
-                        document_id="doc-2",
-                        claim="Analysts expect a market impact.",
-                        source_url="https://example.com/a",
-                    )
-                ],
+                evidence_text="Analysts expect a market impact.",
             ),
         ],
     )

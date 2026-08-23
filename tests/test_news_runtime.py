@@ -23,7 +23,7 @@ from banso.agent.selection.selector import (
 from banso.agent.state import AgentState, ExecutionBudget, UserQuery
 from banso.documents.extractor import EvidenceExtractionRequest
 from banso.documents.fetcher import DocumentFetchError, DocumentFetchRequest
-from banso.documents.models import Document, EvidenceItem
+from banso.documents.models import Document, DocumentEvidence
 from banso.agent.executors.news_executor import NewsActionExecutor
 from banso.agent.executors.research_pipeline import ResearchRouteComponents
 from banso.retrieval.models import SearchResult
@@ -142,15 +142,8 @@ class EvidenceExtractor:
     async def extract(
         self,
         request: EvidenceExtractionRequest,
-    ) -> list[EvidenceItem]:
-        return [
-            EvidenceItem(
-                id=f"evidence-{request.document.id}",
-                document_id=request.document.id,
-                claim=f"Claim from {request.document.title}",
-                source_url=request.document.url,
-            )
-        ]
+    ) -> str:
+        return f"Claim from {request.document.title}"
 
 
 class RecordingSynthesizer:
@@ -317,6 +310,11 @@ def test_runtime_researches_then_finishes_from_active_evidence() -> None:
         document.lifecycle_status == "active"
         for document in state.documents.values()
     )
+    evidence = store.list(DocumentEvidence)
+    assert len(evidence) == 2
+    assert {document.evidence_id for document in state.documents.values()} == {
+        item.id for item in evidence
+    }
     assert len(synthesizer.requests[0].evidence_groups) == 2
     spans = sink.get_trace(output.trace_id)
     span_names = {span.name for span in spans}

@@ -16,7 +16,7 @@ from banso.apps.real_news import build_real_news_runtime
 from banso.agent.action import AgentActionType
 from banso.agent.observation import ResearchObservation
 from banso.agent.state import AgentState, UserQuery
-from banso.documents.models import Document, EvidenceItem
+from banso.documents.models import Document, DocumentEvidence
 from banso.retrieval.models import SearchResult
 
 
@@ -62,9 +62,18 @@ async def main(*, verbose: bool = False) -> None:
     print("research queries:", research_queries)
     print("search results:", len(state.search_results))
     print("documents:", len(state.documents))
+    evidence_artifact_ids = [
+        document.evidence_id
+        for document in state.documents.values()
+        if document.evidence_id is not None
+    ]
+    evidence = [
+        store.get(evidence_id, DocumentEvidence)
+        for evidence_id in evidence_artifact_ids
+    ]
     print(
-        "evidence items:",
-        sum(len(document.evidence_ids) for document in state.documents.values()),
+        "evidence chars:",
+        sum(len(item.text) for item in evidence if item is not None),
     )
     print("final answer:", state.final_answer)
 
@@ -78,14 +87,7 @@ async def main(*, verbose: bool = False) -> None:
 
     print("search result ids:", list(state.search_results))
     print("document ids:", list(state.documents))
-    print(
-        "evidence ids:",
-        [
-            evidence_id
-            for document in state.documents.values()
-            for evidence_id in document.evidence_ids
-        ],
-    )
+    print("evidence artifact ids:", evidence_artifact_ids)
 
     print("search results:")
     for index, result_id in enumerate(state.search_results, start=1):
@@ -113,20 +115,14 @@ async def main(*, verbose: bool = False) -> None:
         print(f"   preview: {document.text[:300]}")
 
     print("evidence:")
-    evidence_ids = [
-        evidence_id
-        for document in state.documents.values()
-        for evidence_id in document.evidence_ids
-    ]
-    for index, evidence_id in enumerate(evidence_ids, start=1):
-        evidence = store.get(evidence_id, EvidenceItem)
-        if evidence is None:
+    for index, evidence_id in enumerate(evidence_artifact_ids, start=1):
+        item = store.get(evidence_id, DocumentEvidence)
+        if item is None:
             print(f"{index}. missing evidence artifact: {evidence_id}")
             continue
-        print(f"{index}. claim: {evidence.claim}")
-        print(f"   supporting_text: {evidence.supporting_text}")
-        print(f"   confidence: {evidence.confidence}")
-        print(f"   source_url: {evidence.source_url}")
+        print(f"{index}. document_id: {item.document_id}")
+        print(f"   chars: {len(item.text)}")
+        print(f"   text: {item.text}")
 
     print("observations:")
     for entry in state.action_history:

@@ -13,7 +13,7 @@ from banso.agent.action import (
 )
 from banso.agent.reducer import DefaultStateReducer
 from banso.agent.state import AgentState, DocumentState, ExecutionBudget, UserQuery
-from banso.documents.models import Document, EvidenceItem
+from banso.documents.models import Document, DocumentEvidence
 from banso.agent.executors.news_executor import NewsActionExecutor
 from banso.agent.executors.research_pipeline import ResearchRouteComponents
 from banso.retrieval.fake import FakeRetrievalProvider
@@ -78,16 +78,15 @@ def _state_and_store() -> tuple[AgentState, InMemoryArtifactStore]:
             source=Source(name=f"Source {identifier}", type=SourceType.NEWS),
             published_at=datetime(2026, 8, 1, tzinfo=timezone.utc),
         )
-        evidence = EvidenceItem(
+        evidence = DocumentEvidence(
             id=f"evidence-{identifier}",
             document_id=identifier,
-            claim=f"claim-{identifier}",
-            source_url=document.url,
+            text=f"evidence-{identifier}",
         )
         store.put(document)
         store.put(evidence)
         documents[identifier] = DocumentState(
-            evidence_ids=[evidence.id],
+            evidence_id=evidence.id,
             lifecycle_status=status,
         )
     return AgentState(
@@ -115,7 +114,7 @@ def test_curation_is_reversible_without_changing_artifacts() -> None:
     assert state.documents["a"].lifecycle_status == "shelved"
     assert state.documents["b"].lifecycle_status == "active"
     assert len(store.list(Document)) == 2
-    assert len(store.list(EvidenceItem)) == 2
+    assert len(store.list(DocumentEvidence)) == 2
 
 
 def test_curation_rejects_invalid_transition_and_active_overflow() -> None:
@@ -180,7 +179,7 @@ def test_finish_uses_only_active_documents_and_evidence() -> None:
     assert group.source_url == "https://example.com/a"
     assert group.source == Source(name="Source a", type=SourceType.NEWS)
     assert group.published_at == datetime(2026, 8, 1, tzinfo=timezone.utc)
-    assert [evidence.id for evidence in group.evidence] == ["evidence-a"]
+    assert group.evidence_text == "evidence-a"
 
 
 def test_finish_rejects_active_overflow() -> None:
@@ -189,6 +188,19 @@ def test_finish_rejects_active_overflow() -> None:
     state.budget = ExecutionBudget(max_active_documents=1)
 
     with pytest.raises(ValueError, match="requires curation"):
+        asyncio.run(
+            _executor(store).execute(
+                AgentAction(type=AgentActionType.FINISH),
+                state,
+            )
+        )
+
+
+def test_finish_rejects_active_document_without_valid_evidence() -> None:
+    state, store = _state_and_store()
+    state.documents["a"].evidence_id = "missing-evidence"
+
+    with pytest.raises(ValueError, match="missing or invalid evidence"):
         asyncio.run(
             _executor(store).execute(
                 AgentAction(type=AgentActionType.FINISH),

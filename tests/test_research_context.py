@@ -24,7 +24,7 @@ from banso.agent.state import (
     SearchResultState,
     UserQuery,
 )
-from banso.documents.models import Document, EvidenceItem
+from banso.documents.models import Document, DocumentEvidence
 from banso.agent.research_context import ResearchContextBuilder
 from banso.retrieval.models import (
     RetrievalFilterReport,
@@ -52,11 +52,10 @@ def _completed_state_and_store() -> tuple[AgentState, InMemoryArtifactStore]:
         text="Full body",
         source=source,
     )
-    evidence = EvidenceItem(
+    evidence = DocumentEvidence(
         id="evidence",
         document_id=document.id,
-        claim="Supported claim",
-        source_url=document.url,
+        text="Supported claim",
     )
     for artifact in (result, document, evidence):
         store.put(artifact)
@@ -100,7 +99,7 @@ def _completed_state_and_store() -> tuple[AgentState, InMemoryArtifactStore]:
         ],
         document_index_updates={document.url: document.id},
         extraction_outcomes=[
-            ExtractionSuccess(document_id=document.id, evidence_ids=[evidence.id])
+            ExtractionSuccess(document_id=document.id, evidence_id=evidence.id)
         ],
     )
     return DefaultStateReducer().apply(state, action, observation), store
@@ -132,7 +131,7 @@ def test_context_contains_research_history_and_evidence_groups() -> None:
     assert context.budget.remaining_researches == 2
     assert context.artifacts.search_result_count == 1
     assert context.artifacts.document_count == 1
-    assert context.artifacts.active_evidence_count == 1
+    assert context.artifacts.active_document_count == 1
     assert context.working_set.active_document_refs == ["D1"]
     assert len(context.research_history) == 1
     assert context.research_history[0].research_ref == "R1"
@@ -140,7 +139,8 @@ def test_context_contains_research_history_and_evidence_groups() -> None:
     assert context.research_history[0].source_domains == ["example.com"]
     assert context.research_history[0].selected_results == 1
     assert context.evidence_groups[0].research_refs == ["R1"]
-    assert context.evidence_groups[0].claim_previews == ["Supported claim"]
+    assert context.evidence_groups[0].evidence_preview == "Supported claim"
+    assert context.evidence_groups[0].evidence_truncated is False
     dumped = context.model_dump(mode="json")
     assert "candidate_results" not in dumped
     assert "candidate_documents" not in dumped
@@ -230,27 +230,18 @@ def test_document_research_references_are_ordered_unique_or_empty() -> None:
     assert context.evidence_groups[0].research_refs == []
 
 
-def test_context_limits_visible_claims_without_changing_totals() -> None:
+def test_context_limits_visible_evidence_text() -> None:
     state, store = _completed_state_and_store()
-    second = EvidenceItem(
-        id="evidence-2",
-        document_id="document",
-        claim="Second claim",
-        source_url="https://example.com/article",
-    )
-    store.put(second)
-    state.documents["document"].evidence_ids.append(second.id)
 
     context = ResearchContextBuilder(
         store,
         [RetrievalRoute.WEB],
-        max_evidence_per_document=1,
-        max_claim_chars=9,
+        max_evidence_preview_chars=9,
     ).build(state)
 
-    assert context.artifacts.evidence_count == 2
-    assert context.evidence_groups[0].evidence_count == 2
-    assert context.evidence_groups[0].claim_previews == ["Supported"]
+    group = context.evidence_groups[0]
+    assert group.evidence_preview == "Supported"
+    assert group.evidence_truncated is True
 
 
 def test_document_references_are_stable_across_lifecycle_changes() -> None:
@@ -266,7 +257,7 @@ def test_document_references_are_stable_across_lifecycle_changes() -> None:
     assert after.working_set.shelved_document_refs == ["D1"]
 
 
-def test_context_rejects_missing_artifacts_and_invalid_configuration() -> None:
+def test_context_rejects_missing_documents_and_invalid_configuration() -> None:
     with pytest.raises(ValueError, match="at least one"):
         ResearchContextBuilder(InMemoryArtifactStore(), [])
     with pytest.raises(ValueError, match="unique"):

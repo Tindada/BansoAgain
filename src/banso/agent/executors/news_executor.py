@@ -9,6 +9,11 @@ from banso.agent.action import (
     ResearchActionParams,
     RetrievalRoute,
 )
+from banso.agent.executors.research_pipeline import (
+    ResearchPipeline,
+    ResearchRouteComponents,
+)
+from banso.agent.executors.retry import RetryPolicy
 from banso.agent.observation import (
     CurateEvidenceObservation,
     FinishObservation,
@@ -18,12 +23,7 @@ from banso.agent.observation import (
 from banso.agent.selection.selector import SearchResultSelector
 from banso.agent.state import AgentState
 from banso.documents.extractor import EvidenceExtractor
-from banso.documents.models import Document, EvidenceItem
-from banso.agent.executors.research_pipeline import (
-    ResearchPipeline,
-    ResearchRouteComponents,
-)
-from banso.agent.executors.retry import RetryPolicy
+from banso.documents.models import Document, DocumentEvidence
 from banso.retrieval.filter import RetrievalFilter
 from banso.retrieval.source_classifier import SourceClassifier
 from banso.synthesis.synthesizer import (
@@ -128,11 +128,16 @@ class NewsActionExecutor:
             document = self.store.get(document_id, Document)
             if document is None:
                 continue
-            evidence: list[EvidenceItem] = []
-            for evidence_id in document_state.evidence_ids:
-                item = self.store.get(evidence_id, EvidenceItem)
-                if item is not None:
-                    evidence.append(item)
+            evidence_id = document_state.evidence_id
+            evidence = (
+                self.store.get(evidence_id, DocumentEvidence)
+                if evidence_id is not None
+                else None
+            )
+            if evidence is None or evidence.document_id != document_id:
+                raise ValueError(
+                    f"Active document has missing or invalid evidence: {document_id}"
+                )
             evidence_groups.append(
                 SynthesisEvidenceGroup(
                     document_id=document.id,
@@ -140,7 +145,7 @@ class NewsActionExecutor:
                     source_url=document.url,
                     source=document.source,
                     published_at=document.published_at,
-                    evidence=evidence,
+                    evidence_text=evidence.text,
                 )
             )
 

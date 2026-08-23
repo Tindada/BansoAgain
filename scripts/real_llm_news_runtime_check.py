@@ -18,7 +18,7 @@ from banso.agent.runtime import AgentRuntime
 from banso.agent.state import AgentState, UserQuery
 from banso.documents.fetcher import DocumentFetchRequest
 from banso.documents.llm_extractor import LLMEvidenceExtractor
-from banso.documents.models import Document, EvidenceItem
+from banso.documents.models import Document, DocumentEvidence
 from banso.agent.executors.news_executor import NewsActionExecutor
 from banso.agent.executors.research_pipeline import ResearchRouteComponents
 from banso.llm.config import (
@@ -92,22 +92,21 @@ async def main() -> None:
     print("actions:", [entry.action.type.value for entry in state.action_history])
     print("search result ids:", list(state.search_results))
     print("document ids:", list(state.documents))
-    evidence_ids = [
-        evidence_id
+    evidence_artifact_ids = [
+        document.evidence_id
         for document in state.documents.values()
-        for evidence_id in document.evidence_ids
+        if document.evidence_id is not None
     ]
-    print("evidence ids:", evidence_ids)
+    print("evidence artifact ids:", evidence_artifact_ids)
     print("evidence:")
-    for index, evidence_id in enumerate(evidence_ids, start=1):
-        evidence = store.get(evidence_id, EvidenceItem)
+    for index, evidence_id in enumerate(evidence_artifact_ids, start=1):
+        evidence = store.get(evidence_id, DocumentEvidence)
         if evidence is None:
             print(f"{index}. missing evidence artifact: {evidence_id}")
             continue
-        print(f"{index}. claim: {evidence.claim}")
-        print(f"   supporting_text: {evidence.supporting_text}")
-        print(f"   confidence: {evidence.confidence}")
-        print(f"   source_url: {evidence.source_url}")
+        print(f"{index}. document_id: {evidence.document_id}")
+        print(f"   chars: {len(evidence.text)}")
+        print(f"   text: {evidence.text}")
     print("final answer:", state.final_answer)
     print("observations:")
     for entry in state.action_history:

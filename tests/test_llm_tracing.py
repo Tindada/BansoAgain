@@ -84,7 +84,10 @@ async def _run_successful_calls() -> list[SpanRecord]:
         )
         extractor = LLMEvidenceExtractor(
             _client(
-                '[{"claim":"Company A announced a product."}]',
+                (
+                    '{"evidence_text":"Company A announced a product.",'
+                    '"rationale":"The text is relevant."}'
+                ),
                 "extract-call",
             )
         )
@@ -94,7 +97,7 @@ async def _run_successful_calls() -> list[SpanRecord]:
                 document=document,
             )
         )
-        assert evidence[0].claim == "Company A announced a product."
+        assert evidence == "Company A announced a product."
 
         synthesizer = LLMSynthesizer(
             _client("Final answer.", "synthesis-call")
@@ -108,7 +111,7 @@ async def _run_successful_calls() -> list[SpanRecord]:
                         document_id=document.id,
                         title=document.title,
                         source_url=document.url,
-                        evidence=evidence,
+                        evidence_text=evidence,
                     )
                 ],
             )
@@ -269,7 +272,10 @@ async def _run_concurrent_extractions() -> list[SpanRecord]:
     sink = InMemoryTraceSink()
     tracer = Tracer(sink)
     extractor = LLMEvidenceExtractor(
-        _client('[{"claim":"A claim"}]', "concurrent-call")
+        _client(
+            '{"evidence_text":"A claim","rationale":"Relevant claim."}',
+            "concurrent-call",
+        )
     )
     documents = [
         Document(

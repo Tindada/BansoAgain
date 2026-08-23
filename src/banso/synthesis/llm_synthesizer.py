@@ -109,14 +109,6 @@ class LLMSynthesizer:
             if group.published_at is not None
             else "Unknown"
         )
-        evidence_lines = [
-            (
-                f"- Claim: {item.claim}\n"
-                f"  Supporting text: {item.supporting_text or 'N/A'}"
-            )
-            for item in group.evidence
-        ]
-        evidence_block = "\n".join(evidence_lines) or "- No extracted evidence."
         return (
             f"[S{index}]\n"
             f"Title: {group.title}\n"
@@ -124,7 +116,7 @@ class LLMSynthesizer:
             f"Source type: {source_type}\n"
             f"URL: {group.source_url}\n"
             f"Published at: {published_at}\n"
-            f"Evidence:\n{evidence_block}"
+            f"Evidence:\n{group.evidence_text}"
         )
 
     def _citations(

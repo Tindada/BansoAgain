@@ -1,10 +1,10 @@
 """Document domain models."""
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Annotated, Any
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 from banso.source import Source
 
@@ -23,14 +23,9 @@ class Document(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-class EvidenceItem(BaseModel):
-    """A claim or fact extracted from a document."""
+class DocumentEvidence(BaseModel):
+    """Query-relevant text distilled from one document."""
 
     id: str = Field(default_factory=lambda: str(uuid4()))
     document_id: str
-    claim: str
-    supporting_text: str | None = None
-    source_url: str
-    published_at: datetime | None = None
-    confidence: float | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]

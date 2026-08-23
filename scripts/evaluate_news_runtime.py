@@ -83,7 +83,7 @@ async def run_case(
         )
     print(
         f"finished {case.id}: documents={result.document_count}, "
-        f"evidence={result.evidence_count}, citations={len(result.citations)}, "
+        f"evidence_chars={result.evidence_chars}, citations={len(result.citations)}, "
         f"passed={result.passed_minimums}",
         flush=True,
     )

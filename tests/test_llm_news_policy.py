@@ -18,7 +18,7 @@ from banso.agent.observation import (
 )
 from banso.agent.reducer import DefaultStateReducer
 from banso.agent.state import AgentState, DocumentState, ExecutionBudget, UserQuery
-from banso.documents.models import Document, EvidenceItem
+from banso.documents.models import Document
 from banso.llm.errors import LLMError
 from banso.llm.models import LLMRequest, LLMResponse
 from banso.agent.policies.llm_news_policy import LLMNewsPolicy, LLMPolicyError
@@ -375,21 +375,10 @@ def test_curation_maps_document_refs_to_lifecycle_transitions() -> None:
     shelved = Document(id="shelved", url="https://example.com/s", title="S", text="S")
     store.put(active)
     store.put(shelved)
-    store.put(
-        EvidenceItem(
-            id="evidence",
-            document_id="active",
-            claim="claim",
-            source_url=active.url,
-        )
-    )
     state = AgentState(
         query=UserQuery(text="question"),
         documents={
-            "active": DocumentState(
-                evidence_ids=["evidence"],
-                lifecycle_status="active",
-            ),
+            "active": DocumentState(lifecycle_status="active"),
             "shelved": DocumentState(lifecycle_status="shelved"),
         },
     )
@@ -419,9 +408,7 @@ def test_last_step_exposes_only_finish_or_stop() -> None:
         current_step=1,
         budget=ExecutionBudget(max_steps=2),
         documents={
-            "document": DocumentState(
-                lifecycle_status="active",
-            )
+            "document": DocumentState(lifecycle_status="active")
         },
     )
     policy, client = _policy(

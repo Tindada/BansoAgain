@@ -15,7 +15,7 @@ from banso.agent.observation import (
     RetrievalFailedResearchObservation,
 )
 from banso.agent.state import AgentState, DocumentLifecycleStatus
-from banso.documents.models import Document, EvidenceItem
+from banso.documents.models import Document, DocumentEvidence
 from banso.retrieval.url_utils import publisher_domain
 from banso.source import Source, SourceType
 
@@ -29,7 +29,7 @@ class SourceView(BaseModel):
 
 
 class EvidenceGroup(BaseModel):
-    """Representative evidence claims grouped by source document."""
+    """Evidence text and lifecycle details for one source document."""
 
     document_ref: str
     research_refs: list[str]
@@ -39,8 +39,8 @@ class EvidenceGroup(BaseModel):
     document_title: str
     source: SourceView
     published_at: datetime | None = None
-    evidence_count: int
-    claim_previews: list[str]
+    evidence_preview: str | None = None
+    evidence_truncated: bool
 
 
 class ResearchHistoryItemBase(BaseModel):
@@ -100,10 +100,6 @@ class ArtifactSummary(BaseModel):
     active_document_count: int
     shelved_document_count: int
     unusable_document_count: int
-    evidence_count: int
-    active_evidence_count: int
-    shelved_evidence_count: int
-    distinct_evidence_source_count: int
 
 
 class WorkingSetSummary(BaseModel):
@@ -154,55 +150,28 @@ class ResearchContextBuilder:
         store: ArtifactStore,
         enabled_routes: list[RetrievalRoute],
         *,
-        max_evidence_per_document: int = 10,
-        max_claim_chars: int = 300,
+        max_evidence_preview_chars: int = 3000,
     ) -> None:
         if not enabled_routes:
             raise ValueError("enabled_routes must contain at least one route")
         if len(set(enabled_routes)) != len(enabled_routes):
             raise ValueError("enabled_routes must be unique")
-        if max_evidence_per_document < 0:
-            raise ValueError("max_evidence_per_document must be non-negative")
-        if max_claim_chars < 0:
-            raise ValueError("max_claim_chars must be non-negative")
+        if max_evidence_preview_chars < 0:
+            raise ValueError("max_evidence_preview_chars must be non-negative")
 
         self.store = store
         self.enabled_routes = list(enabled_routes)
-        self.max_evidence_per_document = max_evidence_per_document
-        self.max_claim_chars = max_claim_chars
+        self.max_evidence_preview_chars = max_evidence_preview_chars
 
     def build(self, state: AgentState) -> ResearchContext:
         """Resolve state facts and artifacts into bounded research context."""
         documents = {
-            document_id: self._load(document_id, Document)
+            document_id: self._load_document(document_id)
             for document_id in state.documents
         }
-        evidence_by_document: dict[str, list[EvidenceItem]] = {}
-        for document_id, document_state in state.documents.items():
-            evidence_by_document[document_id] = [
-                self._load(evidence_id, EvidenceItem)
-                for evidence_id in document_state.evidence_ids
-            ]
 
         id_to_ref, _ = document_reference_maps(state)
         active_count = state.active_document_count
-        evidence_count = sum(map(len, evidence_by_document.values()))
-        active_evidence_count = sum(
-            len(evidence_by_document[document_id])
-            for document_id, document in state.documents.items()
-            if document.lifecycle_status == "active"
-        )
-        shelved_evidence_count = sum(
-            len(evidence_by_document[document_id])
-            for document_id, document in state.documents.items()
-            if document.lifecycle_status == "shelved"
-        )
-        evidence_domains = {
-            domain
-            for items in evidence_by_document.values()
-            for item in items
-            if (domain := publisher_domain(item.source_url))
-        }
         research_entries = [
             entry
             for entry in state.action_history
@@ -258,10 +227,6 @@ class ResearchContextBuilder:
                     document.lifecycle_status == "unusable"
                     for document in state.documents.values()
                 ),
-                evidence_count=evidence_count,
-                active_evidence_count=active_evidence_count,
-                shelved_evidence_count=shelved_evidence_count,
-                distinct_evidence_source_count=len(evidence_domains),
             ),
             working_set=WorkingSetSummary(
                 active_document_refs=[
@@ -283,7 +248,7 @@ class ResearchContextBuilder:
                     document_state.lifecycle_status,
                     document_state.lifecycle_reason,
                     document_state.lifecycle_updated_at_step,
-                    evidence_by_document[document_id],
+                    document_state.evidence_id,
                 )
                 for document_id, document_state in state.documents.items()
                 if document_state.lifecycle_status is not None
@@ -342,9 +307,18 @@ class ResearchContextBuilder:
         lifecycle_status: DocumentLifecycleStatus,
         lifecycle_reason: str | None,
         lifecycle_updated_at_step: int | None,
-        evidence: list[EvidenceItem],
+        evidence_id: str | None,
     ) -> EvidenceGroup:
-        visible_evidence = evidence[: self.max_evidence_per_document]
+        evidence = (
+            self.store.get(evidence_id, DocumentEvidence)
+            if evidence_id is not None
+            else None
+        )
+        evidence_preview = (
+            evidence.text[: self.max_evidence_preview_chars]
+            if evidence is not None
+            else None
+        )
         return EvidenceGroup(
             document_ref=document_ref,
             research_refs=research_refs,
@@ -354,11 +328,11 @@ class ResearchContextBuilder:
             document_title=document.title,
             source=self._build_source(document.source, document.url),
             published_at=document.published_at,
-            evidence_count=len(evidence),
-            claim_previews=[
-                item.claim[: self.max_claim_chars]
-                for item in visible_evidence
-            ],
+            evidence_preview=evidence_preview,
+            evidence_truncated=(
+                evidence is not None
+                and len(evidence.text) > self.max_evidence_preview_chars
+            ),
         )
 
     @staticmethod
@@ -370,11 +344,10 @@ class ResearchContextBuilder:
             type=source.type if source is not None else SourceType.UNKNOWN,
         )
 
-    def _load(self, artifact_id: str, artifact_type: type[Document] | type[EvidenceItem]):
-        artifact = self.store.get(artifact_id, artifact_type)
-        if artifact is None:
+    def _load_document(self, document_id: str) -> Document:
+        document = self.store.get(document_id, Document)
+        if document is None:
             raise ValueError(
-                f"{artifact_type.__name__} artifact is missing or has the wrong type: "
-                f"{artifact_id}"
+                f"Document artifact is missing or has the wrong type: {document_id}"
             )
-        return artifact
+        return document
