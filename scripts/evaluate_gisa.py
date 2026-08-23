@@ -78,10 +78,22 @@ def parse_args() -> argparse.Namespace:
         help="Select this many cases for each included answer type.",
     )
     parser.add_argument("--output-dir", type=Path)
-    parser.add_argument("--max-steps", type=int, default=12)
-    parser.add_argument("--max-researches", type=int, default=5)
-    parser.add_argument("--max-results-per-research", type=int, default=10)
-    parser.add_argument("--max-active-documents", type=int, default=8)
+    parser.add_argument("--max-steps", type=int, default=argparse.SUPPRESS)
+    parser.add_argument(
+        "--max-researches",
+        type=int,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--max-results-per-research",
+        type=int,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--max-active-documents",
+        type=int,
+        default=argparse.SUPPRESS,
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -129,6 +141,7 @@ def select_cases(args: argparse.Namespace) -> list[GisaCase]:
 def build_manifest(
     args: argparse.Namespace,
     cases: list[GisaCase],
+    budget: ExecutionBudget,
 ) -> dict[str, object]:
     mode = "dry-run" if args.dry_run else "run"
     answer_type_counts = Counter(case.answer_type.value for case in cases)
@@ -149,12 +162,7 @@ def build_manifest(
         "answer_types": dict(sorted(answer_type_counts.items())),
         "question_types": dict(sorted(question_type_counts.items())),
         "topics": dict(sorted(topic_counts.items())),
-        "budget": {
-            "max_steps": args.max_steps,
-            "max_researches": args.max_researches,
-            "max_results_per_research": args.max_results_per_research,
-            "max_active_documents": args.max_active_documents,
-        },
+        "budget": budget.model_dump(),
         "runtime": (
             {
                 "retrieval_routes": os.getenv(
@@ -177,11 +185,13 @@ def write_json(path: Path, value: object) -> None:
 
 
 def execution_budget(args: argparse.Namespace) -> ExecutionBudget:
-    return ExecutionBudget(
-        max_steps=args.max_steps,
-        max_researches=args.max_researches,
-        max_results_per_research=args.max_results_per_research,
-        max_active_documents=args.max_active_documents,
+    values = vars(args)
+    return ExecutionBudget.model_validate(
+        {
+            name: values[name]
+            for name in ExecutionBudget.model_fields
+            if name in values
+        }
     )
 
 
@@ -288,12 +298,11 @@ def summarize(results: list[GisaEvaluationResult]) -> dict[str, object]:
 
 
 async def run_evaluation(
-    args: argparse.Namespace,
     cases: list[GisaCase],
     output_dir: Path,
+    budget: ExecutionBudget,
 ) -> None:
     bundle = build_real_news_runtime(synthesizer_class=GisaSynthesizer)
-    budget = execution_budget(args)
     results_path = output_dir / "results.jsonl"
     traces_path = output_dir / "traces.jsonl"
     results: list[GisaEvaluationResult] = []
@@ -339,11 +348,12 @@ async def run_evaluation(
 
 def main(args: argparse.Namespace) -> None:
     cases = select_cases(args)
+    budget = execution_budget(args)
     output_dir = args.output_dir or default_output_dir()
     output_dir.mkdir(parents=True)
     if not args.dry_run:
         load_dotenv()
-    manifest = build_manifest(args, cases)
+    manifest = build_manifest(args, cases, budget)
     manifest_path = output_dir / "manifest.json"
     write_json(manifest_path, manifest)
 
@@ -351,7 +361,7 @@ def main(args: argparse.Namespace) -> None:
         print(json.dumps(manifest, indent=2, ensure_ascii=False))
         print(f"manifest: {manifest_path}")
         return
-    asyncio.run(run_evaluation(args, cases, output_dir))
+    asyncio.run(run_evaluation(cases, output_dir, budget))
 
 
 if __name__ == "__main__":
