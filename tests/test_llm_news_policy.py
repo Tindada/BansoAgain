@@ -314,7 +314,6 @@ def test_rejects_invalid_action_outputs(output: dict, reason: str) -> None:
     [
         (["D3"], "unknown"),
         (["D1", "D1"], "unique"),
-        (["D1"], "must change"),
     ],
 )
 def test_rejects_invalid_curation_refs(
@@ -333,6 +332,26 @@ def test_rejects_invalid_curation_refs(
 
     with pytest.raises(LLMPolicyError, match=message):
         asyncio.run(policy.select_action(state))
+
+
+def test_repeated_curation_is_normalized_to_an_empty_transition() -> None:
+    state, store = _curation_state_and_store()
+    policy, _ = _policy(
+        {
+            "type": "curate_evidence",
+            "params": {"active_document_refs": ["D1"]},
+            "rationale": "Keep the current evidence.",
+        },
+        store=store,
+    )
+
+    action = asyncio.run(policy.select_action(state))
+
+    assert action.type == AgentActionType.CURATE_EVIDENCE
+    assert action.params == {
+        "shelve_document_ids": [],
+        "reactivate_document_ids": [],
+    }
 
 
 def test_wraps_llm_errors() -> None:

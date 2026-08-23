@@ -297,11 +297,6 @@ class LLMNewsPolicy:
         }
         shelve_ids = list(current_active - requested_active)
         reactivate_ids = list(requested_active - current_active)
-        if not shelve_ids and not reactivate_ids:
-            raise LLMPolicyError(
-                "curate_evidence must change the active document set",
-                reason="invalid_params",
-            )
         return {
             "shelve_document_ids": shelve_ids,
             "reactivate_document_ids": reactivate_ids,
