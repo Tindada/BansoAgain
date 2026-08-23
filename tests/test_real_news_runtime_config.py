@@ -69,10 +69,12 @@ def test_web_only_runtime_builds_only_the_web_route(monkeypatch) -> None:
         ),
     )
 
-    thinking_extra_body = {"thinking": {"type": "disabled"}}
-    bundle = real_news.build_real_news_runtime(
-        extraction_thinking_extra_body=thinking_extra_body
+    extra_body = {"chat_template_kwargs": {"enable_thinking": False}}
+    monkeypatch.setenv(
+        "BANSO_EXTRACTION_LLM_EXTRA_BODY",
+        '{"chat_template_kwargs":{"enable_thinking":false}}',
     )
+    bundle = real_news.build_real_news_runtime()
 
     assert isinstance(bundle.runtime.policy, LLMNewsPolicy)
     assert isinstance(bundle.runtime.executor, NewsActionExecutor)
@@ -81,7 +83,7 @@ def test_web_only_runtime_builds_only_the_web_route(monkeypatch) -> None:
     assert selector.client is bundle.runtime.policy.client
     assert selector.context_builder is bundle.runtime.policy.context_builder
     extractor = bundle.runtime.executor.research_pipeline.evidence_extractor
-    assert extractor.client.client.thinking_extra_body == thinking_extra_body
+    assert extractor.client.client.request_extra_body == extra_body
     assert set(bundle.runtime.executor.research_routes) == {RetrievalRoute.WEB}
     assert (
         bundle.runtime.executor.research_routes[RetrievalRoute.WEB].retrieval_provider

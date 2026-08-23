@@ -3,7 +3,6 @@
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from banso.artifacts.store import InMemoryArtifactStore
 from banso.corpus.agent import (
@@ -23,6 +22,7 @@ from banso.agent.executors.research_pipeline import ResearchRouteComponents
 from banso.llm.config import (
     build_external_llm_client_from_env,
     build_vllm_llm_client_from_env,
+    extraction_llm_extra_body_from_env,
 )
 from banso.llm.openai_sdk_client import ThinkingModeLLMClient
 from banso.llm.tracing import TracingLLMClient
@@ -78,7 +78,6 @@ def enabled_retrieval_routes_from_env() -> list[RetrievalRoute]:
 def build_real_news_runtime(
     *,
     synthesizer_class: type[Synthesizer] = LLMSynthesizer,
-    extraction_thinking_extra_body: dict[str, Any] | None = None,
 ) -> RealNewsRuntimeBundle:
     """Build a fresh LLM-policy news runtime from environment variables."""
     enabled_routes = enabled_retrieval_routes_from_env()
@@ -96,7 +95,7 @@ def build_real_news_runtime(
     extraction_llm_client = TracingLLMClient(
         ThinkingModeLLMClient(
             base_local_llm_client,
-            thinking_extra_body=extraction_thinking_extra_body,
+            request_extra_body=extraction_llm_extra_body_from_env(),
         )
     )
     external_llm_client = TracingLLMClient(build_external_llm_client_from_env())

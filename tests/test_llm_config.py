@@ -36,6 +36,25 @@ def test_vllm_llm_config_uses_vllm_defaults(monkeypatch) -> None:
     }
 
 
+def test_extraction_llm_extra_body_from_env(monkeypatch) -> None:
+    monkeypatch.setenv(
+        "BANSO_EXTRACTION_LLM_EXTRA_BODY",
+        '{"chat_template_kwargs":{"enable_thinking":false}}',
+    )
+
+    assert config.extraction_llm_extra_body_from_env() == {
+        "chat_template_kwargs": {"enable_thinking": False}
+    }
+
+
+@pytest.mark.parametrize("value", ["[]", "not-json"])
+def test_extraction_llm_extra_body_requires_json_object(value, monkeypatch) -> None:
+    monkeypatch.setenv("BANSO_EXTRACTION_LLM_EXTRA_BODY", value)
+
+    with pytest.raises(RuntimeError, match="must be a JSON object"):
+        config.extraction_llm_extra_body_from_env()
+
+
 @pytest.mark.parametrize(
     ("prefix", "builder", "values"),
     [

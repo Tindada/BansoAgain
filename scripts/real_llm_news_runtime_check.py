@@ -24,6 +24,7 @@ from banso.agent.executors.research_pipeline import ResearchRouteComponents
 from banso.llm.config import (
     build_external_llm_client_from_env,
     build_vllm_llm_client_from_env,
+    extraction_llm_extra_body_from_env,
 )
 from banso.llm.openai_sdk_client import ThinkingModeLLMClient
 from banso.agent.policies.llm_news_policy import LLMNewsPolicy
@@ -54,8 +55,11 @@ async def main() -> None:
     load_dotenv()
 
     query = os.getenv("BANSO_NEWS_QUERY", "latest AI news")
-    evidence_llm_client = ThinkingModeLLMClient(
-        build_vllm_llm_client_from_env()
+    base_local_llm_client = build_vllm_llm_client_from_env()
+    agent_llm_client = ThinkingModeLLMClient(base_local_llm_client)
+    extraction_llm_client = ThinkingModeLLMClient(
+        base_local_llm_client,
+        request_extra_body=extraction_llm_extra_body_from_env(),
     )
     external_llm_client = build_external_llm_client_from_env()
     store = InMemoryArtifactStore()
@@ -63,7 +67,7 @@ async def main() -> None:
     tracer = Tracer(trace_sink)
     runtime = AgentRuntime(
         policy=LLMNewsPolicy(
-            evidence_llm_client,
+            agent_llm_client,
             ResearchContextBuilder(store, [RetrievalRoute.WEB]),
         ),
         executor=NewsActionExecutor(
@@ -74,7 +78,7 @@ async def main() -> None:
                     document_fetcher=SampleNewsDocumentFetcher(),
                 )
             },
-            evidence_extractor=LLMEvidenceExtractor(client=evidence_llm_client),
+            evidence_extractor=LLMEvidenceExtractor(client=extraction_llm_client),
             synthesizer=LLMSynthesizer(client=external_llm_client),
         ),
         tracer=tracer,

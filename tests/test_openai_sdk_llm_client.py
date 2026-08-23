@@ -189,7 +189,7 @@ async def _run_thinking_mode_client() -> None:
             model="test-model",
             client=FakeOpenAIClient(completions),
         ),
-        thinking_extra_body={"thinking": {"type": "disabled"}},
+        request_extra_body={"thinking": {"type": "disabled"}},
     )
 
     response = await client.generate(

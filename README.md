@@ -19,6 +19,13 @@ Configure the policy and extraction model under `VLLM_*`, and the answer
 synthesis model under `EXTERNAL_LLM_*`. Both accept OpenAI-compatible endpoints
 and may point to either local or hosted model services.
 
+Provider-specific extraction request fields can be supplied as a JSON object in
+`BANSO_EXTRACTION_LLM_EXTRA_BODY`.
+
+```env
+BANSO_EXTRACTION_LLM_EXTRA_BODY='{"chat_template_kwargs":{"enable_thinking":false}}'
+```
+
 The default `web` route uses
 [Tavily](https://docs.tavily.com/documentation/api-reference/introduction), a
 hosted Web search API, to retrieve result URLs and snippets. It requires a

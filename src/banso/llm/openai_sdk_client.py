@@ -65,7 +65,7 @@ class OpenAISDKLLMClient:
 
 
 class ThinkingModeLLMClient:
-    """Configure thinking requests and remove thinking tags from responses."""
+    """Apply request extras and remove thinking tags from responses."""
 
     _thinking_tag_pattern = re.compile(r"<think>.*?</think>", re.DOTALL)
 
@@ -73,17 +73,17 @@ class ThinkingModeLLMClient:
         self,
         client: LLMClient,
         *,
-        thinking_extra_body: dict[str, Any] | None = None,
+        request_extra_body: dict[str, Any] | None = None,
     ) -> None:
         self.client = client
-        self.thinking_extra_body = thinking_extra_body
+        self.request_extra_body = request_extra_body
 
     async def generate(self, request: LLMRequest) -> LLMResponse:
-        if self.thinking_extra_body is not None:
+        if self.request_extra_body is not None:
             request = request.model_copy(
                 update={
                     "extra_body": {
-                        **self.thinking_extra_body,
+                        **self.request_extra_body,
                         **(request.extra_body or {}),
                     }
                 }

@@ -1,12 +1,34 @@
 """Environment configuration helpers for LLM clients."""
 
+import json
 import os
+from typing import Any
 
 from banso.llm.openai_sdk_client import OpenAISDKLLMClient
 
 DEFAULT_VLLM_BASE_URL = "http://127.0.0.1:8000/v1"
 DEFAULT_VLLM_API_KEY = "unused"
 DEFAULT_LLM_TIMEOUT_SECONDS = 60.0
+EXTRACTION_LLM_EXTRA_BODY_ENV = "BANSO_EXTRACTION_LLM_EXTRA_BODY"
+
+
+def extraction_llm_extra_body_from_env() -> dict[str, Any] | None:
+    """Parse optional extraction-only OpenAI-compatible request fields."""
+    value = os.getenv(EXTRACTION_LLM_EXTRA_BODY_ENV)
+    if not value:
+        return None
+
+    try:
+        extra_body = json.loads(value)
+    except json.JSONDecodeError as error:
+        raise RuntimeError(
+            f"{EXTRACTION_LLM_EXTRA_BODY_ENV} must be a JSON object"
+        ) from error
+    if not isinstance(extra_body, dict):
+        raise RuntimeError(
+            f"{EXTRACTION_LLM_EXTRA_BODY_ENV} must be a JSON object"
+        )
+    return extra_body
 
 
 def build_external_llm_client_from_env() -> OpenAISDKLLMClient:
