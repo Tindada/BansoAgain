@@ -27,6 +27,7 @@ class OpenAISDKLLMClient:
             base_url=base_url,
             api_key=api_key,
             timeout=timeout,
+            max_retries=0,
         )
 
     async def generate(self, request: LLMRequest) -> LLMResponse:

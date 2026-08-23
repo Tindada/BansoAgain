@@ -16,7 +16,7 @@ class ExecutionBudget(BaseModel):
     max_steps: int = 12
     max_researches: int = Field(default=5, ge=0)
     max_results_per_research: int = Field(default=10, ge=1)
-    max_active_documents: int = Field(default=8, ge=1)
+    max_active_documents: int = Field(default=10, ge=1)
 
 
 class UserQuery(BaseModel):

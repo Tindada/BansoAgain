@@ -33,7 +33,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cases", type=Path, default=DEFAULT_CASES)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--limit", type=int)
-    parser.add_argument("--max-active-documents", type=int, default=6)
+    parser.add_argument("--max-active-documents", type=int, default=10)
     return parser.parse_args()
 
 

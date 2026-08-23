@@ -30,8 +30,6 @@ Run the full evaluation, for example with both routes enabled:
 ```bash
 BANSO_NEWS_RETRIEVAL_ROUTES=local,web \
 uv run python scripts/evaluate_news_runtime.py \
-  --max-document-fetches 10 \
-  --max-active-documents 6 \
   --output runs/eval_local_web.jsonl
 ```
 
