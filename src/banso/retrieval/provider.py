@@ -50,7 +50,7 @@ class SearchRequest(BaseModel):
     """Structured search request passed to retrieval providers."""
 
     query: str
-    max_results: int = 10
+    max_results: int = 20
     language: str | None = None
     region: str | None = None
     time_range: str | None = None

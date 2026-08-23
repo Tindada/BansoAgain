@@ -14,8 +14,8 @@ class ExecutionBudget(BaseModel):
     """Execution limits for a single agent run."""
 
     max_steps: int = 12
-    max_researches: int = Field(default=3, ge=0)
-    max_results_per_research: int = Field(default=4, ge=1)
+    max_researches: int = Field(default=5, ge=0)
+    max_results_per_research: int = Field(default=10, ge=1)
     max_active_documents: int = Field(default=8, ge=1)
 
 

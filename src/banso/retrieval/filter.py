@@ -11,7 +11,7 @@ from banso.retrieval.url_utils import normalize_url
 class RetrievalFilterConfig(BaseModel):
     """Configuration for basic search result filtering."""
 
-    max_results: int = 10
+    max_results: int = 20
     require_title: bool = True
     require_url: bool = True
     ignored_query_params: set[str] = Field(

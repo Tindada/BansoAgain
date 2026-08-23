@@ -78,8 +78,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--max-steps", type=int, default=12)
-    parser.add_argument("--max-researches", type=int, default=3)
-    parser.add_argument("--max-results-per-research", type=int, default=4)
+    parser.add_argument("--max-researches", type=int, default=5)
+    parser.add_argument("--max-results-per-research", type=int, default=10)
     parser.add_argument("--max-active-documents", type=int, default=8)
     parser.add_argument(
         "--dry-run",

@@ -411,7 +411,7 @@ def test_retrieval_failure_is_recorded_without_artifacts_and_consumes_budget() -
     assert failure.attempt_count == 2
     assert failure.source_domains == ["x.com"]
     assert state.current_step == 2
-    assert state.remaining_research_capacity == 2
+    assert state.remaining_research_capacity == state.budget.max_researches - 1
     assert state.search_results == {}
     assert state.documents == {}
     spans = sink.get_trace(output.trace_id)
