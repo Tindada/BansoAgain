@@ -51,3 +51,18 @@ and active document budgets, enabled retrieval routes, local search mode, and
 configured model names. Aggregate research counts, active/shelved/unusable
 document counts, curation actions, and action durations include every repeated
 action. API keys are never written to these outputs.
+
+## GISA offline scoring
+
+Score a completed GISA run against the locally prepared answers without making
+model or retrieval calls:
+
+```bash
+uv run --group evaluation python scripts/score_gisa.py \
+  runs/gisa/<run>/results.jsonl
+```
+
+The scorer reads each case ID, answer type, and prediction from `results.jsonl`
+and the corresponding CSV from `evaluations/gisa/raw/answer`. It writes
+`scores.jsonl` and `score_summary.json` beside the input results file. Human
+traces and question text are not used for scoring.
