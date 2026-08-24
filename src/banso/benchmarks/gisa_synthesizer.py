@@ -27,10 +27,11 @@ SYSTEM_PROMPT = (
     "and explanations from output values. Every textual output value must be in "
     "English. Use a standard English name when available; otherwise translate "
     "descriptive terms and conventionally transliterate proper names. Do not invent "
-    "aliases, expand abbreviations, or add unsupported information. For "
-    "complete-collection requests, include every supported matching entry and exclude "
-    "entries outside the requested scope. Return exactly one JSON object with the "
-    "requested schema, using JSON strings for textual and numeric values. Do not "
+    "aliases, expand abbreviations, or add unsupported information. For collection "
+    "and ranking requests, include every supported result that satisfies the requested "
+    "scope, eligibility, ordering, and time frame. Return exactly one JSON object "
+    "with the requested schema, using JSON strings for textual and numeric values. "
+    "Do not "
     "include Markdown, citations, source labels, or confidence notes."
 )
 
