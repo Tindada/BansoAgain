@@ -71,8 +71,16 @@ def parse_args() -> argparse.Namespace:
         dest="answer_types",
         help="Repeat to include more than one answer type.",
     )
-    parser.add_argument("--limit", type=int)
-    parser.add_argument(
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument(
+        "--case-id",
+        nargs="+",
+        type=int,
+        dest="case_ids",
+        help="Run one or more specific case IDs in source-file order.",
+    )
+    selection.add_argument("--limit", type=int)
+    selection.add_argument(
         "--per-answer-type",
         type=int,
         help="Select this many cases for each included answer type.",
@@ -117,8 +125,6 @@ def select_cases(args: argparse.Namespace) -> list[GisaCase]:
         if args.answer_types
         else None
     )
-    if args.per_answer_type is not None and args.limit is not None:
-        raise SystemExit("--per-answer-type and --limit cannot be used together")
     if args.per_answer_type is not None:
         selected = select_balanced_gisa_cases(
             cases,
@@ -131,6 +137,7 @@ def select_cases(args: argparse.Namespace) -> list[GisaCase]:
             cases,
             question_type=question_type,
             answer_types=answer_types,
+            case_ids=set(args.case_ids) if args.case_ids else None,
             limit=args.limit,
         )
     if not selected:
@@ -156,6 +163,7 @@ def build_manifest(
         "filters": {
             "question_type": args.question_type,
             "answer_types": sorted(args.answer_types) if args.answer_types else None,
+            "case_ids": sorted(set(args.case_ids)) if args.case_ids else None,
             "limit": args.limit,
             "per_answer_type": args.per_answer_type,
         },

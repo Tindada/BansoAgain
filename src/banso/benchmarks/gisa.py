@@ -95,17 +95,25 @@ def select_gisa_cases(
     *,
     question_type: GisaQuestionType | None = None,
     answer_types: set[GisaAnswerType] | None = None,
+    case_ids: set[int] | None = None,
     limit: int | None = None,
 ) -> list[GisaCase]:
     """Apply deterministic subset filters in source-file order."""
 
     if limit is not None and limit < 1:
         raise ValueError("limit must be at least 1")
+    cases = list(cases)
+    if case_ids is not None:
+        unknown_ids = case_ids - {case.id for case in cases}
+        if unknown_ids:
+            values = ", ".join(str(case_id) for case_id in sorted(unknown_ids))
+            raise ValueError(f"unknown GISA case IDs: {values}")
 
     selected = [
         case
         for case in cases
-        if (question_type is None or case.question_type == question_type)
+        if (case_ids is None or case.id in case_ids)
+        and (question_type is None or case.question_type == question_type)
         and (answer_types is None or case.answer_type in answer_types)
     ]
     return selected[:limit] if limit is not None else selected
