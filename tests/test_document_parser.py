@@ -81,6 +81,48 @@ def test_html_extraction_prefers_main_over_article_cards() -> None:
     )
 
 
+def test_html_extraction_preserves_structured_tables_in_document_order() -> None:
+    extraction = _parse_html(
+        """
+        <body>
+          <main>
+            <h1>Lap records</h1>
+            <p>Verified production vehicles.</p>
+            <table>
+              <caption>Official results</caption>
+              <thead>
+                <tr><th>Vehicle</th><th>Time</th><th>Notes</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td rowspan="2">Alpha <strong>One</strong></td>
+                  <td>06:30.000</td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td colspan="2"><p>Updated</p><ul><li>Verified</li></ul></td>
+                </tr>
+              </tbody>
+            </table>
+            <p>End of results.</p>
+          </main>
+        </body>
+        """
+    )
+
+    assert extraction.text == (
+        "Lap records\n"
+        "Verified production vehicles.\n"
+        "[Table]\n"
+        "Caption: Official results\n"
+        "Vehicle\tTime\tNotes\n"
+        "Alpha One [rowspan=2]\t06:30.000\t\n"
+        "Updated Verified [colspan=2]\n"
+        "[/Table]\n"
+        "End of results."
+    )
+
+
 def test_html_extraction_falls_back_to_body_and_removes_page_chrome() -> None:
     extraction = _parse_html(
         """

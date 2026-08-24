@@ -144,7 +144,7 @@ class DocumentParser:
 
 _REMOVABLE_TAGS = ("script", "style", "noscript", "template", "svg")
 _CONTENT_NOISE_TAGS = ("nav", "aside", "form", "dialog")
-_TEXT_BLOCK_TAGS = (
+_CONTENT_BLOCK_TAGS = (
     "h1",
     "h2",
     "h3",
@@ -155,6 +155,7 @@ _TEXT_BLOCK_TAGS = (
     "li",
     "blockquote",
     "pre",
+    "table",
 )
 
 
@@ -283,10 +284,14 @@ def _remove_content_noise(content_root: Tag, *, strategy: str) -> None:
 def _extract_block_text(content_root: Tag) -> str:
     lines: list[str] = []
 
-    for block in content_root.find_all(_TEXT_BLOCK_TAGS):
+    for block in content_root.find_all(_CONTENT_BLOCK_TAGS):
         if _has_block_ancestor(block, content_root):
             continue
-        text = block.get_text(separator=" ", strip=True)
+        text = (
+            _extract_table_text(block)
+            if block.name == "table"
+            else block.get_text(separator=" ", strip=True)
+        )
         if text:
             lines.append(text)
 
@@ -300,9 +305,60 @@ def _has_block_ancestor(block: Tag, content_root: Tag) -> bool:
     for parent in block.parents:
         if parent is content_root:
             return False
-        if isinstance(parent, Tag) and parent.name in _TEXT_BLOCK_TAGS:
+        if isinstance(parent, Tag) and parent.name in _CONTENT_BLOCK_TAGS:
             return True
     return False
+
+
+def _extract_table_text(table: Tag) -> str:
+    content_lines: list[str] = []
+    caption = table.find("caption", recursive=False)
+    if isinstance(caption, Tag):
+        caption_text = _compact_tag_text(caption)
+        if caption_text:
+            content_lines.append(f"Caption: {caption_text}")
+
+    for row in table.find_all("tr"):
+        if row.find_parent("table") is not table:
+            continue
+        cells = row.find_all(("th", "td"), recursive=False)
+        if not cells:
+            continue
+        content_lines.append("\t".join(_extract_table_cell(cell) for cell in cells))
+
+    if not content_lines:
+        return ""
+    return "\n".join(("[Table]", *content_lines, "[/Table]"))
+
+
+def _extract_table_cell(cell: Tag) -> str:
+    text = _compact_tag_text(cell)
+    spans = [
+        annotation
+        for attribute in ("rowspan", "colspan")
+        if (annotation := _table_span_annotation(cell, attribute)) is not None
+    ]
+    if not spans:
+        return text
+    annotation = f"[{' '.join(spans)}]"
+    return f"{text} {annotation}" if text else annotation
+
+
+def _table_span_annotation(cell: Tag, attribute: str) -> str | None:
+    value = cell.get(attribute)
+    if not isinstance(value, str):
+        return None
+    try:
+        span = int(value)
+    except ValueError:
+        return None
+    if span <= 1:
+        return None
+    return f"{attribute}={span}"
+
+
+def _compact_tag_text(tag: Tag) -> str:
+    return " ".join(tag.stripped_strings)
 
 
 def _text_length(tag: Tag) -> int:
