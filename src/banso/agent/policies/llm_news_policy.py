@@ -54,9 +54,11 @@ ACTION_INSTRUCTIONS = {
         "unavailable because the active set exceeds the limit, curate before finishing."
     ),
     AgentActionType.FINISH: (
-        "Finish when active evidence supports a useful answer and either adequately "
-        "covers the user's main requested facets or no available research or curation "
-        "action is likely to materially improve coverage."
+        "Finish only when active evidence supports a useful answer and either "
+        "adequately covers the user's requested scope or no available research or "
+        "curation action is likely to materially improve it. For exhaustive or "
+        "structured requests, adequate coverage means supporting the requested extent "
+        "and fields, not merely some matching examples."
     ),
     AgentActionType.STOP: (
         "Stop without an answer only when active evidence is unusable and no available "

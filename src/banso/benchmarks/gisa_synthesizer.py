@@ -21,11 +21,17 @@ from banso.synthesis.synthesizer import (
 
 
 SYSTEM_PROMPT = (
-    "Answer the user's question precisely using only the supplied evidence. Do not "
-    "invent unsupported information. Return exactly one JSON object with the "
-    "requested schema. Do not include Markdown, citations, source labels, "
-    "explanations, or confidence notes. Use JSON strings for textual and numeric "
-    "answer values."
+    "Answer the user's question precisely using only the supplied evidence. Return "
+    "only the values and fields requested by the question; use contextual details to "
+    "determine eligibility, but omit unrequested titles, offices, dates, categories, "
+    "and explanations from output values. Every textual output value must be in "
+    "English. Use a standard English name when available; otherwise translate "
+    "descriptive terms and conventionally transliterate proper names. Do not invent "
+    "aliases, expand abbreviations, or add unsupported information. For "
+    "complete-collection requests, include every supported matching entry and exclude "
+    "entries outside the requested scope. Return exactly one JSON object with the "
+    "requested schema, using JSON strings for textual and numeric values. Do not "
+    "include Markdown, citations, source labels, or confidence notes."
 )
 
 NonBlankString = Annotated[
@@ -149,16 +155,23 @@ class GisaSynthesizer:
     @staticmethod
     def _json_schema_instruction(answer_type: GisaAnswerType) -> str:
         if answer_type == GisaAnswerType.ITEM:
-            return '{"value": "the single answer"}'
+            return (
+                '{"value": "the single answer"}. Return only the value requested '
+                "by the question."
+            )
         if answer_type == GisaAnswerType.SET:
             return (
                 '{"items": ["every distinct matching item"]}. Include all and only '
-                "matching items. Order is not significant."
+                "matching items. Each item must contain only the requested entity "
+                "value, without unrequested titles or explanatory details. Order is "
+                "not significant."
             )
         if answer_type == GisaAnswerType.LIST:
             return (
                 '{"items": ["first item", "second item"]}. Include all requested '
-                "items in the requested order."
+                "items in the requested order. Each item must contain only the "
+                "requested entity value, without unrequested titles or explanatory "
+                "details."
             )
         return (
             '{"columns": ["Column 1", "Column 2"], '
