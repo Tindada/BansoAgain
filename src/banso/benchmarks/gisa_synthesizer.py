@@ -45,12 +45,12 @@ class _ItemOutput(_StrictOutput):
 
 
 class _ItemsOutput(_StrictOutput):
-    items: list[JsonScalar] = Field(min_length=1)
+    items: list[JsonScalar]
 
 
 class _TableOutput(_StrictOutput):
     columns: list[NonBlankString] = Field(min_length=1)
-    rows: list[list[JsonCell]] = Field(min_length=1)
+    rows: list[list[JsonCell]]
 
 
 class GisaSynthesizer:
