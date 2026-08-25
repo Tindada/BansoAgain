@@ -46,13 +46,13 @@ def test_gisa_list_json_preserves_order_and_duplicates() -> None:
 def test_gisa_table_json_is_validated_and_converted_to_tsv() -> None:
     result = asyncio.run(
         _synthesize(
-            '{"columns":["Name","Year"],"rows":[["A",2024],["B",2025]]}',
+            '{"columns":["Name","Year"],"rows":[["A",2024],["B",""]]}',
             "table",
         )
     )
 
     assert result.answer == (
-        "```tsv\nName\tYear\nA\t2024\nB\t2025\n```"
+        "```tsv\nName\tYear\nA\t2024\nB\t\n```"
     )
 
 

@@ -39,8 +39,9 @@ NonBlankString = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1),
 ]
+TableString = Annotated[str, StringConstraints(strip_whitespace=True)]
 JsonScalar: TypeAlias = NonBlankString | int | float | bool
-JsonCell: TypeAlias = JsonScalar | None
+JsonCell: TypeAlias = TableString | int | float | bool | None
 
 
 class _StrictOutput(BaseModel):
