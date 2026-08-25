@@ -31,6 +31,16 @@ The default `web` route uses
 hosted Web search API, to retrieve result URLs and snippets. It requires a
 separate `BANSO_TAVILY_API_KEY`; Banso fetches the source documents itself.
 
+Remote documents use the built-in HTTP fetcher by default. To use
+[Jina Reader](https://jina.ai/reader/) instead, configure:
+
+```env
+BANSO_DOCUMENT_FETCHER=jina
+BANSO_JINA_API_KEY=  # optional
+```
+
+See [News Runtime](docs/news_runtime.md) for fetcher options and request details.
+
 ## Run the news agent
 
 The root `main.py` is the normal application entry point:

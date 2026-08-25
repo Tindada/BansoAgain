@@ -16,6 +16,8 @@ from banso.corpus.sqlite_store import SQLiteCorpusStore
 from banso.agent.action import RetrievalRoute
 from banso.agent.runtime import AgentRuntime
 from banso.documents.http_fetcher import HTTPDocumentFetcher
+from banso.documents.fetcher import DocumentFetcher
+from banso.documents.jina_fetcher import JinaDocumentFetcher
 from banso.documents.llm_extractor import LLMEvidenceExtractor
 from banso.agent.executors.news_executor import NewsActionExecutor
 from banso.agent.executors.research_pipeline import ResearchRouteComponents
@@ -57,6 +59,17 @@ def build_tavily_provider_from_env() -> TavilyRetrievalProvider:
         api_key=api_key,
         base_url=os.getenv("BANSO_TAVILY_BASE_URL", "https://api.tavily.com"),
     )
+
+
+def build_document_fetcher_from_env() -> DocumentFetcher:
+    """Build the remote document fetcher selected by environment variables."""
+    provider = os.getenv("BANSO_DOCUMENT_FETCHER", "http").strip().casefold()
+    if provider == "http":
+        return HTTPDocumentFetcher()
+    elif provider == "jina":
+        return JinaDocumentFetcher(api_key=os.getenv("BANSO_JINA_API_KEY"))
+    else:
+        raise RuntimeError("BANSO_DOCUMENT_FETCHER must be 'http' or 'jina'")
 
 
 def enabled_retrieval_routes_from_env() -> list[RetrievalRoute]:
@@ -103,11 +116,12 @@ def build_real_news_runtime(
     trace_sink = InMemoryTraceSink()
     tracer = Tracer(trace_sink)
     research_routes: dict[RetrievalRoute, ResearchRouteComponents] = {}
+    document_fetcher = build_document_fetcher_from_env()
 
     if RetrievalRoute.WEB in enabled_routes:
         research_routes[RetrievalRoute.WEB] = ResearchRouteComponents(
             retrieval_provider=build_tavily_provider_from_env(),
-            document_fetcher=HTTPDocumentFetcher(),
+            document_fetcher=document_fetcher,
         )
 
     if RetrievalRoute.LOCAL in enabled_routes:
@@ -134,7 +148,7 @@ def build_real_news_runtime(
             ),
             document_fetcher=CorpusAwareDocumentFetcher(
                 corpus_store,
-                HTTPDocumentFetcher(),
+                document_fetcher,
             ),
         )
 

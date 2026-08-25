@@ -8,6 +8,7 @@ from banso.agent.action import RetrievalRoute
 from banso.agent.executors.news_executor import NewsActionExecutor
 from banso.agent.policies.llm_news_policy import LLMNewsPolicy
 from banso.agent.selection.llm_selector import LLMSearchResultSelector
+from banso.documents.http_fetcher import HTTPDocumentFetcher
 
 
 @pytest.mark.parametrize(
@@ -34,6 +35,35 @@ def test_enabled_retrieval_routes_rejects_unknown_shapes(value, monkeypatch) -> 
 
     with pytest.raises(RuntimeError, match="must be"):
         enabled_retrieval_routes_from_env()
+
+
+def test_document_fetcher_defaults_to_http(monkeypatch) -> None:
+    monkeypatch.delenv("BANSO_DOCUMENT_FETCHER", raising=False)
+
+    assert isinstance(real_news.build_document_fetcher_from_env(), HTTPDocumentFetcher)
+
+
+def test_document_fetcher_builds_jina_without_api_key(monkeypatch) -> None:
+    monkeypatch.setenv("BANSO_DOCUMENT_FETCHER", "jina")
+    monkeypatch.setenv("BANSO_JINA_API_KEY", "")
+    captured = {}
+
+    def build_jina(**kwargs):
+        captured.update(kwargs)
+        return "jina-fetcher"
+
+    monkeypatch.setattr(real_news, "JinaDocumentFetcher", build_jina)
+
+    assert real_news.build_document_fetcher_from_env() == "jina-fetcher"
+    assert captured == {"api_key": ""}
+
+
+@pytest.mark.parametrize("value", ["", "firecrawl", "http,jina"])
+def test_document_fetcher_rejects_unknown_provider(value, monkeypatch) -> None:
+    monkeypatch.setenv("BANSO_DOCUMENT_FETCHER", value)
+
+    with pytest.raises(RuntimeError, match="must be 'http' or 'jina'"):
+        real_news.build_document_fetcher_from_env()
 
 
 class _Registry:
@@ -123,3 +153,41 @@ def test_local_only_runtime_does_not_require_or_build_tavily(monkeypatch) -> Non
     bundle = real_news.build_real_news_runtime()
 
     assert set(bundle.runtime.executor.research_routes) == {RetrievalRoute.LOCAL}
+
+
+def test_routes_share_the_selected_document_fetcher(monkeypatch) -> None:
+    _patch_common_runtime_dependencies(monkeypatch)
+    monkeypatch.setenv("BANSO_NEWS_RETRIEVAL_ROUTES", "local,web")
+    monkeypatch.setenv("BANSO_CORPUS_SEARCH_MODE", "bm25")
+    selected_fetcher = object()
+    monkeypatch.setattr(
+        real_news,
+        "build_document_fetcher_from_env",
+        lambda: selected_fetcher,
+    )
+    monkeypatch.setattr(real_news, "build_tavily_provider_from_env", object)
+    monkeypatch.setattr(real_news, "SQLiteCorpusStore", lambda path: "store")
+    monkeypatch.setattr(
+        real_news,
+        "LanceCorpusIndex",
+        lambda path, embedding_provider: "index",
+    )
+    monkeypatch.setattr(
+        real_news,
+        "LocalCorpusRetrievalProvider",
+        lambda *args, **kwargs: "local-provider",
+    )
+    monkeypatch.setattr(
+        real_news,
+        "CorpusAwareDocumentFetcher",
+        lambda store, fallback: ("local-fetcher", fallback),
+    )
+
+    bundle = real_news.build_real_news_runtime()
+    routes = bundle.runtime.executor.research_routes
+
+    assert routes[RetrievalRoute.WEB].document_fetcher is selected_fetcher
+    assert routes[RetrievalRoute.LOCAL].document_fetcher == (
+        "local-fetcher",
+        selected_fetcher,
+    )
