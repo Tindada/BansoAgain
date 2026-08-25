@@ -5,17 +5,29 @@ import json
 
 import pytest
 
-from banso.agent.action import RetrievalRoute
+from banso.agent.action import AgentAction, AgentActionType, RetrievalRoute
+from banso.agent.observation import (
+    CompletedResearchObservation,
+    DocumentFetchFailure,
+    FetchFailure,
+)
+from banso.agent.reducer import DefaultStateReducer
 from banso.agent.research_context import ResearchContextBuilder
 from banso.agent.selection.llm_selector import LLMSearchResultSelector
 from banso.agent.selection.selector import SearchResultSelectionRequest
 from banso.agent.state import AgentState, UserQuery
 from banso.artifacts.store import InMemoryArtifactStore
 from banso.llm.fake import FakeLLMClient
-from banso.retrieval.models import SearchResult
+from banso.retrieval.models import (
+    RetrievalFilterReport,
+    SearchResult,
+    SearchResultMergeReport,
+    SearchResultSelectionReport,
+    SourceClassificationReport,
+)
 
 
-def _request() -> SearchResultSelectionRequest:
+def _request(state: AgentState | None = None) -> SearchResultSelectionRequest:
     return SearchResultSelectionRequest(
         research_query="specific information gap",
         candidates=[
@@ -33,7 +45,53 @@ def _request() -> SearchResultSelectionRequest:
                 rank=2,
             ),
         ],
-        state=AgentState(query=UserQuery(text="overall question")),
+        state=state or AgentState(query=UserQuery(text="overall question")),
+    )
+
+
+def _state_with_fetch_failure() -> AgentState:
+    observation = CompletedResearchObservation(
+        query="prior query",
+        route=RetrievalRoute.WEB,
+        search_result_ids=["failed-result"],
+        retrieval_filter_report=RetrievalFilterReport(input_count=1, output_count=1),
+        source_classification_report=SourceClassificationReport(
+            input_count=1,
+            recognized_count=0,
+            unknown_count=1,
+        ),
+        search_result_merge_report=SearchResultMergeReport(
+            candidate_count=1,
+            new_result_count=1,
+            reused_result_count=0,
+        ),
+        selection_report=SearchResultSelectionReport(
+            candidate_ids=["failed-result"],
+            selected_ids=["failed-result"],
+        ),
+        fetch_outcomes=[
+            FetchFailure(
+                search_result_id="failed-result",
+                failure=DocumentFetchFailure(
+                    reason="http_status",
+                    status_code=403,
+                    url="https://blocked.example/article",
+                    message="private fetch failure",
+                    source_error_type="HTTPStatusError",
+                ),
+            )
+        ],
+        extraction_outcomes=[],
+        search_result_index_updates={},
+        document_index_updates={},
+    )
+    return DefaultStateReducer().apply(
+        AgentState(query=UserQuery(text="overall question")),
+        AgentAction(
+            type=AgentActionType.RESEARCH,
+            params={"query": observation.query, "route": observation.route.value},
+        ),
+        observation,
     )
 
 
@@ -44,7 +102,7 @@ def test_selects_from_context_and_candidate_summaries() -> None:
         ResearchContextBuilder(InMemoryArtifactStore(), [RetrievalRoute.WEB]),
     )
 
-    selection = asyncio.run(selector.select(_request()))
+    selection = asyncio.run(selector.select(_request(_state_with_fetch_failure())))
 
     assert selection.selected_ids == ["result-1"]
     llm_request = client.requests[0]
@@ -60,6 +118,21 @@ def test_selects_from_context_and_candidate_summaries() -> None:
         "evidence_groups",
     }
     assert prompt["context"]["user_query"]["text"] == "overall question"
+    assert prompt["context"]["research_history"] == [
+        {
+            "research_ref": "R1",
+            "query": "prior query",
+            "status": "completed",
+            "fetch_failure_sources": [
+                {
+                    "domain": "blocked.example",
+                    "reason": "http_status",
+                    "status_code": 403,
+                    "count": 1,
+                }
+            ],
+        }
+    ]
     assert prompt["current_search"] == {
         "query": "specific information gap",
         "candidate_results": [

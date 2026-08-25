@@ -1,5 +1,6 @@
 """Research context derived from agent state and stored artifacts."""
 
+from collections import Counter
 from datetime import datetime
 from typing import Annotated, Literal
 
@@ -9,6 +10,7 @@ from banso.artifacts.store import ArtifactStore
 from banso.agent.action import RetrievalRoute
 from banso.agent.observation import (
     ExtractionFailure,
+    ExtractionSuccess,
     FetchFailure,
     ResearchObservation,
     ResearchObservationBase,
@@ -52,6 +54,15 @@ class ResearchHistoryItemBase(BaseModel):
     source_domains: list[str] | None = None
 
 
+class FetchFailureSource(BaseModel):
+    """Aggregated fetch failures for one publisher and failure kind."""
+
+    domain: str
+    reason: str
+    status_code: int | None = None
+    count: int = Field(ge=1)
+
+
 class CompletedResearchHistoryItem(ResearchHistoryItemBase):
     """Compact outcomes from a completed research action."""
 
@@ -62,7 +73,9 @@ class CompletedResearchHistoryItem(ResearchHistoryItemBase):
     selected_results: int
     fetch_successes: int
     fetch_failures: int
-    extraction_successes: int
+    fetch_failure_sources: list[FetchFailureSource]
+    evidence_documents: int
+    no_evidence_documents: int
     extraction_failures: int
 
 
@@ -282,6 +295,24 @@ class ResearchContextBuilder:
             for outcome in observation.extraction_outcomes
             if isinstance(outcome, ExtractionFailure)
         ]
+        fetch_failure_counts = Counter(
+            (
+                publisher_domain(outcome.failure.url),
+                outcome.failure.reason,
+                outcome.failure.status_code,
+            )
+            for outcome in fetch_failures
+        )
+        evidence_documents = sum(
+            isinstance(outcome, ExtractionSuccess)
+            and outcome.evidence_id is not None
+            for outcome in observation.extraction_outcomes
+        )
+        no_evidence_documents = sum(
+            isinstance(outcome, ExtractionSuccess)
+            and outcome.evidence_id is None
+            for outcome in observation.extraction_outcomes
+        )
         return CompletedResearchHistoryItem(
             research_ref=research_ref,
             query=observation.query,
@@ -293,9 +324,24 @@ class ResearchContextBuilder:
             selected_results=len(observation.selection_report.selected_ids),
             fetch_successes=len(observation.fetch_outcomes) - len(fetch_failures),
             fetch_failures=len(fetch_failures),
-            extraction_successes=(
-                len(observation.extraction_outcomes) - len(extraction_failures)
-            ),
+            fetch_failure_sources=[
+                FetchFailureSource(
+                    domain=domain,
+                    reason=reason,
+                    status_code=status_code,
+                    count=count,
+                )
+                for (domain, reason, status_code), count in sorted(
+                    fetch_failure_counts.items(),
+                    key=lambda item: (
+                        item[0][0],
+                        item[0][1],
+                        item[0][2] if item[0][2] is not None else -1,
+                    ),
+                )
+            ],
+            evidence_documents=evidence_documents,
+            no_evidence_documents=no_evidence_documents,
             extraction_failures=len(extraction_failures),
         )
 

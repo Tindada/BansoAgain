@@ -12,7 +12,11 @@ from banso.agent.action import (
 )
 from banso.agent.observation import (
     CompletedResearchObservation,
+    DocumentFetchFailure,
+    EvidenceExtractionFailure,
+    ExtractionFailure,
     ExtractionSuccess,
+    FetchFailure,
     FetchSuccess,
     RetrievalFailedResearchObservation,
 )
@@ -25,7 +29,10 @@ from banso.agent.state import (
     UserQuery,
 )
 from banso.documents.models import Document, DocumentEvidence
-from banso.agent.research_context import ResearchContextBuilder
+from banso.agent.research_context import (
+    CompletedResearchHistoryItem,
+    ResearchContextBuilder,
+)
 from banso.retrieval.models import (
     RetrievalFilterReport,
     SearchResult,
@@ -145,6 +152,69 @@ def test_context_contains_research_history_and_evidence_groups() -> None:
     assert "candidate_results" not in dumped
     assert "candidate_documents" not in dumped
     assert "work" not in dumped
+
+
+def test_completed_history_summarizes_evidence_and_fetch_failures() -> None:
+    state, store = _completed_state_and_store()
+    observation = state.action_history[0].observation
+    assert isinstance(observation, CompletedResearchObservation)
+    observation.fetch_outcomes.extend(
+        [
+            FetchFailure(
+                search_result_id="failed-1",
+                failure=DocumentFetchFailure(
+                    reason="http_status",
+                    status_code=403,
+                    url="https://www.blocked.example/one",
+                    message="private failure one",
+                    source_error_type="HTTPStatusError",
+                ),
+            ),
+            FetchFailure(
+                search_result_id="failed-2",
+                failure=DocumentFetchFailure(
+                    reason="http_status",
+                    status_code=403,
+                    url="https://blocked.example/two",
+                    message="private failure two",
+                    source_error_type="HTTPStatusError",
+                ),
+            ),
+        ]
+    )
+    observation.extraction_outcomes.extend(
+        [
+            ExtractionSuccess(document_id="empty-document"),
+            ExtractionFailure(
+                document_id="failed-document",
+                failure=EvidenceExtractionFailure(
+                    reason="invalid_response",
+                    url="https://source.example/article",
+                    message="private extraction failure",
+                ),
+            ),
+        ]
+    )
+
+    context = ResearchContextBuilder(store, [RetrievalRoute.WEB]).build(state)
+
+    history = context.research_history[0]
+    assert isinstance(history, CompletedResearchHistoryItem)
+    assert history.fetch_failures == 2
+    assert history.evidence_documents == 1
+    assert history.no_evidence_documents == 1
+    assert history.extraction_failures == 1
+    assert [
+        failure.model_dump(mode="json")
+        for failure in history.fetch_failure_sources
+    ] == [
+        {
+            "domain": "blocked.example",
+            "reason": "http_status",
+            "status_code": 403,
+            "count": 2,
+        }
+    ]
 
 
 def test_failed_research_still_advances_research_references() -> None:
