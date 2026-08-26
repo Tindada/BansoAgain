@@ -11,10 +11,10 @@ from banso.agent.action import RetrievalRoute
 from banso.agent.observation import (
     ExtractionFailure,
     ExtractionSuccess,
+    FailedResearchObservation,
     FetchFailure,
     ResearchObservation,
     ResearchObservationBase,
-    RetrievalFailedResearchObservation,
 )
 from banso.agent.state import AgentState, DocumentLifecycleStatus
 from banso.documents.models import Document, DocumentEvidence
@@ -79,10 +79,11 @@ class CompletedResearchHistoryItem(ResearchHistoryItemBase):
     extraction_failures: int
 
 
-class RetrievalFailedResearchHistoryItem(ResearchHistoryItemBase):
-    """Trace-safe diagnostics from a failed retrieval."""
+class FailedResearchHistoryItem(ResearchHistoryItemBase):
+    """Trace-safe diagnostics from a failed research action."""
 
-    status: Literal["retrieval_failed"] = "retrieval_failed"
+    status: Literal["failed"] = "failed"
+    stage: Literal["retrieval", "selection"]
     reason: str
     status_code: int | None = None
     retryable: bool
@@ -90,7 +91,7 @@ class RetrievalFailedResearchHistoryItem(ResearchHistoryItemBase):
 
 
 ResearchHistoryItem = Annotated[
-    CompletedResearchHistoryItem | RetrievalFailedResearchHistoryItem,
+    CompletedResearchHistoryItem | FailedResearchHistoryItem,
     Field(discriminator="status"),
 ]
 
@@ -196,7 +197,7 @@ class ResearchContextBuilder:
         ]
         document_research_refs: dict[str, list[str]] = {}
         for research_ref, observation in referenced_research:
-            if isinstance(observation, RetrievalFailedResearchObservation):
+            if isinstance(observation, FailedResearchObservation):
                 continue
             document_ids = {
                 state.search_results[result_id].document_id
@@ -273,12 +274,13 @@ class ResearchContextBuilder:
         research_ref: str,
         observation: ResearchObservation,
     ) -> ResearchHistoryItem:
-        if isinstance(observation, RetrievalFailedResearchObservation):
-            return RetrievalFailedResearchHistoryItem(
+        if isinstance(observation, FailedResearchObservation):
+            return FailedResearchHistoryItem(
                 research_ref=research_ref,
                 query=observation.query,
                 route=observation.route,
                 source_domains=observation.source_domains,
+                stage=observation.stage,
                 reason=observation.reason,
                 status_code=observation.status_code,
                 retryable=observation.retryable,

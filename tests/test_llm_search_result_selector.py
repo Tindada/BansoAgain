@@ -14,7 +14,10 @@ from banso.agent.observation import (
 from banso.agent.reducer import DefaultStateReducer
 from banso.agent.research_context import ResearchContextBuilder
 from banso.agent.selection.llm_selector import LLMSearchResultSelector
-from banso.agent.selection.selector import SearchResultSelectionRequest
+from banso.agent.selection.selector import (
+    SearchResultSelectionError,
+    SearchResultSelectionRequest,
+)
 from banso.agent.state import AgentState, UserQuery
 from banso.artifacts.store import InMemoryArtifactStore
 from banso.llm.fake import FakeLLMClient
@@ -163,5 +166,8 @@ def test_rejects_invalid_llm_output(output: str) -> None:
         ResearchContextBuilder(InMemoryArtifactStore(), [RetrievalRoute.WEB]),
     )
 
-    with pytest.raises(ValueError, match="invalid LLM search result selection"):
+    with pytest.raises(
+        SearchResultSelectionError,
+        match="invalid LLM search result selection",
+    ):
         asyncio.run(selector.select(_request()))

@@ -18,14 +18,15 @@ from banso.agent.observation import (
     FetchFailure,
     FetchOutcome,
     FetchSuccess,
+    FailedResearchObservation,
     ResearchObservation,
-    RetrievalFailedResearchObservation,
 )
 from banso.agent.selection.passthrough_selector import (
     PassthroughSearchResultSelector,
 )
 from banso.agent.selection.selector import (
     SearchResultSelection,
+    SearchResultSelectionError,
     SearchResultSelectionRequest,
     SearchResultSelector,
 )
@@ -76,9 +77,7 @@ class ResearchPipeline:
         source_classifier: SourceClassifier | None = None,
         search_result_selector: SearchResultSelector | None = None,
         max_extraction_concurrency: int = 4,
-        fetch_retry_policy: RetryPolicy | None = None,
-        extraction_retry_policy: RetryPolicy | None = None,
-        retrieval_retry_policy: RetryPolicy | None = None,
+        retry_policy: RetryPolicy | None = None,
     ) -> None:
         if not research_routes:
             raise ValueError("research_routes must contain at least one route")
@@ -94,9 +93,7 @@ class ResearchPipeline:
             search_result_selector or PassthroughSearchResultSelector()
         )
         self.max_extraction_concurrency = max_extraction_concurrency
-        self.fetch_retry_policy = fetch_retry_policy or RetryPolicy()
-        self.extraction_retry_policy = extraction_retry_policy or RetryPolicy()
-        self.retrieval_retry_policy = retrieval_retry_policy or RetryPolicy()
+        self.retry_policy = retry_policy or RetryPolicy()
 
     async def run(
         self,
@@ -128,13 +125,14 @@ class ResearchPipeline:
                 lambda: components.retrieval_provider.search(request),
                 error_type=RetrievalError,
                 is_retryable=lambda error: error.retryable,
-                policy=self.retrieval_retry_policy,
+                policy=self.retry_policy,
             )
             if attempt.error is not None:
-                failure = RetrievalFailedResearchObservation(
+                failure = FailedResearchObservation(
                     query=params.query,
                     route=params.route,
                     source_domains=params.source_domains,
+                    stage="retrieval",
                     provider=attempt.error.provider,
                     reason=attempt.error.reason,
                     status_code=attempt.error.status_code,
@@ -144,7 +142,7 @@ class ResearchPipeline:
                     attempt_count=attempt.attempt_count,
                 )
                 span.set_attribute("outcome", "failure")
-                span.set_output({"retrieval_failure": failure})
+                span.set_output({"research_failure": failure})
                 return failure
             if attempt.value is None:
                 raise AssertionError("successful retrieval returned no result")
@@ -185,13 +183,46 @@ class ResearchPipeline:
                     )
                 candidates.append(result)
             if candidates:
-                selection = await self.search_result_selector.select(
-                    SearchResultSelectionRequest(
-                        research_query=params.query,
-                        candidates=candidates,
-                        state=state,
-                    )
+                selection_request = SearchResultSelectionRequest(
+                    research_query=params.query,
+                    candidates=candidates,
+                    state=state,
                 )
+                selection_attempt = await run_with_retry(
+                    lambda: self.search_result_selector.select(selection_request),
+                    error_type=Exception,
+                    is_retryable=lambda error: isinstance(
+                        error,
+                        SearchResultSelectionError,
+                    ),
+                    policy=self.retry_policy,
+                )
+                if selection_attempt.error is not None:
+                    error = selection_attempt.error
+                    failure = FailedResearchObservation(
+                        query=params.query,
+                        route=params.route,
+                        source_domains=params.source_domains,
+                        stage="selection",
+                        reason=(
+                            "invalid_response"
+                            if isinstance(error, SearchResultSelectionError)
+                            else "unexpected_error"
+                        ),
+                        message=str(error),
+                        source_error_type=type(error).__name__,
+                        retryable=isinstance(
+                            error,
+                            SearchResultSelectionError,
+                        ),
+                        attempt_count=selection_attempt.attempt_count,
+                    )
+                    span.set_attribute("outcome", "failure")
+                    span.set_output({"research_failure": failure})
+                    return failure
+                if selection_attempt.value is None:
+                    raise AssertionError("successful selection returned no result")
+                selection = selection_attempt.value
                 selected_results = self._resolve_selection(selection, candidates)
             else:
                 selected_results = []
@@ -199,6 +230,7 @@ class ResearchPipeline:
                 candidate_ids=[result.id for result in candidates],
                 selected_ids=[result.id for result in selected_results],
             )
+            span.set_attribute("outcome", "success")
             span.set_output({"selection_report": selection_report})
 
         with start_span(
@@ -352,7 +384,7 @@ class ResearchPipeline:
                 lambda: document_fetcher.fetch(request),
                 error_type=DocumentFetchError,
                 is_retryable=lambda error: error.retryable,
-                policy=self.fetch_retry_policy,
+                policy=self.retry_policy,
             )
             if attempt.error is not None:
                 error = attempt.error
@@ -425,7 +457,7 @@ class ResearchPipeline:
                     lambda: self.evidence_extractor.extract(request),
                     error_type=EvidenceExtractionError,
                     is_retryable=lambda error: error.retryable,
-                    policy=self.extraction_retry_policy,
+                    policy=self.retry_policy,
                 )
                 return (
                     document,

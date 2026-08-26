@@ -16,9 +16,9 @@ from banso.agent.observation import (
     EvidenceExtractionFailure,
     ExtractionFailure,
     ExtractionSuccess,
+    FailedResearchObservation,
     FetchFailure,
     FetchSuccess,
-    RetrievalFailedResearchObservation,
 )
 from banso.agent.reducer import DefaultStateReducer
 from banso.agent.state import (
@@ -114,7 +114,7 @@ def _completed_state_and_store() -> tuple[AgentState, InMemoryArtifactStore]:
 
 def _research_entry(
     step_index: int,
-    observation: CompletedResearchObservation | RetrievalFailedResearchObservation,
+    observation: CompletedResearchObservation | FailedResearchObservation,
 ) -> ActionHistoryEntry:
     return ActionHistoryEntry(
         step_index=step_index,
@@ -219,9 +219,10 @@ def test_completed_history_summarizes_evidence_and_fetch_failures() -> None:
 
 def test_failed_research_still_advances_research_references() -> None:
     state, store = _completed_state_and_store()
-    failure = RetrievalFailedResearchObservation(
+    failure = FailedResearchObservation(
         query="failed query",
         route=RetrievalRoute.WEB,
+        stage="retrieval",
         provider="test",
         reason="transport",
         message="failed",

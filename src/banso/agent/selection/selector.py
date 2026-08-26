@@ -8,6 +8,10 @@ from banso.agent.state import AgentState
 from banso.retrieval.models import SearchResult
 
 
+class SearchResultSelectionError(Exception):
+    """A selector response could not be converted into a valid selection."""
+
+
 class SearchResultSelectionRequest(BaseModel):
     """Candidate results and agent state available to a selector."""
 

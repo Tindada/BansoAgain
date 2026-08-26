@@ -12,9 +12,9 @@ from banso.agent.action import AgentAction, AgentActionType
 from banso.agent.observation import (
     CompletedResearchObservation,
     ExtractionFailure,
+    FailedResearchObservation,
     FetchFailure,
     Observation,
-    RetrievalFailedResearchObservation,
     validate_observation,
 )
 from banso.agent.runtime import RuntimeRunResult
@@ -70,7 +70,7 @@ class NewsEvaluationResult(BaseModel):
     preferred_source_type_match: bool = False
     document_fetch_failures: list[dict[str, Any]] = Field(default_factory=list)
     evidence_extraction_failures: list[dict[str, Any]] = Field(default_factory=list)
-    retrieval_failures: list[dict[str, Any]] = Field(default_factory=list)
+    research_failures: list[dict[str, Any]] = Field(default_factory=list)
     step_durations: dict[str, float] = Field(default_factory=dict)
     total_action_seconds: float = 0.0
     error_type: str | None = None
@@ -148,13 +148,14 @@ def extract_evaluation_result(
         for outcome in observation.extraction_outcomes
         if isinstance(outcome, ExtractionFailure)
     ]
-    retrieval_failures = [
+    research_failures = [
         observation.model_dump(
             mode="json",
             exclude={"type", "status", "query", "route"},
+            exclude_none=True,
         )
         for _, observation in steps
-        if isinstance(observation, RetrievalFailedResearchObservation)
+        if isinstance(observation, FailedResearchObservation)
     ]
 
     sources = [
@@ -239,7 +240,7 @@ def extract_evaluation_result(
         preferred_source_type_match=preferred_source_type_match,
         document_fetch_failures=document_fetch_failures,
         evidence_extraction_failures=evidence_extraction_failures,
-        retrieval_failures=retrieval_failures,
+        research_failures=research_failures,
         step_durations=step_durations,
         total_action_seconds=total_action_seconds,
     )
@@ -325,13 +326,19 @@ def summarize_evaluation_results(results: list[NewsEvaluationResult]) -> dict[st
     total_classified = sum(result.classified_result_count for result in results)
     total_recognized = sum(result.recognized_source_count for result in results)
     total_unknown = sum(result.unknown_source_count for result in results)
-    retrieval_failure_reason_counts: dict[str, int] = {}
+    research_failure_stage_counts: dict[str, int] = {}
+    research_failure_reason_counts: dict[str, int] = {}
     for result in results:
-        for failure in result.retrieval_failures:
+        for failure in result.research_failures:
+            stage = failure.get("stage")
+            if isinstance(stage, str):
+                research_failure_stage_counts[stage] = (
+                    research_failure_stage_counts.get(stage, 0) + 1
+                )
             reason = failure.get("reason")
             if isinstance(reason, str):
-                retrieval_failure_reason_counts[reason] = (
-                    retrieval_failure_reason_counts.get(reason, 0) + 1
+                research_failure_reason_counts[reason] = (
+                    research_failure_reason_counts.get(reason, 0) + 1
                 )
 
     return {
@@ -359,10 +366,11 @@ def summarize_evaluation_results(results: list[NewsEvaluationResult]) -> dict[st
             result.preferred_source_type_match for result in results
         ),
         "error_count": sum(result.error_type is not None for result in results),
-        "with_retrieval_failures_count": sum(
-            bool(result.retrieval_failures) for result in results
+        "with_research_failures_count": sum(
+            bool(result.research_failures) for result in results
         ),
-        "retrieval_failure_reason_counts": retrieval_failure_reason_counts,
+        "research_failure_stage_counts": research_failure_stage_counts,
+        "research_failure_reason_counts": research_failure_reason_counts,
         "classification_source_counts": classification_source_counts,
         "source_type_counts": source_type_counts,
         "unknown_source_candidates": unknown_source_candidates,

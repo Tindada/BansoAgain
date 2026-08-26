@@ -14,8 +14,8 @@ from banso.artifacts.store import InMemoryArtifactStore
 from banso.agent.action import AgentAction, AgentActionType
 from banso.agent.observation import (
     CompletedResearchObservation,
+    FailedResearchObservation,
     FinishObservation,
-    RetrievalFailedResearchObservation,
     StopObservation,
 )
 from banso.agent.runtime import AgentRuntime
@@ -66,9 +66,9 @@ class Policy:
 class Executor:
     def __init__(
         self,
-        retrieval_failure: RetrievalFailedResearchObservation | None = None,
+        research_failure: FailedResearchObservation | None = None,
     ) -> None:
-        self.retrieval_failure = retrieval_failure
+        self.research_failure = research_failure
 
     async def execute(self, action: AgentAction, state: AgentState):
         if action.type == AgentActionType.FINISH:
@@ -84,8 +84,8 @@ class Executor:
             )
         if action.type == AgentActionType.STOP:
             return StopObservation()
-        if self.retrieval_failure is not None:
-            return self.retrieval_failure
+        if self.research_failure is not None:
+            return self.research_failure
         result_ids = ["result"]
         return CompletedResearchObservation(
             query="focused",
@@ -216,14 +216,15 @@ def test_summarize_evaluation_results() -> None:
     assert summary["average_active_evidence_chars"] == 10.0
 
 
-def test_evaluation_reports_handled_retrieval_failures_separately() -> None:
+def test_evaluation_reports_handled_research_failures() -> None:
     sink = InMemoryTraceSink()
     runtime = AgentRuntime(
         Policy(AgentActionType.STOP),
         Executor(
-            RetrievalFailedResearchObservation(
+            FailedResearchObservation(
                 query="focused",
                 route="web",
+                stage="retrieval",
                 provider="tavily",
                 reason="http_status",
                 status_code=429,
@@ -244,7 +245,9 @@ def test_evaluation_reports_handled_retrieval_failures_separately() -> None:
     )
     summary = summarize_evaluation_results([result])
 
-    assert len(result.retrieval_failures) == 1
-    assert result.retrieval_failures[0]["reason"] == "http_status"
-    assert summary["with_retrieval_failures_count"] == 1
-    assert summary["retrieval_failure_reason_counts"] == {"http_status": 1}
+    assert len(result.research_failures) == 1
+    assert result.research_failures[0]["stage"] == "retrieval"
+    assert result.research_failures[0]["reason"] == "http_status"
+    assert summary["with_research_failures_count"] == 1
+    assert summary["research_failure_stage_counts"] == {"retrieval": 1}
+    assert summary["research_failure_reason_counts"] == {"http_status": 1}

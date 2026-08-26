@@ -119,21 +119,22 @@ class CompletedResearchObservation(ResearchObservationBase):
     document_index_updates: dict[str, str]
 
 
-class RetrievalFailedResearchObservation(ResearchObservationBase):
-    """Handled retrieval failure that prevented later research stages."""
+class FailedResearchObservation(ResearchObservationBase):
+    """Handled failure that prevented later research stages."""
 
-    status: Literal["retrieval_failed"] = "retrieval_failed"
-    provider: str
+    status: Literal["failed"] = "failed"
+    stage: Literal["retrieval", "selection"]
     reason: str
-    status_code: int | None = None
     message: str
     source_error_type: str
     retryable: bool
     attempt_count: int = Field(ge=1)
+    provider: str | None = None
+    status_code: int | None = None
 
 
 ResearchObservation = Annotated[
-    CompletedResearchObservation | RetrievalFailedResearchObservation,
+    CompletedResearchObservation | FailedResearchObservation,
     Field(discriminator="status"),
 ]
 

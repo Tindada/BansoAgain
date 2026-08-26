@@ -46,9 +46,7 @@ class NewsActionExecutor:
         source_classifier: SourceClassifier | None = None,
         search_result_selector: SearchResultSelector | None = None,
         max_extraction_concurrency: int = 4,
-        fetch_retry_policy: RetryPolicy | None = None,
-        extraction_retry_policy: RetryPolicy | None = None,
-        retrieval_retry_policy: RetryPolicy | None = None,
+        retry_policy: RetryPolicy | None = None,
     ) -> None:
         self.store = store
         self.synthesizer = synthesizer
@@ -60,9 +58,7 @@ class NewsActionExecutor:
             source_classifier=source_classifier,
             search_result_selector=search_result_selector,
             max_extraction_concurrency=max_extraction_concurrency,
-            fetch_retry_policy=fetch_retry_policy,
-            extraction_retry_policy=extraction_retry_policy,
-            retrieval_retry_policy=retrieval_retry_policy,
+            retry_policy=retry_policy,
         )
 
     @property

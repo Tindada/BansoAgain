@@ -7,6 +7,7 @@ from pydantic import BaseModel, ValidationError
 from banso.agent.research_context import ResearchContext, ResearchContextBuilder
 from banso.agent.selection.selector import (
     SearchResultSelection,
+    SearchResultSelectionError,
     SearchResultSelectionRequest,
 )
 from banso.llm.client import LLMClient
@@ -88,7 +89,7 @@ class LLMSearchResultSelector:
                 ]
             )
         except (KeyError, ValidationError) as error:
-            raise ValueError("invalid LLM search result selection") from error
+            raise SearchResultSelectionError("invalid LLM search result selection") from error
 
     @staticmethod
     def _build_user_prompt(
@@ -105,25 +106,21 @@ class LLMSearchResultSelector:
                     ),
                     "reference_time": context.reference_time.isoformat(),
                     "research_history": [
-                        {
-                            "research_ref": item.research_ref,
-                            "query": item.query,
-                            "status": item.status,
-                            **(
-                                {
-                                    "fetch_failure_sources": [
-                                        failure.model_dump(
-                                            mode="json",
-                                            exclude_none=True,
-                                        )
-                                        for failure in item.fetch_failure_sources
-                                    ]
-                                }
-                                if item.status == "completed"
-                                and item.fetch_failure_sources
-                                else {}
-                            ),
-                        }
+                        item.model_dump(
+                            mode="json",
+                            include={
+                                "research_ref",
+                                "query",
+                                "status",
+                                "stage",
+                                "reason",
+                                "status_code",
+                                "retryable",
+                                "attempt_count",
+                                "fetch_failure_sources",
+                            },
+                            exclude_none=True,
+                        )
                         for item in context.research_history
                     ],
                     "evidence_groups": [

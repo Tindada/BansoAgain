@@ -13,8 +13,8 @@ from banso.agent.action import (
 )
 from banso.agent.observation import (
     CompletedResearchObservation,
+    FailedResearchObservation,
     ResearchObservation,
-    RetrievalFailedResearchObservation,
 )
 from banso.agent.reducer import DefaultStateReducer
 from banso.agent.state import AgentState, DocumentState, ExecutionBudget, UserQuery
@@ -220,10 +220,11 @@ def test_same_query_is_allowed_on_a_different_route() -> None:
 def test_retrieval_failure_is_visible_to_policy_without_external_message() -> None:
     state = _apply_research(
         AgentState(query=UserQuery(text="question")),
-        RetrievalFailedResearchObservation(
+        FailedResearchObservation(
             query="query",
             route=RetrievalRoute.WEB,
             source_domains=["x.com"],
+            stage="retrieval",
             provider="tavily",
             reason="http_status",
             status_code=400,
@@ -242,7 +243,8 @@ def test_retrieval_failure_is_visible_to_policy_without_external_message() -> No
     prompt = json.loads(client.requests[0].messages[1].content)
     history = prompt["context"]["research_history"][0]
     assert history["research_ref"] == "R1"
-    assert history["status"] == "retrieval_failed"
+    assert history["status"] == "failed"
+    assert history["stage"] == "retrieval"
     assert history["source_domains"] == ["x.com"]
     assert history["reason"] == "http_status"
     assert history["status_code"] == 400

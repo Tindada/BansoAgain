@@ -11,12 +11,14 @@ from banso.agent.action import (
 )
 from banso.agent.observation import (
     CompletedResearchObservation,
-    RetrievalFailedResearchObservation,
+    FailedResearchObservation,
 )
 from banso.agent.reducer import DefaultStateReducer
 from banso.agent.runtime import AgentRuntime
+from banso.agent.executors.retry import RetryPolicy
 from banso.agent.selection.selector import (
     SearchResultSelection,
+    SearchResultSelectionError,
     SearchResultSelectionRequest,
     SearchResultSelector,
 )
@@ -177,11 +179,28 @@ class SecondResultSelector:
         return SearchResultSelection(selected_ids=[request.candidates[1].id])
 
 
+class SequencedSelector:
+    def __init__(self, outcomes: list[Exception | SearchResultSelection]) -> None:
+        self.outcomes = outcomes
+        self.attempt_count = 0
+
+    async def select(
+        self,
+        request: SearchResultSelectionRequest,
+    ) -> SearchResultSelection:
+        outcome = self.outcomes[self.attempt_count]
+        self.attempt_count += 1
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+
 def _executor(
     store: InMemoryArtifactStore,
     routes: dict[RetrievalRoute, ResearchRouteComponents],
     synthesizer: RecordingSynthesizer | None = None,
     search_result_selector: SearchResultSelector | None = None,
+    retry_policy: RetryPolicy | None = None,
 ) -> NewsActionExecutor:
     return NewsActionExecutor(
         store=store,
@@ -189,6 +208,7 @@ def _executor(
         evidence_extractor=EvidenceExtractor(),
         synthesizer=synthesizer or RecordingSynthesizer(),
         search_result_selector=search_result_selector,
+        retry_policy=retry_policy,
     )
 
 
@@ -266,6 +286,105 @@ def test_injected_selector_controls_which_candidates_are_processed() -> None:
     )
     assert observation.selection_report.selected_ids == [selected_id]
     assert fetcher.requests[0].url.endswith("/2")
+
+
+def test_selector_validation_failure_retries_once_and_recovers() -> None:
+    provider = StaticRetrievalProvider("web")
+    fetcher = RecordingFetcher()
+    selector = SequencedSelector(
+        [
+            SearchResultSelectionError("invalid response"),
+            SearchResultSelection(selected_ids=["web-result-1"]),
+        ]
+    )
+    executor = _executor(
+        InMemoryArtifactStore(),
+        {RetrievalRoute.WEB: ResearchRouteComponents(provider, fetcher)},
+        search_result_selector=selector,
+        retry_policy=RetryPolicy(delay_seconds=0),
+    )
+
+    observation = asyncio.run(
+        executor.execute(
+            AgentAction(
+                type=AgentActionType.RESEARCH,
+                params={"query": "query", "route": "web"},
+            ),
+            AgentState(query=UserQuery(text="question")),
+        )
+    )
+
+    assert isinstance(observation, CompletedResearchObservation)
+    assert selector.attempt_count == 2
+    assert len(fetcher.requests) == 1
+
+
+def test_selector_validation_failure_becomes_handled_research_failure() -> None:
+    provider = StaticRetrievalProvider("web")
+    fetcher = RecordingFetcher()
+    selector = SequencedSelector(
+        [
+            SearchResultSelectionError("invalid response one"),
+            SearchResultSelectionError("invalid response two"),
+        ]
+    )
+    executor = _executor(
+        InMemoryArtifactStore(),
+        {RetrievalRoute.WEB: ResearchRouteComponents(provider, fetcher)},
+        search_result_selector=selector,
+        retry_policy=RetryPolicy(delay_seconds=0),
+    )
+
+    observation = asyncio.run(
+        executor.execute(
+            AgentAction(
+                type=AgentActionType.RESEARCH,
+                params={"query": "query", "route": "web"},
+            ),
+            AgentState(query=UserQuery(text="question")),
+        )
+    )
+
+    assert isinstance(observation, FailedResearchObservation)
+    assert observation.stage == "selection"
+    assert observation.reason == "invalid_response"
+    assert observation.attempt_count == 2
+    assert selector.attempt_count == 2
+    assert fetcher.requests == []
+
+
+def test_unexpected_selector_failure_is_not_retried() -> None:
+    fetcher = RecordingFetcher()
+    selector = SequencedSelector([RuntimeError("selector crashed")])
+    executor = _executor(
+        InMemoryArtifactStore(),
+        {
+            RetrievalRoute.WEB: ResearchRouteComponents(
+                StaticRetrievalProvider("web"),
+                fetcher,
+            )
+        },
+        search_result_selector=selector,
+        retry_policy=RetryPolicy(delay_seconds=0),
+    )
+
+    observation = asyncio.run(
+        executor.execute(
+            AgentAction(
+                type=AgentActionType.RESEARCH,
+                params={"query": "query", "route": "web"},
+            ),
+            AgentState(query=UserQuery(text="question")),
+        )
+    )
+
+    assert isinstance(observation, FailedResearchObservation)
+    assert observation.reason == "unexpected_error"
+    assert observation.source_error_type == "RuntimeError"
+    assert observation.retryable is False
+    assert observation.attempt_count == 1
+    assert selector.attempt_count == 1
+    assert fetcher.requests == []
 
 
 def test_runtime_researches_then_finishes_from_active_evidence() -> None:
@@ -404,7 +523,8 @@ def test_retrieval_failure_is_recorded_without_artifacts_and_consumes_budget() -
     failure = state.action_history[0].observation
 
     assert provider.attempt_count == 2
-    assert isinstance(failure, RetrievalFailedResearchObservation)
+    assert isinstance(failure, FailedResearchObservation)
+    assert failure.stage == "retrieval"
     assert failure.reason == "transport"
     assert failure.attempt_count == 2
     assert failure.source_domains == ["x.com"]
@@ -431,7 +551,7 @@ def test_non_retryable_retrieval_failure_is_not_retried() -> None:
     )
 
     assert provider.attempt_count == 1
-    assert isinstance(observation, RetrievalFailedResearchObservation)
+    assert isinstance(observation, FailedResearchObservation)
     assert observation.status_code == 400
 
 
