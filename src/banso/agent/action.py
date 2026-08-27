@@ -24,7 +24,6 @@ class AgentActionType(StrEnum):
     """Supported action types for the agent loop."""
 
     RESEARCH = "research"
-    CURATE_EVIDENCE = "curate_evidence"
     FINISH = "finish"
     STOP = "stop"
 

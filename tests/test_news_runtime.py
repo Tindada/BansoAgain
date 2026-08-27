@@ -387,7 +387,7 @@ def test_unexpected_selector_failure_is_not_retried() -> None:
     assert fetcher.requests == []
 
 
-def test_runtime_researches_then_finishes_from_active_evidence() -> None:
+def test_runtime_researches_then_finishes_from_evidence() -> None:
     store = InMemoryArtifactStore()
     provider = StaticRetrievalProvider("web", count=2)
     fetcher = RecordingFetcher()
@@ -425,10 +425,6 @@ def test_runtime_researches_then_finishes_from_active_evidence() -> None:
     assert state.final_answer == "answer"
     assert len(state.search_results) == 2
     assert len(state.documents) == 2
-    assert all(
-        document.lifecycle_status == "active"
-        for document in state.documents.values()
-    )
     evidence = store.list(DocumentEvidence)
     assert len(evidence) == 2
     assert {document.evidence_id for document in state.documents.values()} == {

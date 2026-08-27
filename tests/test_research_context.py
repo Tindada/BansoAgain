@@ -70,7 +70,7 @@ def _completed_state_and_store() -> tuple[AgentState, InMemoryArtifactStore]:
     state = AgentState(
         query=UserQuery(text="question", language="en"),
         reference_time=datetime(2026, 8, 1, tzinfo=timezone.utc),
-        budget=ExecutionBudget(max_researches=3, max_active_documents=6),
+        budget=ExecutionBudget(max_researches=3),
     )
     action = AgentAction(
         type=AgentActionType.RESEARCH,
@@ -138,8 +138,7 @@ def test_context_contains_research_history_and_evidence_groups() -> None:
     assert context.budget.remaining_researches == 2
     assert context.artifacts.search_result_count == 1
     assert context.artifacts.document_count == 1
-    assert context.artifacts.active_document_count == 1
-    assert context.working_set.active_document_refs == ["D1"]
+    assert context.artifacts.evidence_document_count == 1
     assert len(context.research_history) == 1
     assert context.research_history[0].research_ref == "R1"
     assert context.research_history[0].query == "focused query"
@@ -315,17 +314,38 @@ def test_context_limits_visible_evidence_text() -> None:
     assert group.evidence_truncated is True
 
 
-def test_document_references_are_stable_across_lifecycle_changes() -> None:
+def test_context_includes_all_evidence_documents_with_stable_refs() -> None:
     state, store = _completed_state_and_store()
-    builder = ResearchContextBuilder(store, [RetrievalRoute.WEB])
+    for index in range(1, 4):
+        document = Document(
+            id=f"document-{index}",
+            title=f"Document {index}",
+            url=f"https://example.com/{index}",
+            text="body",
+        )
+        evidence = DocumentEvidence(
+            id=f"evidence-{index}",
+            document_id=document.id,
+            text=f"Evidence {index}",
+        )
+        store.put(document)
+        store.put(evidence)
+        state.documents[document.id] = state.documents["document"].model_copy(
+            update={"evidence_id": evidence.id}
+        )
 
-    before = builder.build(state)
-    state.documents["document"].lifecycle_status = "shelved"
-    after = builder.build(state)
+    context = ResearchContextBuilder(
+        store,
+        [RetrievalRoute.WEB],
+    ).build(state)
 
-    assert before.evidence_groups[0].document_ref == "D1"
-    assert after.evidence_groups[0].document_ref == "D1"
-    assert after.working_set.shelved_document_refs == ["D1"]
+    assert [group.document_ref for group in context.evidence_groups] == [
+        "D1",
+        "D2",
+        "D3",
+        "D4",
+    ]
+    assert context.artifacts.evidence_document_count == 4
 
 
 def test_context_rejects_missing_documents_and_invalid_configuration() -> None:
@@ -336,7 +356,6 @@ def test_context_rejects_missing_documents_and_invalid_configuration() -> None:
             InMemoryArtifactStore(),
             [RetrievalRoute.WEB, RetrievalRoute.WEB],
         )
-
     state, store = _completed_state_and_store()
     state.documents["missing"] = state.documents["document"].model_copy(deep=True)
     with pytest.raises(ValueError, match="missing"):

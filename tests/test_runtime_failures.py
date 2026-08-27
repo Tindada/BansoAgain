@@ -356,7 +356,6 @@ def test_evaluation_keeps_runtime_failure_trace_id(
                 category="runtime",
                 query="test query",
             ),
-            max_active_documents=1,
         )
     )
 
@@ -381,12 +380,7 @@ def test_evaluation_writes_in_memory_trace_jsonl(
         trace_id = span.trace_id
     spans = sink.get_trace(trace_id)
 
-    async def fake_run_case(
-        case,
-        *,
-        max_active_documents,
-    ):
-        del max_active_documents
+    async def fake_run_case(case):
         return (
             NewsEvaluationResult(
                 case_id=case.id,
@@ -411,7 +405,6 @@ def test_evaluation_writes_in_memory_trace_jsonl(
                 cases=tmp_path / "cases.jsonl",
                 output=output_path,
                 limit=None,
-                max_active_documents=1,
             )
         )
     )

@@ -14,12 +14,7 @@ from banso.agent.executors.research_pipeline import (
     ResearchRouteComponents,
 )
 from banso.agent.executors.retry import RetryPolicy
-from banso.agent.observation import (
-    CurateEvidenceObservation,
-    FinishObservation,
-    Observation,
-    StopObservation,
-)
+from banso.agent.observation import FinishObservation, Observation, StopObservation
 from banso.agent.selection.selector import SearchResultSelector
 from banso.agent.state import AgentState
 from banso.documents.extractor import EvidenceExtractor
@@ -72,9 +67,6 @@ class NewsActionExecutor:
             params = ResearchActionParams.model_validate(action.params)
             return await self.research_pipeline.run(params, state)
 
-        if action.type == AgentActionType.CURATE_EVIDENCE:
-            return self._curate_evidence(action, state)
-
         if action.type == AgentActionType.FINISH:
             return await self._synthesize(state)
 
@@ -83,43 +75,10 @@ class NewsActionExecutor:
 
         raise ValueError(f"unsupported action type: {action.type.value}")
 
-    def _curate_evidence(self, action: AgentAction, state: AgentState) -> Observation:
-        shelve_ids = action.params["shelve_document_ids"]
-        reactivate_ids = action.params["reactivate_document_ids"]
-
-        invalid_ids = [
-            document_id
-            for document_id in shelve_ids
-            if (document := state.documents.get(document_id)) is None
-            or document.lifecycle_status != "active"
-        ]
-        invalid_ids.extend(
-            document_id
-            for document_id in reactivate_ids
-            if (document := state.documents.get(document_id)) is None
-            or document.lifecycle_status != "shelved"
-        )
-        if invalid_ids:
-            raise ValueError(
-                "curate_evidence contains invalid lifecycle transitions: "
-                + ", ".join(invalid_ids)
-            )
-
-        projected_active_count = (
-            state.active_document_count - len(shelve_ids) + len(reactivate_ids)
-        )
-        if projected_active_count > state.budget.max_active_documents:
-            raise ValueError("curate_evidence would exceed the active document limit")
-
-        return CurateEvidenceObservation()
-
     async def _synthesize(self, state: AgentState) -> Observation:
-        if state.active_document_count > state.budget.max_active_documents:
-            raise ValueError("finish requires curation within the active document limit")
-
         evidence_groups: list[SynthesisEvidenceGroup] = []
         for document_id, document_state in state.documents.items():
-            if document_state.lifecycle_status != "active":
+            if document_state.evidence_id is None:
                 continue
             document = self.store.get(document_id, Document)
             if document is None:
@@ -132,7 +91,7 @@ class NewsActionExecutor:
             )
             if evidence is None or evidence.document_id != document_id:
                 raise ValueError(
-                    f"Active document has missing or invalid evidence: {document_id}"
+                    f"Document has missing or invalid evidence: {document_id}"
                 )
             evidence_groups.append(
                 SynthesisEvidenceGroup(

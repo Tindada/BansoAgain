@@ -14,11 +14,7 @@ from banso.agent.state import AgentState
 from banso.llm.client import LLMClient
 from banso.llm.errors import LLMError
 from banso.llm.models import LLMMessage, LLMMessageRole, LLMRequest
-from banso.agent.research_context import (
-    ResearchContext,
-    ResearchContextBuilder,
-    document_reference_maps,
-)
+from banso.agent.research_context import ResearchContext, ResearchContextBuilder
 
 SYSTEM_PROMPT = (
     "You are the action-selection policy for a news research agent. Select exactly "
@@ -45,24 +41,15 @@ ACTION_INSTRUCTIONS = {
         "merely paraphrasing the same query. Retry an unchanged approach only when the "
         "recorded failure is plausibly transient."
     ),
-    AgentActionType.CURATE_EVIDENCE: (
-        "Change the active document-evidence working set based on relevance, information "
-        "gain, duplication, source quality, and useful conflicts. active_document_refs "
-        "is the complete post-curation active set. Use unique refs from active or "
-        "shelved groups only. "
-        "Do not select this action merely to confirm the current set. The result must "
-        "not exceed max_active_documents. If the evidence is sufficient but FINISH is "
-        "unavailable because the active set exceeds the limit, curate before finishing."
-    ),
     AgentActionType.FINISH: (
-        "Finish only when active evidence supports a useful answer and either "
+        "Finish only when visible evidence supports a useful answer and either "
         "adequately covers the user's requested scope or no available research or "
-        "curation action is likely to materially improve it. For exhaustive or "
+        "action is likely to materially improve it. For exhaustive or "
         "structured requests, adequate coverage means supporting the requested extent "
         "and fields, not merely some matching examples."
     ),
     AgentActionType.STOP: (
-        "Stop without an answer only when active evidence is unusable and no available "
+        "Stop without an answer only when collected evidence is unusable and no available "
         "action can make progress. Missing context metadata, incomplete coverage, or "
         "uncertainty are not reasons to STOP."
     ),
@@ -72,9 +59,6 @@ ACTION_PARAM_FORMATS = {
     AgentActionType.RESEARCH: (
         '{"query": "<non-empty string>", "route": "web|local", '
         '"source_domains": ["<bare domain>"]}'
-    ),
-    AgentActionType.CURATE_EVIDENCE: (
-        '{"active_document_refs": ["<document_ref>"]}'
     ),
     AgentActionType.FINISH: "{}",
     AgentActionType.STOP: "{}",
@@ -111,7 +95,7 @@ class _LLMActionOutput(BaseModel):
 
 
 class LLMNewsPolicy:
-    """Select bounded research, curation, and completion actions with an LLM."""
+    """Select bounded research and completion actions with an LLM."""
 
     def __init__(
         self,
@@ -159,7 +143,7 @@ class LLMNewsPolicy:
 
         try:
             output = self._parse_output(response.content)
-            return self._validate_action(output, context, available_actions, state)
+            return self._validate_action(output, context, available_actions)
         except LLMPolicyError as error:
             error.raw_output = response.content
             raise
@@ -214,7 +198,6 @@ class LLMNewsPolicy:
         output: _LLMActionOutput,
         context: ResearchContext,
         available_actions: list[AgentActionType],
-        state: AgentState,
     ) -> AgentAction:
         rationale = output.rationale.strip()
         if not rationale:
@@ -230,8 +213,6 @@ class LLMNewsPolicy:
 
         if output.type == AgentActionType.RESEARCH:
             params = self._validate_research_params(output.params, context)
-        elif output.type == AgentActionType.CURATE_EVIDENCE:
-            params = self._validate_curation_params(output.params, state)
         else:
             if output.params:
                 raise LLMPolicyError(
@@ -261,56 +242,10 @@ class LLMNewsPolicy:
         return params.model_dump(mode="json", exclude_none=True)
 
     @staticmethod
-    def _validate_curation_params(
-        params: dict[str, Any],
-        state: AgentState,
-    ) -> dict[str, list[str]]:
-        if set(params) != {"active_document_refs"}:
-            raise LLMPolicyError(
-                "curate_evidence params must contain exactly active_document_refs",
-                reason="invalid_params",
-            )
-        active_refs = params["active_document_refs"]
-        if not isinstance(active_refs, list) or not all(
-            isinstance(document_ref, str) for document_ref in active_refs
-        ):
-            raise LLMPolicyError(
-                "active_document_refs must be a list of strings",
-                reason="invalid_params",
-            )
-        if len(set(active_refs)) != len(active_refs):
-            raise LLMPolicyError(
-                "active_document_refs must contain unique document references",
-                reason="invalid_params",
-            )
-
-        _, ref_to_id = document_reference_maps(state)
-        unknown_refs = [ref for ref in active_refs if ref not in ref_to_id]
-        if unknown_refs:
-            raise LLMPolicyError(
-                "curate_evidence contains unknown document references: "
-                + ", ".join(unknown_refs),
-                reason="invalid_params",
-            )
-        requested_active = {ref_to_id[ref] for ref in active_refs}
-        current_active = {
-            document_id
-            for document_id, document in state.documents.items()
-            if document.lifecycle_status == "active"
-        }
-        shelve_ids = list(current_active - requested_active)
-        reactivate_ids = list(requested_active - current_active)
-        return {
-            "shelve_document_ids": shelve_ids,
-            "reactivate_document_ids": reactivate_ids,
-        }
-
-    @staticmethod
     def _available_actions(
         state: AgentState,
     ) -> list[AgentActionType]:
-        active_count = state.active_document_count
-        can_finish = 0 < active_count <= state.budget.max_active_documents
+        can_finish = state.has_evidence
         if state.remaining_steps <= 1:
             return (
                 [AgentActionType.FINISH, AgentActionType.STOP]
@@ -321,8 +256,6 @@ class LLMNewsPolicy:
         actions: list[AgentActionType] = []
         if state.remaining_research_capacity > 0:
             actions.append(AgentActionType.RESEARCH)
-        if state.has_curatable_documents:
-            actions.append(AgentActionType.CURATE_EVIDENCE)
         if can_finish:
             actions.append(AgentActionType.FINISH)
         actions.append(AgentActionType.STOP)

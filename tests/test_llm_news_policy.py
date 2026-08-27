@@ -18,7 +18,7 @@ from banso.agent.observation import (
 )
 from banso.agent.reducer import DefaultStateReducer
 from banso.agent.state import AgentState, DocumentState, ExecutionBudget, UserQuery
-from banso.documents.models import Document
+from banso.documents.models import Document, DocumentEvidence
 from banso.llm.errors import LLMError
 from banso.llm.models import LLMRequest, LLMResponse
 from banso.agent.policies.llm_news_policy import LLMNewsPolicy, LLMPolicyError
@@ -109,29 +109,6 @@ def _apply_research(
             params={"query": observation.query, "route": observation.route.value},
         ),
         observation,
-    )
-
-
-def _curation_state_and_store() -> tuple[AgentState, InMemoryArtifactStore]:
-    store = InMemoryArtifactStore()
-    for document_id in ("active", "shelved"):
-        store.put(
-            Document(
-                id=document_id,
-                url=f"https://example.com/{document_id}",
-                title=document_id.title(),
-                text=document_id,
-            )
-        )
-    return (
-        AgentState(
-            query=UserQuery(text="question"),
-            documents={
-                "active": DocumentState(lifecycle_status="active"),
-                "shelved": DocumentState(lifecycle_status="shelved"),
-            },
-        ),
-        store,
     )
 
 
@@ -311,51 +288,6 @@ def test_rejects_invalid_action_outputs(output: dict, reason: str) -> None:
     assert caught.value.reason == reason
 
 
-@pytest.mark.parametrize(
-    ("active_refs", "message"),
-    [
-        (["D3"], "unknown"),
-        (["D1", "D1"], "unique"),
-    ],
-)
-def test_rejects_invalid_curation_refs(
-    active_refs: list[str],
-    message: str,
-) -> None:
-    state, store = _curation_state_and_store()
-    policy, _ = _policy(
-        {
-            "type": "curate_evidence",
-            "params": {"active_document_refs": active_refs},
-            "rationale": "Curate.",
-        },
-        store=store,
-    )
-
-    with pytest.raises(LLMPolicyError, match=message):
-        asyncio.run(policy.select_action(state))
-
-
-def test_repeated_curation_is_normalized_to_an_empty_transition() -> None:
-    state, store = _curation_state_and_store()
-    policy, _ = _policy(
-        {
-            "type": "curate_evidence",
-            "params": {"active_document_refs": ["D1"]},
-            "rationale": "Keep the current evidence.",
-        },
-        store=store,
-    )
-
-    action = asyncio.run(policy.select_action(state))
-
-    assert action.type == AgentActionType.CURATE_EVIDENCE
-    assert action.params == {
-        "shelve_document_ids": [],
-        "reactivate_document_ids": [],
-    }
-
-
 def test_wraps_llm_errors() -> None:
     policy = LLMNewsPolicy(
         RaisingClient(),
@@ -390,46 +322,20 @@ def test_research_budget_removes_research_from_available_actions() -> None:
     assert caught.value.reason == "invalid_action"
 
 
-def test_curation_maps_document_refs_to_lifecycle_transitions() -> None:
-    store = InMemoryArtifactStore()
-    active = Document(id="active", url="https://example.com/a", title="A", text="A")
-    shelved = Document(id="shelved", url="https://example.com/s", title="S", text="S")
-    store.put(active)
-    store.put(shelved)
-    state = AgentState(
-        query=UserQuery(text="question"),
-        documents={
-            "active": DocumentState(lifecycle_status="active"),
-            "shelved": DocumentState(lifecycle_status="shelved"),
-        },
-    )
-    policy, _ = _policy(
-        {
-            "type": "curate_evidence",
-            "params": {"active_document_refs": ["D2"]},
-            "rationale": "Prefer the second source.",
-        },
-        store=store,
-    )
-
-    action = asyncio.run(policy.select_action(state))
-
-    assert action.params == {
-        "shelve_document_ids": ["active"],
-        "reactivate_document_ids": ["shelved"],
-    }
-
-
 def test_last_step_exposes_only_finish_or_stop() -> None:
     store = InMemoryArtifactStore()
     document = Document(id="document", url="https://example.com", title="D", text="D")
+    evidence = DocumentEvidence(
+        id="evidence", document_id=document.id, text="supported"
+    )
     store.put(document)
+    store.put(evidence)
     state = AgentState(
         query=UserQuery(text="question"),
         current_step=1,
         budget=ExecutionBudget(max_steps=2),
         documents={
-            "document": DocumentState(lifecycle_status="active")
+            "document": DocumentState(evidence_id=evidence.id)
         },
     )
     policy, client = _policy(
@@ -444,7 +350,7 @@ def test_last_step_exposes_only_finish_or_stop() -> None:
     assert '"type": "<finish|stop>"' in system_prompt
 
 
-def test_last_step_without_active_evidence_exposes_only_stop() -> None:
+def test_last_step_without_evidence_exposes_only_stop() -> None:
     state = AgentState(
         query=UserQuery(text="question"),
         current_step=1,

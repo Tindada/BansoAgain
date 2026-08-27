@@ -33,14 +33,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cases", type=Path, default=DEFAULT_CASES)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--limit", type=int)
-    parser.add_argument("--max-active-documents", type=int, default=10)
     return parser.parse_args()
 
 
 async def run_case(
     case,
-    *,
-    max_active_documents: int,
 ) -> tuple[NewsEvaluationResult, list[SpanRecord]]:
     print(f"running {case.id}: {case.query}", flush=True)
     spans: list[SpanRecord] = []
@@ -55,9 +52,7 @@ async def run_case(
                     region=case.region,
                     time_range=case.time_range,
                 ),
-                budget=ExecutionBudget(
-                    max_active_documents=max_active_documents,
-                ),
+                budget=ExecutionBudget(),
             )
         )
         spans = bundle.trace_sink.get_trace(output.trace_id)
@@ -111,10 +106,7 @@ async def main(args: argparse.Namespace) -> None:
         traces_path.open("w", encoding="utf-8") as traces_file,
     ):
         for case in cases:
-            result, spans = await run_case(
-                case,
-                max_active_documents=args.max_active_documents,
-            )
+            result, spans = await run_case(case)
             results.append(result)
             output_file.write(result.model_dump_json() + "\n")
             output_file.flush()
@@ -140,7 +132,6 @@ async def main(args: argparse.Namespace) -> None:
             "cases_path": str(args.cases),
             "results_path": str(output_path),
             "traces_path": str(traces_path),
-            "max_active_documents": args.max_active_documents,
             "retrieval_routes": retrieval_routes,
             "corpus_search_mode": (
                 os.getenv("BANSO_CORPUS_SEARCH_MODE", "vector").strip().casefold()

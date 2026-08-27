@@ -98,11 +98,6 @@ def parse_args() -> argparse.Namespace:
         default=argparse.SUPPRESS,
     )
     parser.add_argument(
-        "--max-active-documents",
-        type=int,
-        default=argparse.SUPPRESS,
-    )
-    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Prepare a run manifest without invoking Banso or reading answers.",

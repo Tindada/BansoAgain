@@ -139,12 +139,6 @@ ResearchObservation = Annotated[
 ]
 
 
-class CurateEvidenceObservation(ObservationModel):
-    """Confirmation that evidence curation completed."""
-
-    type: Literal[AgentActionType.CURATE_EVIDENCE] = AgentActionType.CURATE_EVIDENCE
-
-
 class FinishObservation(ObservationModel):
     """Final synthesized answer and its citations."""
 
@@ -164,7 +158,6 @@ class StopObservation(ObservationModel):
 
 Observation = Annotated[
     ResearchObservation
-    | CurateEvidenceObservation
     | FinishObservation
     | StopObservation,
     Field(discriminator="type"),

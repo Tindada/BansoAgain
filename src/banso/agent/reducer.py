@@ -5,7 +5,6 @@ from typing import Protocol
 from banso.agent.action import AgentAction, AgentActionType
 from banso.agent.observation import (
     CompletedResearchObservation,
-    CurateEvidenceObservation,
     ExtractionFailure,
     ExtractionOutcome,
     ExtractionSuccess,
@@ -63,7 +62,6 @@ def _apply_fetch_outcomes(
 def _apply_extraction_outcomes(
     state: AgentState,
     outcomes: list[ExtractionOutcome],
-    step_index: int,
 ) -> None:
     for outcome in outcomes:
         document_id = outcome.document_id
@@ -72,19 +70,8 @@ def _apply_extraction_outcomes(
             raise ValueError(f"extraction outcome contains an unknown document: {document_id}")
         if isinstance(outcome, ExtractionSuccess):
             document.evidence_id = outcome.evidence_id
-            if outcome.evidence_id is not None:
-                document.lifecycle_status = "active"
-            else:
-                document.lifecycle_status = "unusable"
-                document.lifecycle_reason = "Evidence extraction completed without evidence."
-                document.lifecycle_updated_at_step = step_index
             continue
         if isinstance(outcome, ExtractionFailure):
-            document.lifecycle_status = "unusable"
-            document.lifecycle_reason = (
-                f"Evidence extraction failed: {outcome.failure.reason}"
-            )
-            document.lifecycle_updated_at_step = step_index
             continue
         raise AssertionError(f"unexpected extraction outcome: {type(outcome).__name__}")
 
@@ -139,18 +126,7 @@ class DefaultStateReducer:
             _apply_extraction_outcomes(
                 next_state,
                 observation.extraction_outcomes,
-                state.current_step,
             )
-        elif isinstance(observation, CurateEvidenceObservation):
-            for status, param_name in (
-                ("shelved", "shelve_document_ids"),
-                ("active", "reactivate_document_ids"),
-            ):
-                for document_id in action.params[param_name]:
-                    document = next_state.documents[document_id]
-                    document.lifecycle_status = status
-                    document.lifecycle_reason = action.rationale
-                    document.lifecycle_updated_at_step = state.current_step
         elif isinstance(observation, FinishObservation):
             next_state.final_answer = observation.final_answer
             next_state.citations = list(observation.citations)

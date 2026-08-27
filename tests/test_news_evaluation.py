@@ -178,8 +178,8 @@ def test_extract_evaluation_result_reads_composite_research_observation() -> Non
     assert result.filtered_result_count == 1
     assert result.classified_result_count == 1
     assert result.document_count == 1
+    assert result.evidence_document_count == 1
     assert result.evidence_chars == 5
-    assert result.active_evidence_chars == 5
     assert result.preferred_source_type_match is True
     assert result.step_durations["research"] >= 0
 
@@ -193,9 +193,9 @@ def test_summarize_evaluation_results() -> None:
             completed=True,
             passed_minimums=True,
             document_count=2,
-            active_document_count=1,
+            evidence_document_count=1,
+            no_evidence_document_count=1,
             evidence_chars=30,
-            active_evidence_chars=20,
             citations=[
                 Citation(
                     reference="S1",
@@ -213,7 +213,8 @@ def test_summarize_evaluation_results() -> None:
     assert summary["completed_count"] == 1
     assert summary["average_documents"] == 1.0
     assert summary["average_evidence_chars"] == 15.0
-    assert summary["average_active_evidence_chars"] == 10.0
+    assert summary["average_evidence_documents"] == 0.5
+    assert summary["average_no_evidence_documents"] == 0.5
 
 
 def test_evaluation_reports_handled_research_failures() -> None:

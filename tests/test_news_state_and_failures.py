@@ -25,19 +25,18 @@ def test_state_derived_document_facts() -> None:
             ),
         },
         documents={
-            "active": DocumentState(lifecycle_status="active"),
-            "shelved": DocumentState(lifecycle_status="shelved"),
+            "with-evidence": DocumentState(evidence_id="evidence"),
+            "without-evidence": DocumentState(),
         },
     )
 
-    assert state.active_document_count == 1
-    assert state.has_curatable_documents is True
+    assert state.evidence_document_count == 1
+    assert state.has_evidence is True
 
 
 @pytest.mark.parametrize(
     "budget",
     [
-        {"max_active_documents": 0},
         {"max_researches": -1},
         {"max_results_per_research": 0},
     ],

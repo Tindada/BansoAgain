@@ -127,7 +127,6 @@ def test_research_observation_reduces_the_entire_artifact_chain() -> None:
 
     assert next_state.search_results["result-1"].document_id == "document-1"
     assert next_state.documents["document-1"].evidence_id == "evidence-1"
-    assert next_state.documents["document-1"].lifecycle_status == "active"
     assert next_state.action_history[0].observation.type == AgentActionType.RESEARCH
 
 
@@ -164,7 +163,7 @@ def test_reducer_records_terminal_fetch_failure() -> None:
     assert next_state.documents == {}
 
 
-def test_reducer_marks_terminal_extraction_failure_unusable() -> None:
+def test_reducer_records_document_without_evidence_after_extraction_failure() -> None:
     observation = _research_observation().model_copy(
         update={
             "extraction_outcomes": [
@@ -191,11 +190,15 @@ def test_reducer_marks_terminal_extraction_failure_unusable() -> None:
     )
 
     document = next_state.documents["document-1"]
-    assert document.lifecycle_status == "unusable"
-    assert document.lifecycle_reason == "Evidence extraction failed: llm_error"
+    assert document.evidence_id is None
+    recorded = next_state.action_history[0].observation
+    assert isinstance(recorded, CompletedResearchObservation)
+    outcome = recorded.extraction_outcomes[0]
+    assert isinstance(outcome, ExtractionFailure)
+    assert outcome.failure.reason == "llm_error"
 
 
-def test_reducer_marks_empty_extraction_success_unusable() -> None:
+def test_reducer_records_document_without_evidence_after_empty_extraction() -> None:
     observation = _research_observation().model_copy(
         update={
             "extraction_outcomes": [
@@ -214,5 +217,9 @@ def test_reducer_marks_empty_extraction_success_unusable() -> None:
     )
 
     document = next_state.documents["document-1"]
-    assert document.lifecycle_status == "unusable"
-    assert document.lifecycle_reason == "Evidence extraction completed without evidence."
+    assert document.evidence_id is None
+    recorded = next_state.action_history[0].observation
+    assert isinstance(recorded, CompletedResearchObservation)
+    outcome = recorded.extraction_outcomes[0]
+    assert isinstance(outcome, ExtractionSuccess)
+    assert outcome.evidence_id is None

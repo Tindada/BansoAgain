@@ -16,7 +16,7 @@ from banso.agent.observation import (
     ResearchObservation,
     ResearchObservationBase,
 )
-from banso.agent.state import AgentState, DocumentLifecycleStatus
+from banso.agent.state import AgentState
 from banso.documents.models import Document, DocumentEvidence
 from banso.retrieval.url_utils import publisher_domain
 from banso.source import Source, SourceType
@@ -31,13 +31,10 @@ class SourceView(BaseModel):
 
 
 class EvidenceGroup(BaseModel):
-    """Evidence text and lifecycle details for one source document."""
+    """Visible evidence text for one source document."""
 
     document_ref: str
     research_refs: list[str]
-    lifecycle_status: DocumentLifecycleStatus
-    lifecycle_reason: str | None = None
-    lifecycle_updated_at_step: int | None = None
     document_title: str
     source: SourceView
     published_at: datetime | None = None
@@ -102,8 +99,6 @@ class BudgetSummary(BaseModel):
     remaining_steps: int
     remaining_researches: int
     max_results_per_research: int
-    max_active_documents: int
-    active_document_overflow: int
 
 
 class ArtifactSummary(BaseModel):
@@ -111,16 +106,8 @@ class ArtifactSummary(BaseModel):
 
     search_result_count: int
     document_count: int
-    active_document_count: int
-    shelved_document_count: int
-    unusable_document_count: int
-
-
-class WorkingSetSummary(BaseModel):
-    """Document references grouped by their current curation status."""
-
-    active_document_refs: list[str]
-    shelved_document_refs: list[str]
+    evidence_document_count: int
+    no_evidence_document_count: int
 
 
 class UserQueryView(BaseModel):
@@ -140,7 +127,6 @@ class ResearchContext(BaseModel):
     budget: BudgetSummary
     research_history: list[ResearchHistoryItem]
     artifacts: ArtifactSummary
-    working_set: WorkingSetSummary
     evidence_groups: list[EvidenceGroup]
 
 
@@ -179,13 +165,18 @@ class ResearchContextBuilder:
 
     def build(self, state: AgentState) -> ResearchContext:
         """Resolve state facts and artifacts into bounded research context."""
+        evidence_document_ids = [
+            document_id
+            for document_id, document in state.documents.items()
+            if document.evidence_id is not None
+        ]
         documents = {
             document_id: self._load_document(document_id)
-            for document_id in state.documents
+            for document_id in evidence_document_ids
         }
 
         id_to_ref, _ = document_reference_maps(state)
-        active_count = state.active_document_count
+        evidence_count = state.evidence_document_count
         research_entries = [
             entry
             for entry in state.action_history
@@ -219,11 +210,6 @@ class ResearchContextBuilder:
                 remaining_steps=state.remaining_steps,
                 remaining_researches=state.remaining_research_capacity,
                 max_results_per_research=state.budget.max_results_per_research,
-                max_active_documents=state.budget.max_active_documents,
-                active_document_overflow=max(
-                    active_count - state.budget.max_active_documents,
-                    0,
-                ),
             ),
             research_history=[
                 self._build_research_history(research_ref, observation)
@@ -232,40 +218,17 @@ class ResearchContextBuilder:
             artifacts=ArtifactSummary(
                 search_result_count=len(state.search_results),
                 document_count=len(state.documents),
-                active_document_count=active_count,
-                shelved_document_count=sum(
-                    document.lifecycle_status == "shelved"
-                    for document in state.documents.values()
-                ),
-                unusable_document_count=sum(
-                    document.lifecycle_status == "unusable"
-                    for document in state.documents.values()
-                ),
-            ),
-            working_set=WorkingSetSummary(
-                active_document_refs=[
-                    id_to_ref[document_id]
-                    for document_id, document in state.documents.items()
-                    if document.lifecycle_status == "active"
-                ],
-                shelved_document_refs=[
-                    id_to_ref[document_id]
-                    for document_id, document in state.documents.items()
-                    if document.lifecycle_status == "shelved"
-                ],
+                evidence_document_count=evidence_count,
+                no_evidence_document_count=len(state.documents) - evidence_count,
             ),
             evidence_groups=[
                 self._build_evidence_group(
                     id_to_ref[document_id],
                     document_research_refs.get(document_id, []),
                     documents[document_id],
-                    document_state.lifecycle_status,
-                    document_state.lifecycle_reason,
-                    document_state.lifecycle_updated_at_step,
-                    document_state.evidence_id,
+                    state.documents[document_id].evidence_id,
                 )
-                for document_id, document_state in state.documents.items()
-                if document_state.lifecycle_status is not None
+                for document_id in evidence_document_ids
             ],
         )
 
@@ -352,9 +315,6 @@ class ResearchContextBuilder:
         document_ref: str,
         research_refs: list[str],
         document: Document,
-        lifecycle_status: DocumentLifecycleStatus,
-        lifecycle_reason: str | None,
-        lifecycle_updated_at_step: int | None,
         evidence_id: str | None,
     ) -> EvidenceGroup:
         evidence = (
@@ -370,9 +330,6 @@ class ResearchContextBuilder:
         return EvidenceGroup(
             document_ref=document_ref,
             research_refs=research_refs,
-            lifecycle_status=lifecycle_status,
-            lifecycle_reason=lifecycle_reason,
-            lifecycle_updated_at_step=lifecycle_updated_at_step,
             document_title=document.title,
             source=self._build_source(document.source, document.url),
             published_at=document.published_at,

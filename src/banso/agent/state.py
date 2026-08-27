@@ -1,7 +1,7 @@
 """Agent state models."""
 
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -16,7 +16,6 @@ class ExecutionBudget(BaseModel):
     max_steps: int = 12
     max_researches: int = Field(default=5, ge=0)
     max_results_per_research: int = Field(default=10, ge=1)
-    max_active_documents: int = Field(default=10, ge=1)
 
 
 class UserQuery(BaseModel):
@@ -56,16 +55,10 @@ class SearchResultState(BaseModel):
         return self
 
 
-DocumentLifecycleStatus = Literal["active", "shelved", "unusable"]
-
-
 class DocumentState(BaseModel):
     """Run-scoped processing state and evidence reference for one document."""
 
     evidence_id: str | None = None
-    lifecycle_status: DocumentLifecycleStatus | None = None
-    lifecycle_reason: str | None = None
-    lifecycle_updated_at_step: int | None = Field(default=None, ge=0)
 
 
 class AgentState(BaseModel):
@@ -103,17 +96,11 @@ class AgentState(BaseModel):
         return max(self.budget.max_researches - completed, 0)
 
     @property
-    def active_document_count(self) -> int:
-        """Return the number of documents in the active working set."""
-        return sum(
-            document.lifecycle_status == "active"
-            for document in self.documents.values()
-        )
+    def evidence_document_count(self) -> int:
+        """Return the number of documents with extracted evidence."""
+        return sum(document.evidence_id is not None for document in self.documents.values())
 
     @property
-    def has_curatable_documents(self) -> bool:
-        """Return whether any evidence-bearing document is available for curation."""
-        return any(
-            document.lifecycle_status in {"active", "shelved"}
-            for document in self.documents.values()
-        )
+    def has_evidence(self) -> bool:
+        """Return whether any document has extracted evidence."""
+        return self.evidence_document_count > 0
