@@ -17,7 +17,7 @@ from banso.agent.observation import (
     ExtractionSuccess,
     FetchFailure,
     FetchSuccess,
-    RewriteScratchObservation,
+    RewriteNotesObservation,
 )
 from banso.agent.reducer import DefaultStateReducer
 from banso.agent.state import AgentState, UserQuery
@@ -113,18 +113,18 @@ def test_research_action_params_reject_invalid_source_domains(
         )
 
 
-def test_reducer_replaces_scratch() -> None:
-    state = AgentState(query=UserQuery(text="query"), scratch="old")
-    action = AgentAction(type=AgentActionType.REWRITE_SCRATCH)
+def test_reducer_replaces_notes() -> None:
+    state = AgentState(query=UserQuery(text="query"), notes="old")
+    action = AgentAction(type=AgentActionType.REWRITE_NOTES)
 
     next_state = DefaultStateReducer().apply(
         state,
         action,
-        RewriteScratchObservation(content="new notes"),
+        RewriteNotesObservation(content="new notes"),
     )
 
-    assert state.scratch == "old"
-    assert next_state.scratch == "new notes"
+    assert state.notes == "old"
+    assert next_state.notes == "new notes"
     assert next_state.action_history[0].action == action
 
 

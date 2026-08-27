@@ -17,7 +17,7 @@ from banso.agent.executors.retry import RetryPolicy
 from banso.agent.observation import (
     FinishObservation,
     Observation,
-    RewriteScratchObservation,
+    RewriteNotesObservation,
     StopObservation,
 )
 from banso.agent.research_context import (
@@ -30,11 +30,7 @@ from banso.documents.extractor import EvidenceExtractor
 from banso.documents.models import Document, DocumentEvidence
 from banso.retrieval.filter import RetrievalFilter
 from banso.retrieval.source_classifier import SourceClassifier
-from banso.scratch.rewriter import (
-    ScratchEvidenceGroup,
-    ScratchRewriter,
-    ScratchRewriteRequest,
-)
+from banso.notes.rewriter import NotesEvidenceGroup, NotesRewriter, NotesRewriteRequest
 from banso.synthesis.synthesizer import (
     SynthesisEvidenceGroup,
     SynthesisRequest,
@@ -56,11 +52,11 @@ class NewsActionExecutor:
         search_result_selector: SearchResultSelector | None = None,
         max_extraction_concurrency: int = 4,
         retry_policy: RetryPolicy | None = None,
-        scratch_rewriter: ScratchRewriter | None = None,
+        notes_rewriter: NotesRewriter | None = None,
     ) -> None:
         self.store = store
         self.synthesizer = synthesizer
-        self.scratch_rewriter = scratch_rewriter
+        self.notes_rewriter = notes_rewriter
         self.research_pipeline = ResearchPipeline(
             store=store,
             research_routes=research_routes,
@@ -83,8 +79,8 @@ class NewsActionExecutor:
             params = ResearchActionParams.model_validate(action.params)
             return await self.research_pipeline.run(params, state)
 
-        if action.type == AgentActionType.REWRITE_SCRATCH:
-            return await self._rewrite_scratch(state)
+        if action.type == AgentActionType.REWRITE_NOTES:
+            return await self._rewrite_notes(state)
 
         if action.type == AgentActionType.FINISH:
             return await self._synthesize(state)
@@ -94,12 +90,12 @@ class NewsActionExecutor:
 
         raise ValueError(f"unsupported action type: {action.type.value}")
 
-    async def _rewrite_scratch(
+    async def _rewrite_notes(
         self,
         state: AgentState,
     ) -> Observation:
         id_to_ref, _ = document_reference_maps(state)
-        evidence_groups: list[ScratchEvidenceGroup] = []
+        evidence_groups: list[NotesEvidenceGroup] = []
         for document_id, document_state in state.documents.items():
             evidence_id = document_state.evidence_id
             if evidence_id is None:
@@ -115,7 +111,7 @@ class NewsActionExecutor:
                     f"Document has missing or invalid evidence: {document_id}"
                 )
             evidence_groups.append(
-                ScratchEvidenceGroup(
+                NotesEvidenceGroup(
                     document_ref=id_to_ref[document_id],
                     title=document.title,
                     source_url=document.url,
@@ -125,13 +121,13 @@ class NewsActionExecutor:
                 )
             )
 
-        result = await self.scratch_rewriter.rewrite(
-            ScratchRewriteRequest(
+        result = await self.notes_rewriter.rewrite(
+            NotesRewriteRequest(
                 query=state.query.text,
                 language=state.query.language,
                 time_range=state.query.time_range,
                 reference_time=state.reference_time,
-                current_scratch=state.scratch,
+                current_notes=state.notes,
                 research_history=[
                     item.model_dump(mode="json", exclude_none=True)
                     for item in build_research_history(state)
@@ -139,7 +135,7 @@ class NewsActionExecutor:
                 evidence_groups=evidence_groups,
             )
         )
-        return RewriteScratchObservation(content=result.content)
+        return RewriteNotesObservation(content=result.content)
 
     async def _synthesize(self, state: AgentState) -> Observation:
         evidence_groups: list[SynthesisEvidenceGroup] = []
@@ -176,7 +172,7 @@ class NewsActionExecutor:
                 language=state.query.language,
                 time_range=state.query.time_range,
                 reference_time=state.reference_time,
-                scratch=state.scratch,
+                notes=state.notes,
                 evidence_groups=evidence_groups,
                 metadata=state.synthesis_metadata,
             )

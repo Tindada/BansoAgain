@@ -146,17 +146,17 @@ def test_selects_research_with_an_enabled_route() -> None:
     ) in system_prompt
     output_format = system_prompt.split("Output format:\n", 1)[1].splitlines()[0]
     assert output_format == (
-        '{"type": "<research|rewrite_scratch|stop>", '
+        '{"type": "<research|rewrite_notes|stop>", '
         '"params": <matching Params object>, '
         '"rationale": "<brief decision reason>"}'
     )
-    assert prompt["context"]["scratch"] == ""
+    assert prompt["context"]["notes"] == ""
 
 
-def test_selects_a_parameterless_scratch_rewrite() -> None:
+def test_selects_a_parameterless_notes_rewrite() -> None:
     policy, _ = _policy(
         {
-            "type": "rewrite_scratch",
+            "type": "rewrite_notes",
             "params": {},
             "rationale": "Preserve intermediate coverage.",
         }
@@ -166,7 +166,7 @@ def test_selects_a_parameterless_scratch_rewrite() -> None:
         policy.select_action(AgentState(query=UserQuery(text="question")))
     )
 
-    assert action.type == AgentActionType.REWRITE_SCRATCH
+    assert action.type == AgentActionType.REWRITE_NOTES
     assert action.params == {}
 
 
@@ -176,7 +176,7 @@ def test_selects_a_parameterless_scratch_rewrite() -> None:
         AgentState(
             query=UserQuery(text="question"),
             current_step=1,
-            last_action=AgentActionType.REWRITE_SCRATCH,
+            last_action=AgentActionType.REWRITE_NOTES,
         ),
         AgentState(
             query=UserQuery(text="question"),
@@ -185,10 +185,10 @@ def test_selects_a_parameterless_scratch_rewrite() -> None:
         ),
     ],
 )
-def test_rejects_unavailable_scratch_rewrite(state: AgentState) -> None:
+def test_rejects_unavailable_notes_rewrite(state: AgentState) -> None:
     policy, _ = _policy(
         {
-            "type": "rewrite_scratch",
+            "type": "rewrite_notes",
             "params": {},
             "rationale": "Update notes.",
         }

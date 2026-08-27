@@ -221,7 +221,7 @@ class ResearchContext(BaseModel):
 
     user_query: UserQueryView
     reference_time: datetime
-    scratch: str
+    notes: str
     enabled_routes: list[RetrievalRoute]
     budget: BudgetSummary
     research_history: list[ResearchHistoryItem]
@@ -296,7 +296,7 @@ class ResearchContextBuilder:
                 time_range=state.query.time_range,
             ),
             reference_time=state.reference_time,
-            scratch=state.scratch,
+            notes=state.notes,
             enabled_routes=list(self.enabled_routes),
             budget=BudgetSummary(
                 remaining_steps=state.remaining_steps,

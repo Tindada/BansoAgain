@@ -81,16 +81,16 @@ class LLMSynthesizer:
         answer_language = (
             request.language or "Match the language of the user query"
         )
-        scratch = request.scratch or "No scratch notes."
+        notes = request.notes or "No research notes."
 
         return (
             f"User query:\n{request.query}\n\n"
             f"Reference time:\n{request.reference_time.isoformat()}\n\n"
             f"Requested time range:\n{time_range}\n\n"
             f"Answer language:\n{answer_language}\n\n"
-            f"Research scratch:\n{scratch}\n\n"
+            f"Research notes:\n{notes}\n\n"
             f"Evidence groups:\n{evidence_block}\n\n"
-            "Treat the research scratch as working notes, not as an independent "
+            "Treat the research notes as working notes, not as an independent "
             "source of facts. Resolve it against the supplied evidence. "
             "Write the final news summary in the specified answer language. Cite each "
             "factual statement with one or more applicable source-group references "

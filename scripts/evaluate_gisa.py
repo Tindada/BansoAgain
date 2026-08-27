@@ -52,8 +52,8 @@ class GisaEvaluationResult(BaseModel):
     research_count: int = 0
     document_count: int = 0
     evidence_chars: int = 0
-    scratch_rewrite_count: int = 0
-    scratch_chars: int = 0
+    notes_rewrite_count: int = 0
+    notes_chars: int = 0
     total_seconds: float = 0.0
     error_type: str | None = None
     error_message: str | None = None
@@ -256,11 +256,11 @@ async def run_case(
             ),
             document_count=len(state.documents),
             evidence_chars=evidence_chars,
-            scratch_rewrite_count=sum(
-                entry.action.type == AgentActionType.REWRITE_SCRATCH
+            notes_rewrite_count=sum(
+                entry.action.type == AgentActionType.REWRITE_NOTES
                 for entry in state.action_history
             ),
-            scratch_chars=len(state.scratch),
+            notes_chars=len(state.notes),
             total_seconds=total_trace_seconds(spans),
         )
     except RuntimeExecutionError as error:
@@ -303,8 +303,8 @@ def summarize(results: list[GisaEvaluationResult]) -> dict[str, object]:
         "error_count": sum(result.error_type is not None for result in results),
         "total_documents": sum(result.document_count for result in results),
         "total_evidence_chars": sum(result.evidence_chars for result in results),
-        "total_scratch_rewrites": sum(
-            result.scratch_rewrite_count for result in results
+        "total_notes_rewrites": sum(
+            result.notes_rewrite_count for result in results
         ),
         "total_seconds": sum(result.total_seconds for result in results),
     }

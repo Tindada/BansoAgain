@@ -91,7 +91,7 @@ def _state_with_fetch_failure() -> AgentState:
     return DefaultStateReducer().apply(
         AgentState(
             query=UserQuery(text="overall question"),
-            scratch="private working notes",
+            notes="private working notes",
         ),
         AgentAction(
             type=AgentActionType.RESEARCH,

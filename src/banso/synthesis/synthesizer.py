@@ -36,7 +36,7 @@ class SynthesisRequest(BaseModel):
     language: str | None = None
     time_range: str | None = None
     reference_time: datetime
-    scratch: str = ""
+    notes: str = ""
     evidence_groups: list[SynthesisEvidenceGroup] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 

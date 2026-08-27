@@ -146,15 +146,15 @@ class GisaSynthesizer:
             for index, group in enumerate(request.evidence_groups, start=1)
         ]
         evidence = "\n\n".join(evidence_blocks) or "No evidence was collected."
-        scratch = request.scratch or "No scratch notes."
+        notes = request.notes or "No research notes."
         return (
             f"Question:\n{request.query}\n\n"
             f"Reference time:\n{request.reference_time.isoformat()}\n\n"
             f"Answer type:\n{answer_type.value}\n\n"
             f"Required JSON schema:\n{self._json_schema_instruction(answer_type)}\n\n"
-            f"Research scratch:\n{scratch}\n\n"
-            "Use the scratch only as working notes and resolve it against the supplied "
-            "evidence.\n\n"
+            f"Research notes:\n{notes}\n\n"
+            "Use the research notes only as working notes and resolve them against "
+            "the supplied evidence.\n\n"
             f"Evidence:\n{evidence}"
         )
 

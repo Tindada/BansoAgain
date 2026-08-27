@@ -139,10 +139,10 @@ ResearchObservation = Annotated[
 ]
 
 
-class RewriteScratchObservation(ObservationModel):
-    """Confirmation that the scratch was replaced."""
+class RewriteNotesObservation(ObservationModel):
+    """Confirmation that the research notes were replaced."""
 
-    type: Literal[AgentActionType.REWRITE_SCRATCH] = AgentActionType.REWRITE_SCRATCH
+    type: Literal[AgentActionType.REWRITE_NOTES] = AgentActionType.REWRITE_NOTES
     content: str = Field(max_length=32_000)
 
 
@@ -165,7 +165,7 @@ class StopObservation(ObservationModel):
 
 Observation = Annotated[
     ResearchObservation
-    | RewriteScratchObservation
+    | RewriteNotesObservation
     | FinishObservation
     | StopObservation,
     Field(discriminator="type"),

@@ -1,4 +1,4 @@
-"""Tests for LLM-backed scratch rewriting."""
+"""Tests for LLM-backed research notes rewriting."""
 
 import asyncio
 import json
@@ -8,23 +8,23 @@ import pytest
 from pydantic import ValidationError
 
 from banso.llm.fake import FakeLLMClient
-from banso.scratch.llm_rewriter import LLMScratchRewriter
-from banso.scratch.rewriter import (
-    ScratchEvidenceGroup,
-    ScratchRewriteRequest,
-    ScratchRewriteResult,
+from banso.notes.llm_rewriter import LLMNotesRewriter
+from banso.notes.rewriter import (
+    NotesEvidenceGroup,
+    NotesRewriteRequest,
+    NotesRewriteResult,
 )
 
 
-def _request(evidence_text: str) -> ScratchRewriteRequest:
-    return ScratchRewriteRequest(
+def _request(evidence_text: str) -> NotesRewriteRequest:
+    return NotesRewriteRequest(
         query="question",
         language="en",
         time_range="week",
         reference_time=datetime(2026, 8, 27, tzinfo=timezone.utc),
-        current_scratch="old notes",
+        current_notes="old notes",
         evidence_groups=[
-            ScratchEvidenceGroup(
+            NotesEvidenceGroup(
                 document_ref="D1",
                 title="Document",
                 source_url="https://example.com",
@@ -39,7 +39,7 @@ def test_rewriter_builds_the_request() -> None:
     client = FakeLLMClient('{"content":"new notes"}')
 
     result = asyncio.run(
-        LLMScratchRewriter(client, model="fake-model").rewrite(
+        LLMNotesRewriter(client, model="fake-model").rewrite(
             _request(evidence_text)
         )
     )
@@ -48,14 +48,14 @@ def test_rewriter_builds_the_request() -> None:
     llm_request = client.requests[0]
     assert llm_request.response_format == {"type": "json_object"}
     assert llm_request.metadata == {
-        "trace": {"operation": "scratch_rewriter.rewrite"}
+        "trace": {"operation": "notes_rewriter.rewrite"}
     }
     prompt = json.loads(llm_request.messages[1].content)
-    assert prompt["current_scratch"] == "old notes"
+    assert prompt["current_notes"] == "old notes"
     assert prompt["evidence_groups"][0]["document_ref"] == "D1"
     assert prompt["evidence_groups"][0]["evidence_text"] == evidence_text
 
 
-def test_scratch_result_enforces_size_limit() -> None:
+def test_notes_result_enforces_size_limit() -> None:
     with pytest.raises(ValidationError):
-        ScratchRewriteResult(content="x" * 32_001)
+        NotesRewriteResult(content="x" * 32_001)

@@ -1,7 +1,7 @@
 """Tests for structured action observations."""
 
 from banso.agent.action import AgentAction, AgentActionType
-from banso.agent.observation import FinishObservation, RewriteScratchObservation
+from banso.agent.observation import FinishObservation, RewriteNotesObservation
 from banso.agent.state import ActionHistoryEntry
 from banso.synthesis.synthesizer import Citation
 
@@ -28,16 +28,16 @@ def test_observation_round_trips_as_json_inside_history() -> None:
     assert isinstance(restored.observation, FinishObservation)
 
 
-def test_scratch_rewrite_round_trips_as_json_inside_history() -> None:
+def test_notes_rewrite_round_trips_as_json_inside_history() -> None:
     entry = ActionHistoryEntry(
         step_index=0,
         action=AgentAction(
-            type=AgentActionType.REWRITE_SCRATCH,
+            type=AgentActionType.REWRITE_NOTES,
         ),
-        observation=RewriteScratchObservation(content="working notes"),
+        observation=RewriteNotesObservation(content="working notes"),
     )
 
     restored = ActionHistoryEntry.model_validate_json(entry.model_dump_json())
 
     assert restored == entry
-    assert isinstance(restored.observation, RewriteScratchObservation)
+    assert isinstance(restored.observation, RewriteNotesObservation)
