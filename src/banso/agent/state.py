@@ -76,6 +76,7 @@ class AgentState(BaseModel):
     search_result_index: dict[str, str] = Field(default_factory=dict)
     documents: dict[str, DocumentState] = Field(default_factory=dict)
     document_index: dict[str, str] = Field(default_factory=dict)
+    scratch: str = ""
     final_answer: str | None = None
     citations: list[Citation] = Field(default_factory=list)
     last_action: AgentActionType | None = None

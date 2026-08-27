@@ -146,9 +146,56 @@ def test_selects_research_with_an_enabled_route() -> None:
     ) in system_prompt
     output_format = system_prompt.split("Output format:\n", 1)[1].splitlines()[0]
     assert output_format == (
-        '{"type": "<research|stop>", "params": <matching Params object>, '
+        '{"type": "<research|rewrite_scratch|stop>", '
+        '"params": <matching Params object>, '
         '"rationale": "<brief decision reason>"}'
     )
+    assert prompt["context"]["scratch"] == ""
+
+
+def test_selects_a_parameterless_scratch_rewrite() -> None:
+    policy, _ = _policy(
+        {
+            "type": "rewrite_scratch",
+            "params": {},
+            "rationale": "Preserve intermediate coverage.",
+        }
+    )
+
+    action = asyncio.run(
+        policy.select_action(AgentState(query=UserQuery(text="question")))
+    )
+
+    assert action.type == AgentActionType.REWRITE_SCRATCH
+    assert action.params == {}
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        AgentState(
+            query=UserQuery(text="question"),
+            current_step=1,
+            last_action=AgentActionType.REWRITE_SCRATCH,
+        ),
+        AgentState(
+            query=UserQuery(text="question"),
+            current_step=1,
+            budget=ExecutionBudget(max_steps=2),
+        ),
+    ],
+)
+def test_rejects_unavailable_scratch_rewrite(state: AgentState) -> None:
+    policy, _ = _policy(
+        {
+            "type": "rewrite_scratch",
+            "params": {},
+            "rationale": "Update notes.",
+        }
+    )
+
+    with pytest.raises(LLMPolicyError):
+        asyncio.run(policy.select_action(state))
 
 
 def test_selects_web_research_with_source_domains() -> None:

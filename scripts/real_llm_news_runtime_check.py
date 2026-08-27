@@ -30,6 +30,7 @@ from banso.llm.openai_sdk_client import ThinkingModeLLMClient
 from banso.agent.policies.llm_news_policy import LLMNewsPolicy
 from banso.agent.research_context import ResearchContextBuilder
 from banso.retrieval.fake import FakeRetrievalProvider
+from banso.scratch.llm_rewriter import LLMScratchRewriter
 from banso.synthesis.llm_synthesizer import LLMSynthesizer
 from banso.tracing.trace import InMemoryTraceSink, Tracer
 
@@ -80,6 +81,7 @@ async def main() -> None:
             },
             evidence_extractor=LLMEvidenceExtractor(client=extraction_llm_client),
             synthesizer=LLMSynthesizer(client=external_llm_client),
+            scratch_rewriter=LLMScratchRewriter(agent_llm_client),
         ),
         tracer=tracer,
     )

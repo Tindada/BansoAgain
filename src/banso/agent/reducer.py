@@ -13,6 +13,7 @@ from banso.agent.observation import (
     FetchSuccess,
     FinishObservation,
     Observation,
+    RewriteScratchObservation,
 )
 from banso.agent.state import (
     ActionHistoryEntry,
@@ -127,6 +128,8 @@ class DefaultStateReducer:
                 next_state,
                 observation.extraction_outcomes,
             )
+        elif isinstance(observation, RewriteScratchObservation):
+            next_state.scratch = observation.content
         elif isinstance(observation, FinishObservation):
             next_state.final_answer = observation.final_answer
             next_state.citations = list(observation.citations)

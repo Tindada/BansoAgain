@@ -36,6 +36,7 @@ from banso.retrieval.source_classifier import (
     SourceClassifierConfig,
 )
 from banso.retrieval.tavily_provider import TavilyRetrievalProvider
+from banso.scratch.llm_rewriter import LLMScratchRewriter
 from banso.synthesis.synthesizer import Synthesizer
 from banso.synthesis.llm_synthesizer import LLMSynthesizer
 from banso.tracing.trace import InMemoryTraceSink, Tracer
@@ -172,6 +173,7 @@ def build_real_news_runtime(
             max_extraction_concurrency=int(
                 os.getenv("BANSO_MAX_EXTRACTION_CONCURRENCY", "4")
             ),
+            scratch_rewriter=LLMScratchRewriter(agent_llm_client),
         ),
         tracer=tracer,
     )

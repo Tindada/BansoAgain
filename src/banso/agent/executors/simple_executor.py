@@ -5,6 +5,7 @@ from banso.agent.observation import (
     CompletedResearchObservation,
     FinishObservation,
     Observation,
+    RewriteScratchObservation,
     StopObservation,
 )
 from banso.agent.state import AgentState
@@ -49,6 +50,8 @@ class SimpleActionExecutor:
                 document_index_updates={},
                 extraction_outcomes=[],
             )
+        if action.type == AgentActionType.REWRITE_SCRATCH:
+            return RewriteScratchObservation(content="TODO: maintain research scratch")
         if action.type == AgentActionType.FINISH:
             return FinishObservation(
                 final_answer="TODO: synthesize answer",

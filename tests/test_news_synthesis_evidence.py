@@ -12,6 +12,7 @@ from banso.agent.executors.research_pipeline import ResearchRouteComponents
 from banso.agent.state import AgentState, DocumentState, UserQuery
 from banso.documents.models import Document, DocumentEvidence
 from banso.retrieval.fake import FakeRetrievalProvider
+from banso.scratch.rewriter import ScratchRewriteRequest, ScratchRewriteResult
 from banso.source import Source, SourceType
 from banso.synthesis.synthesizer import (
     Citation,
@@ -48,9 +49,20 @@ class RecordingSynthesizer:
         )
 
 
+class StaticScratchRewriter:
+    def __init__(self, content: str) -> None:
+        self.content = content
+        self.requests: list[ScratchRewriteRequest] = []
+
+    async def rewrite(self, request: ScratchRewriteRequest) -> ScratchRewriteResult:
+        self.requests.append(request)
+        return ScratchRewriteResult(content=self.content)
+
+
 def _executor(
     store: InMemoryArtifactStore,
     synthesizer: RecordingSynthesizer,
+    scratch_rewriter: StaticScratchRewriter | None = None,
 ) -> NewsActionExecutor:
     return NewsActionExecutor(
         store=store,
@@ -62,6 +74,7 @@ def _executor(
         },
         evidence_extractor=UnusedExtractor(),
         synthesizer=synthesizer,
+        scratch_rewriter=scratch_rewriter or StaticScratchRewriter("unused"),
     )
 
 
@@ -89,6 +102,7 @@ def _state_and_store(count: int) -> tuple[AgentState, InMemoryArtifactStore]:
         AgentState(
             query=UserQuery(text="query", language="en", time_range="week"),
             reference_time=datetime(2026, 8, 2, tzinfo=timezone.utc),
+            scratch="Coverage ledger",
             documents=documents,
         ),
         store,
@@ -115,6 +129,7 @@ def test_finish_synthesizes_all_collected_evidence() -> None:
     assert synthesizer.request.reference_time == datetime(
         2026, 8, 2, tzinfo=timezone.utc
     )
+    assert synthesizer.request.scratch == "Coverage ledger"
     assert [group.document_id for group in synthesizer.request.evidence_groups] == [
         "document-0",
         "document-1",
@@ -141,3 +156,27 @@ def test_finish_rejects_a_selected_document_with_missing_evidence() -> None:
                 state,
             )
         )
+
+
+def test_rewrite_scratch_builds_request_and_allows_clearing() -> None:
+    state, store = _state_and_store(1)
+    clearing_rewriter = StaticScratchRewriter("")
+    executor = _executor(
+        store,
+        RecordingSynthesizer(),
+        clearing_rewriter,
+    )
+
+    observation = asyncio.run(
+        executor.execute(
+            AgentAction(type=AgentActionType.REWRITE_SCRATCH),
+            state,
+        )
+    )
+
+    assert observation.type == AgentActionType.REWRITE_SCRATCH
+    assert observation.content == ""
+    request = clearing_rewriter.requests[0]
+    assert request.current_scratch == "Coverage ledger"
+    assert request.evidence_groups[0].document_ref == "D1"
+    assert request.evidence_groups[0].evidence_text == "evidence 0"

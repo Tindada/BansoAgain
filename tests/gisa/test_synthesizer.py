@@ -14,6 +14,7 @@ def _request(answer_type: str) -> SynthesisRequest:
     return SynthesisRequest(
         query="Benchmark question",
         reference_time=datetime(2026, 8, 19, tzinfo=timezone.utc),
+        scratch="Intermediate candidate: Answer",
         metadata={"gisa": {"answer_type": answer_type}},
     )
 
@@ -22,6 +23,9 @@ async def _synthesize(content: str, answer_type: str):
     client = FakeLLMClient(content)
     result = await GisaSynthesizer(client).synthesize(_request(answer_type))
     assert client.requests[0].response_format == {"type": "json_object"}
+    assert "Research scratch:\nIntermediate candidate: Answer" in (
+        client.requests[0].messages[1].content
+    )
     return result
 
 

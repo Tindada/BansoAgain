@@ -93,6 +93,104 @@ ResearchHistoryItem = Annotated[
 ]
 
 
+def _referenced_research(
+    state: AgentState,
+) -> list[tuple[str, ResearchObservation]]:
+    observations = [
+        entry.observation
+        for entry in state.action_history
+        if isinstance(entry.observation, ResearchObservationBase)
+    ]
+    return [
+        (f"R{index}", observation)
+        for index, observation in enumerate(observations, start=1)
+    ]
+
+
+def build_research_history(state: AgentState) -> list[ResearchHistoryItem]:
+    """Build compact research outcomes from agent history."""
+    return [
+        _build_research_history_item(research_ref, observation)
+        for research_ref, observation in _referenced_research(state)
+    ]
+
+
+def _build_research_history_item(
+    research_ref: str,
+    observation: ResearchObservation,
+) -> ResearchHistoryItem:
+    if isinstance(observation, FailedResearchObservation):
+        return FailedResearchHistoryItem(
+            research_ref=research_ref,
+            query=observation.query,
+            route=observation.route,
+            source_domains=observation.source_domains,
+            stage=observation.stage,
+            reason=observation.reason,
+            status_code=observation.status_code,
+            retryable=observation.retryable,
+            attempt_count=observation.attempt_count,
+        )
+
+    fetch_failures = [
+        outcome
+        for outcome in observation.fetch_outcomes
+        if isinstance(outcome, FetchFailure)
+    ]
+    extraction_failures = [
+        outcome
+        for outcome in observation.extraction_outcomes
+        if isinstance(outcome, ExtractionFailure)
+    ]
+    fetch_failure_counts = Counter(
+        (
+            publisher_domain(outcome.failure.url),
+            outcome.failure.reason,
+            outcome.failure.status_code,
+        )
+        for outcome in fetch_failures
+    )
+    evidence_documents = sum(
+        isinstance(outcome, ExtractionSuccess) and outcome.evidence_id is not None
+        for outcome in observation.extraction_outcomes
+    )
+    no_evidence_documents = sum(
+        isinstance(outcome, ExtractionSuccess) and outcome.evidence_id is None
+        for outcome in observation.extraction_outcomes
+    )
+    return CompletedResearchHistoryItem(
+        research_ref=research_ref,
+        query=observation.query,
+        route=observation.route,
+        source_domains=observation.source_domains,
+        retrieved_results=len(observation.search_result_ids),
+        new_results=observation.search_result_merge_report.new_result_count,
+        reused_results=observation.search_result_merge_report.reused_result_count,
+        selected_results=len(observation.selection_report.selected_ids),
+        fetch_successes=len(observation.fetch_outcomes) - len(fetch_failures),
+        fetch_failures=len(fetch_failures),
+        fetch_failure_sources=[
+            FetchFailureSource(
+                domain=domain,
+                reason=reason,
+                status_code=status_code,
+                count=count,
+            )
+            for (domain, reason, status_code), count in sorted(
+                fetch_failure_counts.items(),
+                key=lambda item: (
+                    item[0][0],
+                    item[0][1],
+                    item[0][2] if item[0][2] is not None else -1,
+                ),
+            )
+        ],
+        evidence_documents=evidence_documents,
+        no_evidence_documents=no_evidence_documents,
+        extraction_failures=len(extraction_failures),
+    )
+
+
 class BudgetSummary(BaseModel):
     """Remaining execution capacity relevant to the next action."""
 
@@ -123,6 +221,7 @@ class ResearchContext(BaseModel):
 
     user_query: UserQueryView
     reference_time: datetime
+    scratch: str
     enabled_routes: list[RetrievalRoute]
     budget: BudgetSummary
     research_history: list[ResearchHistoryItem]
@@ -177,15 +276,7 @@ class ResearchContextBuilder:
 
         id_to_ref, _ = document_reference_maps(state)
         evidence_count = state.evidence_document_count
-        research_entries = [
-            entry
-            for entry in state.action_history
-            if isinstance(entry.observation, ResearchObservationBase)
-        ]
-        referenced_research = [
-            (f"R{index}", entry.observation)
-            for index, entry in enumerate(research_entries, start=1)
-        ]
+        referenced_research = _referenced_research(state)
         document_research_refs: dict[str, list[str]] = {}
         for research_ref, observation in referenced_research:
             if isinstance(observation, FailedResearchObservation):
@@ -205,16 +296,14 @@ class ResearchContextBuilder:
                 time_range=state.query.time_range,
             ),
             reference_time=state.reference_time,
+            scratch=state.scratch,
             enabled_routes=list(self.enabled_routes),
             budget=BudgetSummary(
                 remaining_steps=state.remaining_steps,
                 remaining_researches=state.remaining_research_capacity,
                 max_results_per_research=state.budget.max_results_per_research,
             ),
-            research_history=[
-                self._build_research_history(research_ref, observation)
-                for research_ref, observation in referenced_research
-            ],
+            research_history=build_research_history(state),
             artifacts=ArtifactSummary(
                 search_result_count=len(state.search_results),
                 document_count=len(state.documents),
@@ -230,84 +319,6 @@ class ResearchContextBuilder:
                 )
                 for document_id in evidence_document_ids
             ],
-        )
-
-    def _build_research_history(
-        self,
-        research_ref: str,
-        observation: ResearchObservation,
-    ) -> ResearchHistoryItem:
-        if isinstance(observation, FailedResearchObservation):
-            return FailedResearchHistoryItem(
-                research_ref=research_ref,
-                query=observation.query,
-                route=observation.route,
-                source_domains=observation.source_domains,
-                stage=observation.stage,
-                reason=observation.reason,
-                status_code=observation.status_code,
-                retryable=observation.retryable,
-                attempt_count=observation.attempt_count,
-            )
-
-        fetch_failures = [
-            outcome
-            for outcome in observation.fetch_outcomes
-            if isinstance(outcome, FetchFailure)
-        ]
-        extraction_failures = [
-            outcome
-            for outcome in observation.extraction_outcomes
-            if isinstance(outcome, ExtractionFailure)
-        ]
-        fetch_failure_counts = Counter(
-            (
-                publisher_domain(outcome.failure.url),
-                outcome.failure.reason,
-                outcome.failure.status_code,
-            )
-            for outcome in fetch_failures
-        )
-        evidence_documents = sum(
-            isinstance(outcome, ExtractionSuccess)
-            and outcome.evidence_id is not None
-            for outcome in observation.extraction_outcomes
-        )
-        no_evidence_documents = sum(
-            isinstance(outcome, ExtractionSuccess)
-            and outcome.evidence_id is None
-            for outcome in observation.extraction_outcomes
-        )
-        return CompletedResearchHistoryItem(
-            research_ref=research_ref,
-            query=observation.query,
-            route=observation.route,
-            source_domains=observation.source_domains,
-            retrieved_results=len(observation.search_result_ids),
-            new_results=observation.search_result_merge_report.new_result_count,
-            reused_results=observation.search_result_merge_report.reused_result_count,
-            selected_results=len(observation.selection_report.selected_ids),
-            fetch_successes=len(observation.fetch_outcomes) - len(fetch_failures),
-            fetch_failures=len(fetch_failures),
-            fetch_failure_sources=[
-                FetchFailureSource(
-                    domain=domain,
-                    reason=reason,
-                    status_code=status_code,
-                    count=count,
-                )
-                for (domain, reason, status_code), count in sorted(
-                    fetch_failure_counts.items(),
-                    key=lambda item: (
-                        item[0][0],
-                        item[0][1],
-                        item[0][2] if item[0][2] is not None else -1,
-                    ),
-                )
-            ],
-            evidence_documents=evidence_documents,
-            no_evidence_documents=no_evidence_documents,
-            extraction_failures=len(extraction_failures),
         )
 
     def _build_evidence_group(

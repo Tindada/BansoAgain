@@ -8,7 +8,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from banso.artifacts.store import ArtifactStore
-from banso.agent.action import AgentAction
+from banso.agent.action import AgentAction, AgentActionType
 from banso.agent.observation import (
     CompletedResearchObservation,
     ExtractionFailure,
@@ -60,6 +60,8 @@ class NewsEvaluationResult(BaseModel):
     evidence_document_count: int = 0
     no_evidence_document_count: int = 0
     evidence_chars: int = 0
+    scratch_rewrite_count: int = 0
+    scratch_chars: int = 0
     citations: list[Citation] = Field(default_factory=list)
     source_domains: list[str] = Field(default_factory=list)
     source_types: list[str] = Field(default_factory=list)
@@ -106,6 +108,10 @@ def extract_evaluation_result(
             raise ValueError(f"Invalid DocumentEvidence: {document.evidence_id}")
         evidence_chars += len(evidence.text)
     evidence_document_count = state.evidence_document_count
+    scratch_rewrite_count = sum(
+        entry.action.type == AgentActionType.REWRITE_SCRATCH
+        for entry in state.action_history
+    )
     steps = _completed_steps(spans)
     document_fetch_failures = [
         {
@@ -209,6 +215,8 @@ def extract_evaluation_result(
         evidence_document_count=evidence_document_count,
         no_evidence_document_count=len(state.documents) - evidence_document_count,
         evidence_chars=evidence_chars,
+        scratch_rewrite_count=scratch_rewrite_count,
+        scratch_chars=len(state.scratch),
         citations=state.citations,
         source_domains=source_domains,
         source_types=source_types,
@@ -332,6 +340,9 @@ def summarize_evaluation_results(results: list[NewsEvaluationResult]) -> dict[st
             result.evidence_chars > 0 for result in results
         ),
         "with_citations_count": sum(bool(result.citations) for result in results),
+        "total_scratch_rewrites": sum(
+            result.scratch_rewrite_count for result in results
+        ),
         "preferred_source_match_count": sum(
             result.preferred_source_type_match for result in results
         ),
@@ -375,6 +386,9 @@ def summarize_evaluation_results(results: list[NewsEvaluationResult]) -> dict[st
         ),
         "average_evidence_chars": round(
             sum(result.evidence_chars for result in results) / count, 2
+        ),
+        "average_scratch_chars": round(
+            sum(result.scratch_chars for result in results) / count, 2
         ),
         "average_action_seconds": round(
             sum(result.total_action_seconds for result in results) / count, 2

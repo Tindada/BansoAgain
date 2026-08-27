@@ -89,7 +89,10 @@ def _state_with_fetch_failure() -> AgentState:
         document_index_updates={},
     )
     return DefaultStateReducer().apply(
-        AgentState(query=UserQuery(text="overall question")),
+        AgentState(
+            query=UserQuery(text="overall question"),
+            scratch="private working notes",
+        ),
         AgentAction(
             type=AgentActionType.RESEARCH,
             params={"query": observation.query, "route": observation.route.value},
@@ -120,6 +123,7 @@ def test_selects_from_context_and_candidate_summaries() -> None:
         "research_history",
         "evidence_groups",
     }
+    assert "private working notes" not in llm_request.messages[1].content
     assert prompt["context"]["user_query"]["text"] == "overall question"
     assert prompt["context"]["research_history"] == [
         {

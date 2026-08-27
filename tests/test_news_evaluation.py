@@ -196,6 +196,8 @@ def test_summarize_evaluation_results() -> None:
             evidence_document_count=1,
             no_evidence_document_count=1,
             evidence_chars=30,
+            scratch_rewrite_count=2,
+            scratch_chars=12,
             citations=[
                 Citation(
                     reference="S1",
@@ -215,6 +217,8 @@ def test_summarize_evaluation_results() -> None:
     assert summary["average_evidence_chars"] == 15.0
     assert summary["average_evidence_documents"] == 0.5
     assert summary["average_no_evidence_documents"] == 0.5
+    assert summary["total_scratch_rewrites"] == 2
+    assert summary["average_scratch_chars"] == 6.0
 
 
 def test_evaluation_reports_handled_research_failures() -> None:
