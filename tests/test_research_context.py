@@ -32,7 +32,7 @@ from banso.agent.state import (
 )
 from banso.documents.models import Document, DocumentEvidence
 from banso.agent.research_context import (
-    CompletedResearchHistoryItem,
+    CompletedQueryHistoryItem,
     ResearchContextBuilder,
 )
 from banso.retrieval.models import (
@@ -156,15 +156,15 @@ def test_context_contains_research_history_and_evidence_groups() -> None:
     assert context.artifacts.document_count == 1
     assert context.artifacts.evidence_document_count == 1
     assert len(context.research_history) == 1
-    assert context.research_history[0].research_ref == "R1"
+    assert context.research_history[0].query_ref == "Q1"
     assert context.research_history[0].query == "focused query"
     assert context.research_history[0].source_domains == ["example.com"]
     assert context.research_history[0].selected_results == 1
-    assert context.evidence_groups[0].research_refs == ["R1"]
+    assert context.evidence_groups[0].query_refs == ["Q1"]
     assert context.evidence_groups[0].evidence_preview == "Supported claim"
     assert context.evidence_groups[0].evidence_truncated is False
     dumped = context.model_dump(mode="json")
-    assert "candidate_results" not in dumped
+    assert dumped["candidate_results"] == []
     assert "candidate_documents" not in dumped
     assert "work" not in dumped
 
@@ -214,7 +214,7 @@ def test_completed_history_summarizes_evidence_and_fetch_failures() -> None:
     context = ResearchContextBuilder(store, [RetrievalRoute.WEB]).build(state)
 
     history = context.research_history[0]
-    assert isinstance(history, CompletedResearchHistoryItem)
+    assert isinstance(history, CompletedQueryHistoryItem)
     assert history.fetch_failures == 2
     assert history.evidence_documents == 1
     assert history.no_evidence_documents == 1
@@ -232,7 +232,7 @@ def test_completed_history_summarizes_evidence_and_fetch_failures() -> None:
     ]
 
 
-def test_failed_research_still_advances_research_references() -> None:
+def test_failed_research_still_advances_query_references() -> None:
     state, store = _completed_state_and_store()
     failure = FailedResearchObservation(
         query="failed query",
@@ -249,11 +249,11 @@ def test_failed_research_still_advances_research_references() -> None:
 
     context = ResearchContextBuilder(store, [RetrievalRoute.WEB]).build(state)
 
-    assert [item.research_ref for item in context.research_history] == [
-        "R1",
-        "R2",
+    assert [item.query_ref for item in context.research_history] == [
+        "Q1",
+        "Q2",
     ]
-    assert context.evidence_groups[0].research_refs == ["R2"]
+    assert context.evidence_groups[0].query_refs == ["Q2"]
 
 
 def test_unprocessed_result_keeps_the_research_that_returned_it() -> None:
@@ -294,10 +294,10 @@ def test_unprocessed_result_keeps_the_research_that_returned_it() -> None:
         "discovery query",
         "later query",
     ]
-    assert context.evidence_groups[0].research_refs == ["R1"]
+    assert context.evidence_groups[0].query_refs == ["Q1"]
 
 
-def test_document_research_references_are_ordered_unique_or_empty() -> None:
+def test_document_query_references_are_ordered_unique_or_empty() -> None:
     state, store = _completed_state_and_store()
     first_entry = state.action_history[0]
     first = first_entry.observation
@@ -313,10 +313,63 @@ def test_document_research_references_are_ordered_unique_or_empty() -> None:
 
     context = ResearchContextBuilder(store, [RetrievalRoute.WEB]).build(state)
 
-    assert context.evidence_groups[0].research_refs == ["R1", "R2"]
+    assert context.evidence_groups[0].query_refs == ["Q1", "Q2"]
     state.action_history = []
     context = ResearchContextBuilder(store, [RetrievalRoute.WEB]).build(state)
-    assert context.evidence_groups[0].research_refs == []
+    assert context.evidence_groups[0].query_refs == []
+
+
+def test_search_candidates_and_documents_share_query_references() -> None:
+    state, store = _completed_state_and_store()
+    existing_result_id = next(iter(state.search_results))
+    candidate = SearchResult(
+        id="candidate",
+        title="Candidate",
+        url="https://example.com/candidate",
+    )
+    store.put(candidate)
+    search = AgentAction(
+        type=AgentActionType.SEARCH,
+        params={"query": "second query", "route": "web"},
+    )
+    state = DefaultStateReducer().apply(
+        state,
+        search,
+        CompletedSearchObservation(
+            route=RetrievalRoute.WEB,
+            search_result_ids=[existing_result_id, candidate.id],
+            retrieval_filter_report=RetrievalFilterReport(
+                input_count=2,
+                output_count=2,
+            ),
+            source_classification_report=SourceClassificationReport(
+                input_count=2,
+                recognized_count=0,
+                unknown_count=2,
+            ),
+            search_result_merge_report=SearchResultMergeReport(
+                candidate_count=2,
+                new_result_count=1,
+                reused_result_count=1,
+            ),
+            search_result_index_updates={candidate.url: candidate.id},
+        ),
+    )
+
+    context = ResearchContextBuilder(store, [RetrievalRoute.WEB]).build(state)
+
+    assert [
+        (item.query_ref, item.query)
+        for item in context.research_history
+    ] == [
+        ("Q1", "focused query"),
+        ("Q2", "second query"),
+    ]
+    assert context.research_history[0].selected_results == 1
+    assert context.research_history[1].selected_results is None
+    assert context.candidate_results[0].candidate_ref == "C2"
+    assert context.candidate_results[0].query_refs == ["Q2"]
+    assert context.evidence_groups[0].query_refs == ["Q1", "Q2"]
 
 
 def test_context_limits_visible_evidence_text() -> None:

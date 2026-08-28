@@ -139,7 +139,7 @@ def test_selects_from_context_and_candidate_summaries() -> None:
     assert prompt["context"]["user_query"]["text"] == "overall question"
     assert prompt["context"]["research_history"] == [
         {
-            "research_ref": "R1",
+            "query_ref": "Q1",
             "query": "prior query",
             "status": "completed",
             "fetch_failure_sources": [

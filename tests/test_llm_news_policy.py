@@ -150,7 +150,7 @@ def test_selects_research_with_an_enabled_route() -> None:
     assert "candidate_results" not in prompt["context"]
     assert "candidate_documents" not in prompt["context"]
     system_prompt = client.requests[0].messages[0].content
-    assert "research_refs" in system_prompt
+    assert "query_refs" in system_prompt
     assert "\n  research:\n    Instruction:" in system_prompt
     assert "only valid for web" in system_prompt
     assert (
@@ -279,7 +279,7 @@ def test_retrieval_failure_is_visible_to_policy_without_external_message() -> No
 
     prompt = json.loads(client.requests[0].messages[1].content)
     history = prompt["context"]["research_history"][0]
-    assert history["research_ref"] == "R1"
+    assert history["query_ref"] == "Q1"
     assert history["status"] == "failed"
     assert history["stage"] == "retrieval"
     assert history["source_domains"] == ["x.com"]

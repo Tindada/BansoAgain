@@ -109,7 +109,7 @@ class LLMSearchResultSelector:
                         item.model_dump(
                             mode="json",
                             include={
-                                "research_ref",
+                                "query_ref",
                                 "query",
                                 "status",
                                 "stage",
@@ -127,7 +127,7 @@ class LLMSearchResultSelector:
                         group.model_dump(
                             mode="json",
                             include={
-                                "research_refs",
+                                "query_refs",
                                 "document_title",
                                 "source",
                                 "published_at",
