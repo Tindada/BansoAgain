@@ -268,6 +268,7 @@ def test_search_results_from_multiple_routes_can_be_reduced_then_read() -> None:
     assert len(state.documents) == 1
     assert len(store.list(Document)) == 1
     assert len(store.list(DocumentEvidence)) == 1
+    assert state.remaining_research_capacity == state.budget.max_researches - 2
 
 
 def test_injected_selector_controls_which_candidates_are_processed() -> None:

@@ -4,9 +4,12 @@ import pytest
 
 import banso.apps.real_news as real_news
 from banso.apps.real_news import enabled_retrieval_routes_from_env
+from banso.artifacts.store import InMemoryArtifactStore
 from banso.agent.action import RetrievalRoute
 from banso.agent.executors.news_executor import NewsActionExecutor
 from banso.agent.policies.llm_news_policy import LLMNewsPolicy
+from banso.agent.policies.llm_search_read_policy import LLMSearchReadPolicy
+from banso.agent.research_context import ResearchContextBuilder
 from banso.agent.selection.llm_selector import LLMSearchResultSelector
 from banso.documents.http_fetcher import HTTPDocumentFetcher
 
@@ -35,6 +38,38 @@ def test_enabled_retrieval_routes_rejects_unknown_shapes(value, monkeypatch) -> 
 
     with pytest.raises(RuntimeError, match="must be"):
         enabled_retrieval_routes_from_env()
+
+
+@pytest.mark.parametrize(
+    ("value", "expected_type"),
+    [
+        (None, LLMNewsPolicy),
+        ("atomic", LLMNewsPolicy),
+        ("search_read", LLMSearchReadPolicy),
+    ],
+)
+def test_build_news_policy_from_env(value, expected_type, monkeypatch) -> None:
+    if value is None:
+        monkeypatch.delenv("BANSO_NEWS_POLICY", raising=False)
+    else:
+        monkeypatch.setenv("BANSO_NEWS_POLICY", value)
+
+    policy = real_news.build_news_policy_from_env(
+        _LLMClient(),
+        ResearchContextBuilder(InMemoryArtifactStore(), [RetrievalRoute.WEB]),
+    )
+
+    assert type(policy) is expected_type
+
+
+def test_build_news_policy_rejects_unknown_value(monkeypatch) -> None:
+    monkeypatch.setenv("BANSO_NEWS_POLICY", "search")
+
+    with pytest.raises(RuntimeError, match="must be 'atomic' or 'search_read'"):
+        real_news.build_news_policy_from_env(
+            _LLMClient(),
+            ResearchContextBuilder(InMemoryArtifactStore(), [RetrievalRoute.WEB]),
+        )
 
 
 def test_document_fetcher_defaults_to_http(monkeypatch) -> None:

@@ -170,6 +170,7 @@ def build_manifest(
         "budget": budget.model_dump(),
         "runtime": (
             {
+                "policy": os.getenv("BANSO_NEWS_POLICY", "atomic").strip().casefold(),
                 "retrieval_routes": os.getenv(
                     "BANSO_NEWS_RETRIEVAL_ROUTES", "web"
                 ),
@@ -251,7 +252,10 @@ async def run_case(
             stop_reason=stop_reason(state),
             step_count=state.current_step,
             research_count=sum(
-                entry.action.type == AgentActionType.RESEARCH
+                entry.action.type in {
+                    AgentActionType.RESEARCH,
+                    AgentActionType.SEARCH,
+                }
                 for entry in state.action_history
             ),
             document_count=len(state.documents),

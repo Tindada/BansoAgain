@@ -60,7 +60,9 @@ uv run python main.py \
 ```
 
 Set `BANSO_NEWS_RETRIEVAL_ROUTES` in `.env` to `web`, `local`, or `local,web`.
-With both routes enabled, the policy chooses a route for each research action.
+With both routes enabled, the policy chooses a route for each retrieval action.
+Set `BANSO_NEWS_POLICY` to `search_read` to let the policy search multiple times before
+selecting candidate documents to read; the default is `atomic` research.
 See [News Runtime](docs/news_runtime.md) for details.
 
 ## Local corpus

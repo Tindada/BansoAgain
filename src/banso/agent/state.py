@@ -90,9 +90,9 @@ class AgentState(BaseModel):
 
     @property
     def remaining_research_capacity(self) -> int:
-        """Return the number of research actions remaining in the run."""
+        """Return the number of retrieval actions remaining in the run."""
         completed = sum(
-            entry.action.type == AgentActionType.RESEARCH
+            entry.action.type in {AgentActionType.RESEARCH, AgentActionType.SEARCH}
             for entry in self.action_history
         )
         return max(self.budget.max_researches - completed, 0)

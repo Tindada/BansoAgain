@@ -1,8 +1,14 @@
 # News Runtime
 
-News Runtime 始终使用 LLM policy。Policy 每次通过一个原子的 `RESEARCH` action
-同时选择 query 和 retrieval route；runtime 在 action 内完成 retrieval、结果选择、
-document fetch 和 evidence extraction。
+News Runtime 始终使用 LLM policy。通过环境变量选择 research action 的粒度：
+
+```text
+BANSO_NEWS_POLICY=atomic|search_read
+```
+
+默认值为 `atomic`，每次通过一个原子的 `RESEARCH` action 完成 retrieval、结果选择、
+document fetch 和 evidence extraction。`search_read` 允许 policy 分别执行 `SEARCH` 和
+`READ`：可先进行多次搜索，再从累积的候选结果中选择文档读取。
 
 通过环境变量显式启用 routes：
 
@@ -12,7 +18,7 @@ BANSO_NEWS_RETRIEVAL_ROUTES=web|local|local,web
 
 默认值为 `web`。`web` 使用 Tavily retrieval 和 HTTP fetch；`local` 使用本地语料
 retrieval 和 corpus-aware fetch。启用 `local,web` 时两路都会初始化，由 LLM 在每次
-`RESEARCH` 中选择一路；runtime 不进行跨 route fallback。
+`RESEARCH` 或 `SEARCH` 中选择一路；runtime 不进行跨 route fallback。
 
 远程 document fetcher 通过以下变量选择：
 

@@ -27,16 +27,17 @@
 - 已定义核心 runtime、state、action、policy、executor、reducer 等基础模块；
   `AgentResult` 和 `RuntimeRunResult` 已集中到 runtime 模块。
 - 已实现最小 `AgentRuntime` 主循环，支持 policy 决策、executor 执行、reducer 更新状态和 trace 收集。
-- 已将新闻研究流程合并为原子的 `RESEARCH(query, route)` action，在 action 内完成
-  retrieval、结果选择、document fetch 和 evidence extraction。
+- 新闻研究既支持原子的 `RESEARCH(query, route)` action，也支持独立的 `SEARCH`
+  和 `READ` action，由配置选择对应 LLM Policy。
 - 已实现最小 `LLMNewsPolicy`，由 LLM 根据有界 Policy Context、可用 action 和剩余
   预算选择结构化 `AgentAction`，并校验动作参数与 research 预算；Action
   availability 由资源生命周期和剩余额度决定。
 - `LLMNewsPolicy` 的非法输出和已知 LLM 调用失败会作为带 reason 的 policy error
   向上抛出，由 Runtime Span 保存失败信息；Policy 选择失败不在 Policy
   内重试或自动回退。
-- 真实新闻运行入口始终使用 LLM Policy；通过 `BANSO_NEWS_RETRIEVAL_ROUTES`
-  显式启用 `web`、`local` 或两路，由 LLM 为每次 research 选择 route。
+- 真实新闻运行入口始终使用 LLM Policy；通过 `BANSO_NEWS_POLICY` 选择 `atomic`
+  或 `search_read`，通过 `BANSO_NEWS_RETRIEVAL_ROUTES` 显式启用 `web`、`local`
+  或两路，由 LLM 为每次 retrieval 选择 route。
 - 已通过 provider-independent 的 `TracingLLMClient` 统一记录 LLM 实际输入、原始
   provider 响应、completion 和 token usage；业务解析结果继续保存在对应
   Observation、Artifact 或外层 Span 中。

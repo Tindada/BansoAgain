@@ -59,6 +59,20 @@ ACTION_INSTRUCTIONS = {
         "search. Use it when the user requests specific sites or a broader search did not "
         "find the needed source, but do not restrict searches by default."
     ),
+    AgentActionType.SEARCH: (
+        "Search for candidate sources relevant to unresolved information needs. query is "
+        "sent to the selected route. route must be present in enabled_routes; web searches "
+        "current external results and local searches the periodically updated indexed "
+        "corpus. source_domains is optional and only valid for web. Each value must be a "
+        "bare domain without a scheme, port, path, or wildcard; omit it for an unrestricted "
+        "search."
+    ),
+    AgentActionType.READ: (
+        "Select candidate_results to fetch and extract as evidence. Pass their candidate_ref "
+        "values as search_result_refs. Candidates may come from different queries and "
+        "retrieval routes, up to "
+        "budget.max_results_per_research candidates."
+    ),
     AgentActionType.REWRITE_NOTES: (
         "Acquire no new evidence. Replace the complete internal working notes by "
         "organizing the current query, research history, and evidence into actionable "
@@ -78,6 +92,11 @@ ACTION_PARAM_FORMATS = {
         '{"query": "<non-empty string>", "route": "web|local", '
         '"source_domains": ["<bare domain>"]}'
     ),
+    AgentActionType.SEARCH: (
+        '{"query": "<non-empty string>", "route": "web|local", '
+        '"source_domains": ["<bare domain>"]}'
+    ),
+    AgentActionType.READ: '{"search_result_refs": ["<candidate_ref>"]}',
     AgentActionType.REWRITE_NOTES: "{}",
     AgentActionType.FINISH: "{}",
     AgentActionType.STOP: "{}",
@@ -116,6 +135,10 @@ class _LLMActionOutput(BaseModel):
 class LLMNewsPolicy:
     """Select bounded research and completion actions with an LLM."""
 
+    system_prompt = SYSTEM_PROMPT
+    decision_instructions = DECISION_INSTRUCTIONS
+    trace_operation = "news_policy.select_action"
+
     def __init__(
         self,
         client: LLMClient,
@@ -151,7 +174,7 @@ class LLMNewsPolicy:
                     model=self.model,
                     temperature=self.temperature,
                     max_tokens=self.max_tokens,
-                    metadata={"trace": {"operation": "news_policy.select_action"}},
+                    metadata={"trace": {"operation": self.trace_operation}},
                 )
             )
         except LLMError as error:
@@ -167,8 +190,9 @@ class LLMNewsPolicy:
             error.raw_output = response.content
             raise
 
-    @staticmethod
+    @classmethod
     def _build_system_prompt(
+        cls,
         available_actions: list[AgentActionType],
     ) -> str:
         action_types = "|".join(action.value for action in available_actions)
@@ -179,8 +203,8 @@ class LLMNewsPolicy:
             for action in available_actions
         )
         return (
-            f"{SYSTEM_PROMPT}\n\nAvailable actions:\n{instructions}\n\n"
-            f"{DECISION_INSTRUCTIONS}\n\n"
+            f"{cls.system_prompt}\n\nAvailable actions:\n{instructions}\n\n"
+            f"{cls.decision_instructions}\n\n"
             "Output format:\n"
             f'{{"type": "<{action_types}>", "params": <matching Params object>, '
             '"rationale": "<brief decision reason>"}\n'
@@ -237,16 +261,23 @@ class LLMNewsPolicy:
                 reason="invalid_action",
             )
 
-        if output.type == AgentActionType.RESEARCH:
-            params = self._validate_research_params(output.params, context)
-        else:
-            if output.params:
-                raise LLMPolicyError(
-                    f"{output.type.value} action does not accept params",
-                    reason="invalid_params",
-                )
-            params = {}
+        params = self._validate_action_params(output.type, output.params, context)
         return AgentAction(type=output.type, params=params, rationale=rationale)
+
+    def _validate_action_params(
+        self,
+        action_type: AgentActionType,
+        raw_params: dict[str, Any],
+        context: ResearchContext,
+    ) -> dict[str, Any]:
+        if action_type == AgentActionType.RESEARCH:
+            return self._validate_research_params(raw_params, context)
+        if raw_params:
+            raise LLMPolicyError(
+                f"{action_type.value} action does not accept params",
+                reason="invalid_params",
+            )
+        return {}
 
     @staticmethod
     def _validate_research_params(

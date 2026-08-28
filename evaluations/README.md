@@ -20,10 +20,10 @@ that the case met its minimum document, evidence, citation, and final-answer
 requirements. Answer and citation quality require a later human or judge
 evaluation stage.
 
-The runtime always uses the LLM policy. Select `web`, `local`, or both retrieval
-routes with `BANSO_NEWS_RETRIEVAL_ROUTES`. When both are enabled, the policy
-selects the route for each atomic research action; there is no automatic route
-fallback.
+The runtime always uses the LLM policy. Set `BANSO_NEWS_POLICY` to `atomic` (the
+default) or `search_read`, and select `web`, `local`, or both retrieval routes
+with `BANSO_NEWS_RETRIEVAL_ROUTES`. When both routes are enabled, the policy
+selects the route for each retrieval action; there is no automatic route fallback.
 
 Run the full evaluation, for example with both routes enabled:
 
@@ -48,7 +48,7 @@ each case that captured spans. `trace_id` links an evaluation result to that
 list, and the enclosing JSON object contains the evaluation case ID. The
 `.summary.json` records aggregate metrics, timestamps, output paths, the cumulative
 and active document budgets, enabled retrieval routes, local search mode, and
-configured model names. Aggregate research counts, active/shelved/unusable
+configured policy and model names. Aggregate research counts, active/shelved/unusable
 document counts, curation actions, and action durations include every repeated
 action. API keys are never written to these outputs.
 

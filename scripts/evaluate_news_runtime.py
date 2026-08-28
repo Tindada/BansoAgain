@@ -132,6 +132,7 @@ async def main(args: argparse.Namespace) -> None:
             "cases_path": str(args.cases),
             "results_path": str(output_path),
             "traces_path": str(traces_path),
+            "policy": os.getenv("BANSO_NEWS_POLICY", "atomic").strip().casefold(),
             "retrieval_routes": retrieval_routes,
             "corpus_search_mode": (
                 os.getenv("BANSO_CORPUS_SEARCH_MODE", "vector").strip().casefold()

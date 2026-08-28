@@ -21,6 +21,7 @@ from banso.documents.jina_fetcher import JinaDocumentFetcher
 from banso.documents.llm_extractor import LLMEvidenceExtractor
 from banso.agent.executors.news_executor import NewsActionExecutor
 from banso.agent.executors.research_pipeline import ResearchRouteComponents
+from banso.llm.client import LLMClient
 from banso.llm.config import (
     build_external_llm_client_from_env,
     build_vllm_llm_client_from_env,
@@ -29,6 +30,7 @@ from banso.llm.config import (
 from banso.llm.openai_sdk_client import ThinkingModeLLMClient
 from banso.llm.tracing import TracingLLMClient
 from banso.agent.policies.llm_news_policy import LLMNewsPolicy
+from banso.agent.policies.llm_search_read_policy import LLMSearchReadPolicy
 from banso.agent.research_context import ResearchContextBuilder
 from banso.agent.selection.llm_selector import LLMSearchResultSelector
 from banso.retrieval.source_classifier import (
@@ -87,6 +89,25 @@ def enabled_retrieval_routes_from_env() -> list[RetrievalRoute]:
         raise RuntimeError(
             "BANSO_NEWS_RETRIEVAL_ROUTES must be 'web', 'local', or 'local,web'"
         ) from error
+
+
+def build_news_policy_from_env(
+    client: LLMClient,
+    context_builder: ResearchContextBuilder,
+) -> LLMNewsPolicy:
+    """Build the configured atomic or search/read policy."""
+    value = os.getenv("BANSO_NEWS_POLICY", "atomic").strip().casefold()
+    policy_types = {
+        "atomic": LLMNewsPolicy,
+        "search_read": LLMSearchReadPolicy,
+    }
+    try:
+        policy_type = policy_types[value]
+    except KeyError as error:
+        raise RuntimeError(
+            "BANSO_NEWS_POLICY must be 'atomic' or 'search_read'"
+        ) from error
+    return policy_type(client=client, context_builder=context_builder)
 
 
 def build_real_news_runtime(
@@ -154,10 +175,7 @@ def build_real_news_runtime(
         )
 
     context_builder = ResearchContextBuilder(store, enabled_routes)
-    policy = LLMNewsPolicy(
-        client=agent_llm_client,
-        context_builder=context_builder,
-    )
+    policy = build_news_policy_from_env(agent_llm_client, context_builder)
     runtime = AgentRuntime(
         policy=policy,
         executor=NewsActionExecutor(
