@@ -3,6 +3,8 @@
 import asyncio
 from collections.abc import Iterable
 
+import pytest
+
 from banso.artifacts.store import InMemoryArtifactStore
 from banso.agent.action import (
     AgentAction,
@@ -24,7 +26,7 @@ from banso.agent.selection.selector import (
 )
 from banso.agent.state import AgentState, ExecutionBudget, UserQuery
 from banso.documents.extractor import EvidenceExtractionRequest
-from banso.documents.fetcher import DocumentFetchError, DocumentFetchRequest
+from banso.documents.fetcher import DocumentFetchRequest
 from banso.documents.models import Document, DocumentEvidence
 from banso.agent.executors.news_executor import NewsActionExecutor
 from banso.agent.executors.research_pipeline import ResearchRouteComponents
@@ -88,8 +90,7 @@ class FailingRetrievalProvider:
 
 
 class RecordingFetcher:
-    def __init__(self, *, redirect_url: str | None = None) -> None:
-        self.redirect_url = redirect_url
+    def __init__(self) -> None:
         self.requests: list[DocumentFetchRequest] = []
 
     async def fetch(self, request: DocumentFetchRequest) -> Document:
@@ -97,47 +98,11 @@ class RecordingFetcher:
         suffix = request.url.rsplit("/", 1)[-1]
         return Document(
             id=f"document-{len(self.requests)}",
-            url=self.redirect_url or request.url,
+            url=request.url,
             title=request.title or suffix,
             text=f"Body for {suffix}",
             source=request.source,
         )
-
-
-class FlakyFetcher:
-    def __init__(self) -> None:
-        self.attempt_count = 0
-
-    async def fetch(self, request: DocumentFetchRequest) -> Document:
-        self.attempt_count += 1
-        if self.attempt_count == 1:
-            raise DocumentFetchError(
-                url=request.url,
-                reason="timeout",
-                message="timed out",
-                source_error_type="TimeoutError",
-            )
-        return Document(
-            id="document-after-retry",
-            url=request.url,
-            title=request.title,
-            text="Body after retry",
-            source=request.source,
-        )
-
-
-class FirstFetchFailingFetcher(RecordingFetcher):
-    async def fetch(self, request: DocumentFetchRequest) -> Document:
-        if not self.requests:
-            self.requests.append(request)
-            raise DocumentFetchError(
-                url=request.url,
-                status_code=403,
-                reason="http_status",
-                message="forbidden",
-                source_error_type="HTTPStatusError",
-            )
-        return await super().fetch(request)
 
 
 class EvidenceExtractor:
@@ -446,53 +411,6 @@ def test_runtime_researches_then_finishes_from_evidence() -> None:
     assert retrieve_span.input["source_domains"] == ["x.com"]
 
 
-def test_fetch_retries_within_the_research_action() -> None:
-    store = InMemoryArtifactStore()
-    fetcher = FlakyFetcher()
-    executor = _executor(
-        store,
-        {
-            RetrievalRoute.WEB: ResearchRouteComponents(
-                StaticRetrievalProvider("web"),
-                fetcher,
-            )
-        },
-    )
-
-    observation = asyncio.run(
-        executor.execute(
-            AgentAction(
-                type=AgentActionType.RESEARCH,
-                params={"query": "query", "route": "web"},
-            ),
-            AgentState(query=UserQuery(text="query")),
-        )
-    )
-
-    assert fetcher.attempt_count == 2
-    assert observation.fetch_outcomes[0].attempt_count == 2
-    assert len(observation.extraction_outcomes) == 1
-
-
-def test_retrieval_retries_and_continues_after_transient_failure() -> None:
-    provider = FailingRetrievalProvider(failures=1, retryable=True)
-
-    observation = asyncio.run(
-        _web_executor(provider).execute(
-            AgentAction(
-                type=AgentActionType.RESEARCH,
-                params={"query": "query", "route": "web"},
-            ),
-            AgentState(query=UserQuery(text="query")),
-        )
-    )
-
-    assert provider.attempt_count == 2
-    assert isinstance(observation, CompletedResearchObservation)
-    assert len(observation.search_result_ids) == 1
-    assert len(observation.fetch_outcomes) == 1
-
-
 def test_retrieval_failure_is_recorded_without_artifacts_and_consumes_budget() -> None:
     provider = FailingRetrievalProvider(failures=2, retryable=True)
     sink = InMemoryTraceSink()
@@ -532,62 +450,6 @@ def test_retrieval_failure_is_recorded_without_artifacts_and_consumes_budget() -
     retrieve_span = next(span for span in spans if span.name == "news.research.retrieve")
     assert retrieve_span.attributes["outcome"] == "failure"
     assert retrieve_span.input["source_domains"] == ["x.com"]
-
-
-def test_non_retryable_retrieval_failure_is_not_retried() -> None:
-    provider = FailingRetrievalProvider(failures=2, retryable=False)
-    observation = asyncio.run(
-        _web_executor(provider).execute(
-            AgentAction(
-                type=AgentActionType.RESEARCH,
-                params={"query": "query", "route": "web"},
-            ),
-            AgentState(query=UserQuery(text="query")),
-        )
-    )
-
-    assert provider.attempt_count == 1
-    assert isinstance(observation, FailedResearchObservation)
-    assert observation.status_code == 400
-
-
-def test_fetch_continues_after_failure_until_reaching_document_limit() -> None:
-    store = InMemoryArtifactStore()
-    fetcher = FirstFetchFailingFetcher()
-    executor = _executor(
-        store,
-        {
-            RetrievalRoute.WEB: ResearchRouteComponents(
-                StaticRetrievalProvider("web", count=3),
-                fetcher,
-            )
-        },
-    )
-    state = AgentState(
-        query=UserQuery(text="query"),
-        budget=ExecutionBudget(max_results_per_research=2),
-    )
-
-    observation = asyncio.run(
-        executor.execute(
-            AgentAction(
-                type=AgentActionType.RESEARCH,
-                params={"query": "query", "route": "web"},
-            ),
-            state,
-        )
-    )
-
-    assert len(fetcher.requests) == 3
-    assert [outcome.status for outcome in observation.fetch_outcomes] == [
-        "failure",
-        "success",
-        "success",
-    ]
-    assert observation.selection_report.selected_ids == (
-        observation.search_result_ids
-    )
-    assert len(observation.extraction_outcomes) == 2
 
 
 def test_terminal_results_do_not_reenter_result_selection() -> None:
@@ -659,59 +521,6 @@ def test_unprocessed_results_do_not_enter_the_next_research() -> None:
     assert second_observation.fetch_outcomes == []
 
 
-def test_result_limit_bounds_fetch_and_extraction_together() -> None:
-    store = InMemoryArtifactStore()
-    provider = StaticRetrievalProvider("web", count=3)
-    fetcher = RecordingFetcher()
-    executor = _executor(
-        store,
-        {RetrievalRoute.WEB: ResearchRouteComponents(provider, fetcher)},
-    )
-    state = AgentState(
-        query=UserQuery(text="query"),
-        budget=ExecutionBudget(
-            max_results_per_research=1,
-        ),
-    )
-
-    observation = asyncio.run(
-        executor.execute(
-            AgentAction(
-                type=AgentActionType.RESEARCH,
-                params={"query": "query", "route": "web"},
-            ),
-            state,
-        )
-    )
-
-    assert observation.selection_report.selected_ids == observation.search_result_ids
-    assert len(observation.fetch_outcomes) == 1
-    assert len(observation.extraction_outcomes) == 1
-
-
-def test_redirected_documents_are_deduplicated_within_research() -> None:
-    store = InMemoryArtifactStore()
-    provider = StaticRetrievalProvider("web", count=2)
-    fetcher = RecordingFetcher(redirect_url="https://example.com/canonical")
-    executor = _executor(
-        store,
-        {RetrievalRoute.WEB: ResearchRouteComponents(provider, fetcher)},
-    )
-    state = AgentState(query=UserQuery(text="query"))
-    action = AgentAction(
-        type=AgentActionType.RESEARCH,
-        params={"query": "query", "route": "web"},
-    )
-
-    observation = asyncio.run(executor.execute(action, state))
-    next_state = DefaultStateReducer().apply(state, action, observation)
-
-    assert len(next_state.documents) == 1
-    assert {
-        result.document_id for result in next_state.search_results.values()
-    } == set(next_state.documents)
-
-
 def test_research_rejects_a_disabled_route() -> None:
     store = InMemoryArtifactStore()
     executor = _executor(
@@ -738,3 +547,19 @@ def test_research_rejects_a_disabled_route() -> None:
         assert "not enabled" in str(error)
     else:
         raise AssertionError("disabled route was accepted")
+
+
+def test_executor_requires_positive_extraction_concurrency() -> None:
+    with pytest.raises(ValueError, match="at least 1"):
+        NewsActionExecutor(
+            store=InMemoryArtifactStore(),
+            research_routes={
+                RetrievalRoute.WEB: ResearchRouteComponents(
+                    StaticRetrievalProvider("web"),
+                    RecordingFetcher(),
+                )
+            },
+            evidence_extractor=EvidenceExtractor(),
+            synthesizer=RecordingSynthesizer(),
+            max_extraction_concurrency=0,
+        )

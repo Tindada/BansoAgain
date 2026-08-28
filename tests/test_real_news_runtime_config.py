@@ -108,11 +108,11 @@ def test_web_only_runtime_builds_only_the_web_route(monkeypatch) -> None:
 
     assert isinstance(bundle.runtime.policy, LLMNewsPolicy)
     assert isinstance(bundle.runtime.executor, NewsActionExecutor)
-    selector = bundle.runtime.executor.research_pipeline.search_result_selector
+    selector = bundle.runtime.executor.search_result_selector
     assert isinstance(selector, LLMSearchResultSelector)
     assert selector.client is bundle.runtime.policy.client
     assert selector.context_builder is bundle.runtime.policy.context_builder
-    extractor = bundle.runtime.executor.research_pipeline.evidence_extractor
+    extractor = bundle.runtime.executor.evidence_extractor
     assert extractor.client.client.request_extra_body == extra_body
     assert set(bundle.runtime.executor.research_routes) == {RetrievalRoute.WEB}
     assert (

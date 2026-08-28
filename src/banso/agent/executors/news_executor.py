@@ -10,8 +10,8 @@ from banso.agent.action import (
     RetrievalRoute,
 )
 from banso.agent.executors.research_pipeline import (
-    ResearchPipeline,
     ResearchRouteComponents,
+    execute_research,
 )
 from banso.agent.executors.retry import RetryPolicy
 from banso.agent.observation import (
@@ -23,6 +23,9 @@ from banso.agent.observation import (
 from banso.agent.research_context import (
     build_research_history,
     document_reference_maps,
+)
+from banso.agent.selection.passthrough_selector import (
+    PassthroughSearchResultSelector,
 )
 from banso.agent.selection.selector import SearchResultSelector
 from banso.agent.state import AgentState
@@ -39,7 +42,7 @@ from banso.synthesis.synthesizer import (
 
 
 class NewsActionExecutor:
-    """Dispatch news actions and own the composite research pipeline."""
+    """Dispatch news actions and own their execution dependencies."""
 
     def __init__(
         self,
@@ -54,30 +57,40 @@ class NewsActionExecutor:
         retry_policy: RetryPolicy | None = None,
         notes_rewriter: NotesRewriter | None = None,
     ) -> None:
+        if not research_routes:
+            raise ValueError("research_routes must contain at least one route")
+        if max_extraction_concurrency < 1:
+            raise ValueError("max_extraction_concurrency must be at least 1")
+
         self.store = store
         self.synthesizer = synthesizer
         self.notes_rewriter = notes_rewriter
-        self.research_pipeline = ResearchPipeline(
-            store=store,
-            research_routes=research_routes,
-            evidence_extractor=evidence_extractor,
-            retrieval_filter=retrieval_filter,
-            source_classifier=source_classifier,
-            search_result_selector=search_result_selector,
-            max_extraction_concurrency=max_extraction_concurrency,
-            retry_policy=retry_policy,
+        self.research_routes = dict(research_routes)
+        self.evidence_extractor = evidence_extractor
+        self.retrieval_filter = retrieval_filter or RetrievalFilter()
+        self.source_classifier = source_classifier or SourceClassifier()
+        self.search_result_selector = (
+            search_result_selector or PassthroughSearchResultSelector()
         )
-
-    @property
-    def research_routes(self) -> dict[RetrievalRoute, ResearchRouteComponents]:
-        """Return the configured research routes."""
-        return self.research_pipeline.research_routes
+        self.max_extraction_concurrency = max_extraction_concurrency
+        self.retry_policy = retry_policy or RetryPolicy()
 
     async def execute(self, action: AgentAction, state: AgentState) -> Observation:
         """Execute a news-domain action."""
         if action.type == AgentActionType.RESEARCH:
             params = ResearchActionParams.model_validate(action.params)
-            return await self.research_pipeline.run(params, state)
+            return await execute_research(
+                params,
+                state,
+                store=self.store,
+                research_routes=self.research_routes,
+                evidence_extractor=self.evidence_extractor,
+                retrieval_filter=self.retrieval_filter,
+                source_classifier=self.source_classifier,
+                search_result_selector=self.search_result_selector,
+                max_extraction_concurrency=self.max_extraction_concurrency,
+                retry_policy=self.retry_policy,
+            )
 
         if action.type == AgentActionType.REWRITE_NOTES:
             return await self._rewrite_notes(state)
