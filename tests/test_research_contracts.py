@@ -11,13 +11,16 @@ from banso.agent.action import (
 )
 from banso.agent.observation import (
     CompletedResearchObservation,
+    CompletedSearchObservation,
     DocumentFetchFailure,
     EvidenceExtractionFailure,
     ExtractionFailure,
     ExtractionSuccess,
     FetchFailure,
     FetchSuccess,
+    ReadObservation,
     RewriteNotesObservation,
+    validate_observation,
 )
 from banso.agent.reducer import DefaultStateReducer
 from banso.agent.state import AgentState, UserQuery
@@ -32,40 +35,44 @@ from banso.retrieval.models import (
 def _research_observation() -> CompletedResearchObservation:
     return CompletedResearchObservation(
         query="query",
-        route=RetrievalRoute.WEB,
-        search_result_ids=["result-1"],
-        search_result_index_updates={"https://example.com": "result-1"},
-        search_result_merge_report=SearchResultMergeReport(
-            candidate_count=1,
-            new_result_count=1,
-            reused_result_count=0,
-        ),
-        retrieval_filter_report=RetrievalFilterReport(
-            input_count=1,
-            output_count=1,
-        ),
-        source_classification_report=SourceClassificationReport(
-            input_count=1,
-            recognized_count=0,
-            unknown_count=1,
+        search=CompletedSearchObservation(
+            route=RetrievalRoute.WEB,
+            search_result_ids=["result-1"],
+            search_result_index_updates={"https://example.com": "result-1"},
+            search_result_merge_report=SearchResultMergeReport(
+                candidate_count=1,
+                new_result_count=1,
+                reused_result_count=0,
+            ),
+            retrieval_filter_report=RetrievalFilterReport(
+                input_count=1,
+                output_count=1,
+            ),
+            source_classification_report=SourceClassificationReport(
+                input_count=1,
+                recognized_count=0,
+                unknown_count=1,
+            ),
         ),
         selection_report=SearchResultSelectionReport(
             candidate_ids=["result-1"],
             selected_ids=["result-1"],
         ),
-        fetch_outcomes=[
-            FetchSuccess(
-                search_result_id="result-1",
-                document_id="document-1",
-            )
-        ],
-        document_index_updates={"https://example.com": "document-1"},
-        extraction_outcomes=[
-            ExtractionSuccess(
-                document_id="document-1",
-                evidence_id="evidence-1",
-            )
-        ],
+        read=ReadObservation(
+            fetch_outcomes=[
+                FetchSuccess(
+                    search_result_id="result-1",
+                    document_id="document-1",
+                )
+            ],
+            document_index_updates={"https://example.com": "document-1"},
+            extraction_outcomes=[
+                ExtractionSuccess(
+                    document_id="document-1",
+                    evidence_id="evidence-1",
+                )
+            ],
+        ),
     )
 
 
@@ -135,10 +142,14 @@ def test_research_observation_reduces_the_entire_artifact_chain() -> None:
         params={"query": "query", "route": "web"},
     )
 
+    expected_observation = _research_observation()
+    observation = validate_observation(expected_observation.model_dump(mode="json"))
+    assert observation == expected_observation
+
     next_state = DefaultStateReducer().apply(
         state,
         action,
-        _research_observation(),
+        observation,
     )
 
     assert next_state.search_results["result-1"].document_id == "document-1"
@@ -147,7 +158,8 @@ def test_research_observation_reduces_the_entire_artifact_chain() -> None:
 
 
 def test_reducer_records_terminal_fetch_failure() -> None:
-    observation = _research_observation().model_copy(
+    observation = _research_observation()
+    observation.read = observation.read.model_copy(
         update={
             "fetch_outcomes": [
                 FetchFailure(
@@ -180,7 +192,8 @@ def test_reducer_records_terminal_fetch_failure() -> None:
 
 
 def test_reducer_records_document_without_evidence_after_extraction_failure() -> None:
-    observation = _research_observation().model_copy(
+    observation = _research_observation()
+    observation.read = observation.read.model_copy(
         update={
             "extraction_outcomes": [
                 ExtractionFailure(
@@ -209,13 +222,14 @@ def test_reducer_records_document_without_evidence_after_extraction_failure() ->
     assert document.evidence_id is None
     recorded = next_state.action_history[0].observation
     assert isinstance(recorded, CompletedResearchObservation)
-    outcome = recorded.extraction_outcomes[0]
+    outcome = recorded.read.extraction_outcomes[0]
     assert isinstance(outcome, ExtractionFailure)
     assert outcome.failure.reason == "llm_error"
 
 
 def test_reducer_records_document_without_evidence_after_empty_extraction() -> None:
-    observation = _research_observation().model_copy(
+    observation = _research_observation()
+    observation.read = observation.read.model_copy(
         update={
             "extraction_outcomes": [
                 ExtractionSuccess(document_id="document-1")
@@ -236,6 +250,6 @@ def test_reducer_records_document_without_evidence_after_empty_extraction() -> N
     assert document.evidence_id is None
     recorded = next_state.action_history[0].observation
     assert isinstance(recorded, CompletedResearchObservation)
-    outcome = recorded.extraction_outcomes[0]
+    outcome = recorded.read.extraction_outcomes[0]
     assert isinstance(outcome, ExtractionSuccess)
     assert outcome.evidence_id is None

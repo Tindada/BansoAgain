@@ -12,7 +12,9 @@ from banso.artifacts.store import InMemoryArtifactStore
 from banso.agent.action import AgentAction, AgentActionType
 from banso.agent.observation import (
     CompletedResearchObservation,
+    CompletedSearchObservation,
     Observation,
+    ReadObservation,
     StopObservation,
 )
 from banso.agent.runtime import AgentRuntime, RuntimeExecutionError
@@ -64,30 +66,34 @@ class StopExecutor:
             return StopObservation()
         return CompletedResearchObservation(
             query=state.query.text,
-            route="web",
-            search_result_ids=[],
-            search_result_index_updates={},
-            search_result_merge_report=SearchResultMergeReport(
-                candidate_count=0,
-                new_result_count=0,
-                reused_result_count=0,
-            ),
-            retrieval_filter_report=RetrievalFilterReport(
-                input_count=0,
-                output_count=0,
-            ),
-            source_classification_report=SourceClassificationReport(
-                input_count=0,
-                recognized_count=0,
-                unknown_count=0,
+            search=CompletedSearchObservation(
+                route="web",
+                search_result_ids=[],
+                search_result_index_updates={},
+                search_result_merge_report=SearchResultMergeReport(
+                    candidate_count=0,
+                    new_result_count=0,
+                    reused_result_count=0,
+                ),
+                retrieval_filter_report=RetrievalFilterReport(
+                    input_count=0,
+                    output_count=0,
+                ),
+                source_classification_report=SourceClassificationReport(
+                    input_count=0,
+                    recognized_count=0,
+                    unknown_count=0,
+                ),
             ),
             selection_report=SearchResultSelectionReport(
                 candidate_ids=[],
                 selected_ids=[],
             ),
-            fetch_outcomes=[],
-            document_index_updates={},
-            extraction_outcomes=[],
+            read=ReadObservation(
+                fetch_outcomes=[],
+                document_index_updates={},
+                extraction_outcomes=[],
+            ),
         )
 
 

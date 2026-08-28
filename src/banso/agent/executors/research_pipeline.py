@@ -56,7 +56,7 @@ async def execute_research(
     if components is None:
         raise ValueError(f"research route is not enabled: {params.route.value}")
 
-    search_outcome = await execute_search(
+    search_observation = await execute_search(
         SearchRequest(
             query=params.query,
             language=state.query.language,
@@ -72,33 +72,33 @@ async def execute_research(
         retry_policy=retry_policy,
         route=params.route,
     )
-    if isinstance(search_outcome, FailedSearchObservation):
+    if isinstance(search_observation, FailedSearchObservation):
         return FailedResearchObservation(
             query=params.query,
             route=params.route,
             source_domains=params.source_domains,
             stage="retrieval",
-            provider=search_outcome.provider,
-            reason=search_outcome.reason,
-            status_code=search_outcome.status_code,
-            message=search_outcome.message,
-            source_error_type=search_outcome.source_error_type,
-            retryable=search_outcome.retryable,
-            attempt_count=search_outcome.attempt_count,
+            provider=search_observation.provider,
+            reason=search_observation.reason,
+            status_code=search_observation.status_code,
+            message=search_observation.message,
+            source_error_type=search_observation.source_error_type,
+            retryable=search_observation.retryable,
+            attempt_count=search_observation.attempt_count,
         )
-    selection = await _select_results(
+    selection_outcome = await _select_results(
         params,
         state,
-        search_outcome.search_result_ids,
+        search_observation.search_result_ids,
         store=store,
         search_result_selector=search_result_selector,
         retry_policy=retry_policy,
     )
-    if isinstance(selection, FailedResearchObservation):
-        return selection
-    selected_results, selection_report = selection
+    if isinstance(selection_outcome, FailedResearchObservation):
+        return selection_outcome
+    selected_results, selection_report = selection_outcome
 
-    read_result = await execute_read(
+    read_observation = await execute_read(
         selected_results,
         evidence_query=state.query.text,
         document_index=state.document_index,
@@ -115,17 +115,10 @@ async def execute_research(
 
     return CompletedResearchObservation(
         query=params.query,
-        route=params.route,
         source_domains=params.source_domains,
-        search_result_ids=search_outcome.search_result_ids,
-        retrieval_filter_report=search_outcome.retrieval_filter_report,
-        source_classification_report=search_outcome.source_classification_report,
-        search_result_merge_report=search_outcome.search_result_merge_report,
+        search=search_observation,
         selection_report=selection_report,
-        fetch_outcomes=read_result.fetch_outcomes,
-        extraction_outcomes=read_result.extraction_outcomes,
-        search_result_index_updates=search_outcome.search_result_index_updates,
-        document_index_updates=read_result.document_index_updates,
+        read=read_observation,
     )
 
 

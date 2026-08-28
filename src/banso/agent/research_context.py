@@ -131,15 +131,16 @@ def _build_research_history_item(
             retryable=observation.retryable,
             attempt_count=observation.attempt_count,
         )
-
+    search = observation.search
+    read = observation.read
     fetch_failures = [
         outcome
-        for outcome in observation.fetch_outcomes
+        for outcome in read.fetch_outcomes
         if isinstance(outcome, FetchFailure)
     ]
     extraction_failures = [
         outcome
-        for outcome in observation.extraction_outcomes
+        for outcome in read.extraction_outcomes
         if isinstance(outcome, ExtractionFailure)
     ]
     fetch_failure_counts = Counter(
@@ -152,22 +153,22 @@ def _build_research_history_item(
     )
     evidence_documents = sum(
         isinstance(outcome, ExtractionSuccess) and outcome.evidence_id is not None
-        for outcome in observation.extraction_outcomes
+        for outcome in read.extraction_outcomes
     )
     no_evidence_documents = sum(
         isinstance(outcome, ExtractionSuccess) and outcome.evidence_id is None
-        for outcome in observation.extraction_outcomes
+        for outcome in read.extraction_outcomes
     )
     return CompletedResearchHistoryItem(
         research_ref=research_ref,
         query=observation.query,
-        route=observation.route,
         source_domains=observation.source_domains,
-        retrieved_results=len(observation.search_result_ids),
-        new_results=observation.search_result_merge_report.new_result_count,
-        reused_results=observation.search_result_merge_report.reused_result_count,
+        route=search.route,
+        retrieved_results=len(search.search_result_ids),
+        new_results=search.search_result_merge_report.new_result_count,
+        reused_results=search.search_result_merge_report.reused_result_count,
         selected_results=len(observation.selection_report.selected_ids),
-        fetch_successes=len(observation.fetch_outcomes) - len(fetch_failures),
+        fetch_successes=len(read.fetch_outcomes) - len(fetch_failures),
         fetch_failures=len(fetch_failures),
         fetch_failure_sources=[
             FetchFailureSource(
@@ -297,7 +298,7 @@ class ResearchContextBuilder:
                 continue
             document_ids = {
                 state.search_results[result_id].document_id
-                for result_id in observation.search_result_ids
+                for result_id in observation.search.search_result_ids
             }
             for document_id in document_ids:
                 if document_id is not None:

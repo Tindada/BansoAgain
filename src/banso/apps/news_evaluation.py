@@ -120,7 +120,7 @@ def extract_evaluation_result(
         }
         for _, observation in steps
         if isinstance(observation, CompletedResearchObservation)
-        for outcome in observation.fetch_outcomes
+        for outcome in observation.read.fetch_outcomes
         if isinstance(outcome, FetchFailure)
     ]
     evidence_extraction_failures = [
@@ -130,7 +130,7 @@ def extract_evaluation_result(
         }
         for _, observation in steps
         if isinstance(observation, CompletedResearchObservation)
-        for outcome in observation.extraction_outcomes
+        for outcome in observation.read.extraction_outcomes
         if isinstance(outcome, ExtractionFailure)
     ]
     research_failures = [
@@ -165,8 +165,8 @@ def extract_evaluation_result(
     for _, observation in steps:
         if not isinstance(observation, CompletedResearchObservation):
             continue
-        filter_report = observation.retrieval_filter_report
-        classification_report = observation.source_classification_report
+        filter_report = observation.search.retrieval_filter_report
+        classification_report = observation.search.source_classification_report
         retrieved_result_count += filter_report.input_count
         filtered_result_count += filter_report.output_count
         classified_result_count += classification_report.input_count

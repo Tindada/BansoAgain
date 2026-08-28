@@ -13,7 +13,9 @@ from banso.agent.action import (
 )
 from banso.agent.observation import (
     CompletedResearchObservation,
+    CompletedSearchObservation,
     FailedResearchObservation,
+    ReadObservation,
     ResearchObservation,
 )
 from banso.agent.reducer import DefaultStateReducer
@@ -71,30 +73,34 @@ def _empty_research(
     result_ids: list[str] = []
     return CompletedResearchObservation(
         query=query,
-        route=route,
-        search_result_ids=result_ids,
-        search_result_index_updates={},
-        search_result_merge_report=SearchResultMergeReport(
-            candidate_count=len(result_ids),
-            new_result_count=len(result_ids),
-            reused_result_count=0,
-        ),
-        retrieval_filter_report=RetrievalFilterReport(
-            input_count=len(result_ids),
-            output_count=len(result_ids),
-        ),
-        source_classification_report=SourceClassificationReport(
-            input_count=len(result_ids),
-            recognized_count=0,
-            unknown_count=len(result_ids),
+        search=CompletedSearchObservation(
+            route=route,
+            search_result_ids=result_ids,
+            search_result_index_updates={},
+            search_result_merge_report=SearchResultMergeReport(
+                candidate_count=len(result_ids),
+                new_result_count=len(result_ids),
+                reused_result_count=0,
+            ),
+            retrieval_filter_report=RetrievalFilterReport(
+                input_count=len(result_ids),
+                output_count=len(result_ids),
+            ),
+            source_classification_report=SourceClassificationReport(
+                input_count=len(result_ids),
+                recognized_count=0,
+                unknown_count=len(result_ids),
+            ),
         ),
         selection_report=SearchResultSelectionReport(
             candidate_ids=result_ids,
             selected_ids=result_ids,
         ),
-        fetch_outcomes=[],
-        document_index_updates={},
-        extraction_outcomes=[],
+        read=ReadObservation(
+            fetch_outcomes=[],
+            document_index_updates={},
+            extraction_outcomes=[],
+        ),
     )
 
 
@@ -106,7 +112,14 @@ def _apply_research(
         state,
         AgentAction(
             type=AgentActionType.RESEARCH,
-            params={"query": observation.query, "route": observation.route.value},
+            params={
+                "query": observation.query,
+                "route": (
+                    observation.route.value
+                    if isinstance(observation, FailedResearchObservation)
+                    else observation.search.route.value
+                ),
+            },
         ),
         observation,
     )

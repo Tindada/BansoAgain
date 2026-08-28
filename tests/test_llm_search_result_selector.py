@@ -8,8 +8,10 @@ import pytest
 from banso.agent.action import AgentAction, AgentActionType, RetrievalRoute
 from banso.agent.observation import (
     CompletedResearchObservation,
+    CompletedSearchObservation,
     DocumentFetchFailure,
     FetchFailure,
+    ReadObservation,
 )
 from banso.agent.reducer import DefaultStateReducer
 from banso.agent.research_context import ResearchContextBuilder
@@ -55,38 +57,45 @@ def _request(state: AgentState | None = None) -> SearchResultSelectionRequest:
 def _state_with_fetch_failure() -> AgentState:
     observation = CompletedResearchObservation(
         query="prior query",
-        route=RetrievalRoute.WEB,
-        search_result_ids=["failed-result"],
-        retrieval_filter_report=RetrievalFilterReport(input_count=1, output_count=1),
-        source_classification_report=SourceClassificationReport(
-            input_count=1,
-            recognized_count=0,
-            unknown_count=1,
-        ),
-        search_result_merge_report=SearchResultMergeReport(
-            candidate_count=1,
-            new_result_count=1,
-            reused_result_count=0,
+        search=CompletedSearchObservation(
+            route=RetrievalRoute.WEB,
+            search_result_ids=["failed-result"],
+            retrieval_filter_report=RetrievalFilterReport(
+                input_count=1,
+                output_count=1,
+            ),
+            source_classification_report=SourceClassificationReport(
+                input_count=1,
+                recognized_count=0,
+                unknown_count=1,
+            ),
+            search_result_merge_report=SearchResultMergeReport(
+                candidate_count=1,
+                new_result_count=1,
+                reused_result_count=0,
+            ),
+            search_result_index_updates={},
         ),
         selection_report=SearchResultSelectionReport(
             candidate_ids=["failed-result"],
             selected_ids=["failed-result"],
         ),
-        fetch_outcomes=[
-            FetchFailure(
-                search_result_id="failed-result",
-                failure=DocumentFetchFailure(
-                    reason="http_status",
-                    status_code=403,
-                    url="https://blocked.example/article",
-                    message="private fetch failure",
-                    source_error_type="HTTPStatusError",
-                ),
-            )
-        ],
-        extraction_outcomes=[],
-        search_result_index_updates={},
-        document_index_updates={},
+        read=ReadObservation(
+            fetch_outcomes=[
+                FetchFailure(
+                    search_result_id="failed-result",
+                    failure=DocumentFetchFailure(
+                        reason="http_status",
+                        status_code=403,
+                        url="https://blocked.example/article",
+                        message="private fetch failure",
+                        source_error_type="HTTPStatusError",
+                    ),
+                )
+            ],
+            extraction_outcomes=[],
+            document_index_updates={},
+        ),
     )
     return DefaultStateReducer().apply(
         AgentState(
@@ -95,7 +104,10 @@ def _state_with_fetch_failure() -> AgentState:
         ),
         AgentAction(
             type=AgentActionType.RESEARCH,
-            params={"query": observation.query, "route": observation.route.value},
+            params={
+                "query": observation.query,
+                "route": observation.search.route.value,
+            },
         ),
         observation,
     )

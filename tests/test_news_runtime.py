@@ -217,10 +217,13 @@ def test_research_routes_and_bounds_new_documents_atomically() -> None:
     observation = asyncio.run(executor.execute(action, state))
 
     assert isinstance(observation, CompletedResearchObservation)
-    assert len(observation.search_result_ids) == 3
-    assert observation.selection_report.selected_ids == observation.search_result_ids
-    assert len(observation.fetch_outcomes) == 2
-    assert len(observation.extraction_outcomes) == 2
+    assert len(observation.search.search_result_ids) == 3
+    assert (
+        observation.selection_report.selected_ids
+        == observation.search.search_result_ids
+    )
+    assert len(observation.read.fetch_outcomes) == 2
+    assert len(observation.read.extraction_outcomes) == 2
     assert len(web_fetcher.requests) == 2
     assert not local.requests
     assert not local_fetcher.requests
@@ -288,10 +291,10 @@ def test_injected_selector_controls_which_candidates_are_processed() -> None:
         )
     )
 
-    selected_id = observation.search_result_ids[1]
+    selected_id = observation.search.search_result_ids[1]
     assert selector.requests[0].research_query == "specific gap"
     assert [result.id for result in selector.requests[0].candidates] == (
-        observation.search_result_ids
+        observation.search.search_result_ids
     )
     assert observation.selection_report.selected_ids == [selected_id]
     assert fetcher.requests[0].url.endswith("/2")
@@ -523,7 +526,7 @@ def test_terminal_results_do_not_reenter_result_selection() -> None:
     )
 
     assert second_observation.selection_report.candidate_ids == []
-    assert second_observation.fetch_outcomes == []
+    assert second_observation.read.fetch_outcomes == []
 
 
 def test_unprocessed_results_do_not_enter_the_next_research() -> None:
@@ -560,9 +563,9 @@ def test_unprocessed_results_do_not_enter_the_next_research() -> None:
         )
     )
 
-    assert second_observation.search_result_ids == []
+    assert second_observation.search.search_result_ids == []
     assert second_observation.selection_report.candidate_ids == []
-    assert second_observation.fetch_outcomes == []
+    assert second_observation.read.fetch_outcomes == []
 
 
 def test_research_rejects_a_disabled_route() -> None:

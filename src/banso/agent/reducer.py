@@ -87,6 +87,35 @@ def _apply_extraction_outcomes(
         raise AssertionError(f"unexpected extraction outcome: {type(outcome).__name__}")
 
 
+def _apply_search_observation(
+    state: AgentState,
+    observation: CompletedSearchObservation,
+) -> None:
+    _register_search_results(
+        state,
+        observation.search_result_ids,
+        observation.route,
+    )
+    _update_index(
+        state.search_result_index,
+        observation.search_result_index_updates,
+        "search result index",
+    )
+
+
+def _apply_read_observation(
+    state: AgentState,
+    observation: ReadObservation,
+) -> None:
+    _apply_fetch_outcomes(state, observation.fetch_outcomes)
+    _update_index(
+        state.document_index,
+        observation.document_index_updates,
+        "document index",
+    )
+    _apply_extraction_outcomes(state, observation.extraction_outcomes)
+
+
 class StateReducer(Protocol):
     """Applies action observations to produce the next state."""
 
@@ -121,45 +150,12 @@ class DefaultStateReducer:
         next_state.last_action = action.type
 
         if isinstance(observation, CompletedResearchObservation):
-            _register_search_results(
-                next_state,
-                observation.search_result_ids,
-                observation.route,
-            )
-            _update_index(
-                next_state.search_result_index,
-                observation.search_result_index_updates,
-                "search result index",
-            )
-            _apply_fetch_outcomes(next_state, observation.fetch_outcomes)
-            _update_index(
-                next_state.document_index,
-                observation.document_index_updates,
-                "document index",
-            )
-            _apply_extraction_outcomes(
-                next_state,
-                observation.extraction_outcomes,
-            )
+            _apply_search_observation(next_state, observation.search)
+            _apply_read_observation(next_state, observation.read)
         elif isinstance(observation, CompletedSearchObservation):
-            _register_search_results(
-                next_state,
-                observation.search_result_ids,
-                observation.route,
-            )
-            _update_index(
-                next_state.search_result_index,
-                observation.search_result_index_updates,
-                "search result index",
-            )
+            _apply_search_observation(next_state, observation)
         elif isinstance(observation, ReadObservation):
-            _apply_fetch_outcomes(next_state, observation.fetch_outcomes)
-            _update_index(
-                next_state.document_index,
-                observation.document_index_updates,
-                "document index",
-            )
-            _apply_extraction_outcomes(next_state, observation.extraction_outcomes)
+            _apply_read_observation(next_state, observation)
         elif isinstance(observation, RewriteNotesObservation):
             next_state.notes = observation.content
         elif isinstance(observation, FinishObservation):

@@ -12,6 +12,7 @@ from banso.agent.action import (
 )
 from banso.agent.observation import (
     CompletedResearchObservation,
+    CompletedSearchObservation,
     DocumentFetchFailure,
     EvidenceExtractionFailure,
     ExtractionFailure,
@@ -19,6 +20,7 @@ from banso.agent.observation import (
     FailedResearchObservation,
     FetchFailure,
     FetchSuccess,
+    ReadObservation,
 )
 from banso.agent.reducer import DefaultStateReducer
 from banso.agent.state import (
@@ -82,32 +84,39 @@ def _completed_state_and_store() -> tuple[AgentState, InMemoryArtifactStore]:
     )
     observation = CompletedResearchObservation(
         query="focused query",
-        route=RetrievalRoute.WEB,
         source_domains=["example.com"],
-        search_result_ids=[result.id],
-        search_result_index_updates={result.url: result.id},
-        search_result_merge_report=SearchResultMergeReport(
-            candidate_count=1,
-            new_result_count=1,
-            reused_result_count=0,
-        ),
-        retrieval_filter_report=RetrievalFilterReport(input_count=1, output_count=1),
-        source_classification_report=SourceClassificationReport(
-            input_count=1,
-            recognized_count=1,
-            unknown_count=0,
+        search=CompletedSearchObservation(
+            route=RetrievalRoute.WEB,
+            search_result_ids=[result.id],
+            search_result_index_updates={result.url: result.id},
+            search_result_merge_report=SearchResultMergeReport(
+                candidate_count=1,
+                new_result_count=1,
+                reused_result_count=0,
+            ),
+            retrieval_filter_report=RetrievalFilterReport(
+                input_count=1,
+                output_count=1,
+            ),
+            source_classification_report=SourceClassificationReport(
+                input_count=1,
+                recognized_count=1,
+                unknown_count=0,
+            ),
         ),
         selection_report=SearchResultSelectionReport(
             candidate_ids=[result.id],
             selected_ids=[result.id],
         ),
-        fetch_outcomes=[
-            FetchSuccess(search_result_id=result.id, document_id=document.id)
-        ],
-        document_index_updates={document.url: document.id},
-        extraction_outcomes=[
-            ExtractionSuccess(document_id=document.id, evidence_id=evidence.id)
-        ],
+        read=ReadObservation(
+            fetch_outcomes=[
+                FetchSuccess(search_result_id=result.id, document_id=document.id)
+            ],
+            document_index_updates={document.url: document.id},
+            extraction_outcomes=[
+                ExtractionSuccess(document_id=document.id, evidence_id=evidence.id)
+            ],
+        ),
     )
     return DefaultStateReducer().apply(state, action, observation), store
 
@@ -120,7 +129,14 @@ def _research_entry(
         step_index=step_index,
         action=AgentAction(
             type=AgentActionType.RESEARCH,
-            params={"query": observation.query, "route": observation.route.value},
+            params={
+                "query": observation.query,
+                "route": (
+                    observation.route.value
+                    if isinstance(observation, FailedResearchObservation)
+                    else observation.search.route.value
+                ),
+            },
         ),
         observation=observation,
     )
@@ -157,7 +173,7 @@ def test_completed_history_summarizes_evidence_and_fetch_failures() -> None:
     state, store = _completed_state_and_store()
     observation = state.action_history[0].observation
     assert isinstance(observation, CompletedResearchObservation)
-    observation.fetch_outcomes.extend(
+    observation.read.fetch_outcomes.extend(
         [
             FetchFailure(
                 search_result_id="failed-1",
@@ -181,7 +197,7 @@ def test_completed_history_summarizes_evidence_and_fetch_failures() -> None:
             ),
         ]
     )
-    observation.extraction_outcomes.extend(
+    observation.read.extraction_outcomes.extend(
         [
             ExtractionSuccess(document_id="empty-document"),
             ExtractionFailure(
@@ -245,7 +261,7 @@ def test_unprocessed_result_keeps_the_research_that_returned_it() -> None:
     completed_entry = state.action_history[0]
     completed = completed_entry.observation
     assert isinstance(completed, CompletedResearchObservation)
-    result_id = completed.search_result_ids[0]
+    result_id = completed.search.search_result_ids[0]
 
     discovered = completed.model_copy(deep=True)
     discovered.query = "discovery query"
@@ -253,14 +269,16 @@ def test_unprocessed_result_keeps_the_research_that_returned_it() -> None:
         candidate_ids=[result_id],
         selected_ids=[],
     )
-    discovered.fetch_outcomes = []
-    discovered.extraction_outcomes = []
-    discovered.document_index_updates = {}
+    discovered.read = ReadObservation(
+        fetch_outcomes=[],
+        extraction_outcomes=[],
+        document_index_updates={},
+    )
 
     fetched = completed.model_copy(deep=True)
     fetched.query = "later query"
-    fetched.search_result_ids = []
-    fetched.search_result_merge_report = SearchResultMergeReport(
+    fetched.search.search_result_ids = []
+    fetched.search.search_result_merge_report = SearchResultMergeReport(
         candidate_count=0,
         new_result_count=0,
         reused_result_count=0,
@@ -288,7 +306,7 @@ def test_document_research_references_are_ordered_unique_or_empty() -> None:
         retrieval_route=RetrievalRoute.WEB,
         document_id="document",
     )
-    first.search_result_ids.append("redirected-result")
+    first.search.search_result_ids.append("redirected-result")
     second = first.model_copy(deep=True)
     second.query = "another query"
     state.action_history.append(_research_entry(1, second))

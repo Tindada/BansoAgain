@@ -95,50 +95,6 @@ ExtractionOutcome = Annotated[
 # Action observations
 
 
-class ResearchObservationBase(ObservationModel):
-    """Fields shared by all handled research action results."""
-
-    type: Literal[AgentActionType.RESEARCH] = AgentActionType.RESEARCH
-    query: str = Field(min_length=1)
-    route: RetrievalRoute
-    source_domains: list[str] | None = None
-
-
-class CompletedResearchObservation(ResearchObservationBase):
-    """Completed retrieval, selection, fetch, and extraction result."""
-
-    status: Literal["completed"] = "completed"
-    search_result_ids: list[str]
-    retrieval_filter_report: RetrievalFilterReport
-    source_classification_report: SourceClassificationReport
-    search_result_merge_report: SearchResultMergeReport
-    selection_report: SearchResultSelectionReport
-    fetch_outcomes: list[FetchOutcome]
-    extraction_outcomes: list[ExtractionOutcome]
-    search_result_index_updates: dict[str, str]
-    document_index_updates: dict[str, str]
-
-
-class FailedResearchObservation(ResearchObservationBase):
-    """Handled failure that prevented later research stages."""
-
-    status: Literal["failed"] = "failed"
-    stage: Literal["retrieval", "selection"]
-    reason: str
-    message: str
-    source_error_type: str
-    retryable: bool
-    attempt_count: int = Field(ge=1)
-    provider: str | None = None
-    status_code: int | None = None
-
-
-ResearchObservation = Annotated[
-    CompletedResearchObservation | FailedResearchObservation,
-    Field(discriminator="status"),
-]
-
-
 class SearchObservationBase(ObservationModel):
     """Fields shared by standalone search action results."""
 
@@ -183,6 +139,44 @@ class ReadObservation(ObservationModel):
     fetch_outcomes: list[FetchOutcome]
     extraction_outcomes: list[ExtractionOutcome]
     document_index_updates: dict[str, str]
+
+
+class ResearchObservationBase(ObservationModel):
+    """Fields shared by all handled research action results."""
+
+    type: Literal[AgentActionType.RESEARCH] = AgentActionType.RESEARCH
+    query: str = Field(min_length=1)
+    source_domains: list[str] | None = None
+
+
+class CompletedResearchObservation(ResearchObservationBase):
+    """Completed search, selection, and read results."""
+
+    status: Literal["completed"] = "completed"
+    search: CompletedSearchObservation
+    selection_report: SearchResultSelectionReport
+    read: ReadObservation
+
+
+class FailedResearchObservation(ResearchObservationBase):
+    """Handled failure that prevented later research stages."""
+
+    status: Literal["failed"] = "failed"
+    route: RetrievalRoute
+    stage: Literal["retrieval", "selection"]
+    reason: str
+    message: str
+    source_error_type: str
+    retryable: bool
+    attempt_count: int = Field(ge=1)
+    provider: str | None = None
+    status_code: int | None = None
+
+
+ResearchObservation = Annotated[
+    CompletedResearchObservation | FailedResearchObservation,
+    Field(discriminator="status"),
+]
 
 
 class RewriteNotesObservation(ObservationModel):

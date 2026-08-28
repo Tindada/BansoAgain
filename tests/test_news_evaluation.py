@@ -14,8 +14,10 @@ from banso.artifacts.store import InMemoryArtifactStore
 from banso.agent.action import AgentAction, AgentActionType
 from banso.agent.observation import (
     CompletedResearchObservation,
+    CompletedSearchObservation,
     FailedResearchObservation,
     FinishObservation,
+    ReadObservation,
     StopObservation,
 )
 from banso.agent.runtime import AgentRuntime
@@ -89,43 +91,51 @@ class Executor:
         result_ids = ["result"]
         return CompletedResearchObservation(
             query="focused",
-            route="web",
-            search_result_ids=result_ids,
-            search_result_index_updates={"https://example.com/article": "result"},
-            search_result_merge_report=SearchResultMergeReport(
-                candidate_count=len(result_ids),
-                new_result_count=len(result_ids),
-                reused_result_count=0,
-            ),
-            retrieval_filter_report=RetrievalFilterReport(
-                input_count=2,
-                output_count=len(result_ids),
-                dropped_invalid_url=1,
-            ),
-            source_classification_report=SourceClassificationReport(
-                input_count=len(result_ids),
-                recognized_count=len(result_ids),
-                unknown_count=0,
+            search=CompletedSearchObservation(
+                route="web",
+                search_result_ids=result_ids,
+                search_result_index_updates={
+                    "https://example.com/article": "result"
+                },
+                search_result_merge_report=SearchResultMergeReport(
+                    candidate_count=len(result_ids),
+                    new_result_count=len(result_ids),
+                    reused_result_count=0,
+                ),
+                retrieval_filter_report=RetrievalFilterReport(
+                    input_count=2,
+                    output_count=len(result_ids),
+                    dropped_invalid_url=1,
+                ),
+                source_classification_report=SourceClassificationReport(
+                    input_count=len(result_ids),
+                    recognized_count=len(result_ids),
+                    unknown_count=0,
+                ),
             ),
             selection_report=SearchResultSelectionReport(
                 candidate_ids=result_ids,
                 selected_ids=result_ids,
             ),
-            fetch_outcomes=[
-                {
-                    "status": "success",
-                    "search_result_id": "result",
-                    "document_id": "document",
-                }
-            ],
-            document_index_updates={"https://example.com/article": "document"},
-            extraction_outcomes=[
-                {
-                    "status": "success",
-                    "document_id": "document",
-                    "evidence_id": "evidence",
-                }
-            ],
+            read=ReadObservation(
+                fetch_outcomes=[
+                    {
+                        "status": "success",
+                        "search_result_id": "result",
+                        "document_id": "document",
+                    }
+                ],
+                document_index_updates={
+                    "https://example.com/article": "document"
+                },
+                extraction_outcomes=[
+                    {
+                        "status": "success",
+                        "document_id": "document",
+                        "evidence_id": "evidence",
+                    }
+                ],
+            ),
         )
 
 
