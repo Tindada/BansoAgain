@@ -1,54 +1,24 @@
 """Search execution helpers used by the news action executor."""
 
-from dataclasses import dataclass
-
 from banso.artifacts.store import ArtifactStore
 from banso.agent.action import RetrievalRoute
 from banso.agent.executors.retry import RetryPolicy, run_with_retry
+from banso.agent.observation import (
+    CompletedSearchObservation,
+    FailedSearchObservation,
+    SearchObservation,
+)
 from banso.agent.state import AgentState
 from banso.retrieval.filter import RetrievalFilter
-from banso.retrieval.models import (
-    RetrievalFilterReport,
-    SearchResult,
-    SearchResultMergeReport,
-    SourceClassificationReport,
-)
+from banso.retrieval.models import SearchResult, SearchResultMergeReport
 from banso.retrieval.provider import (
     RetrievalError,
-    RetrievalFailureReason,
     RetrievalProvider,
     SearchRequest,
 )
 from banso.retrieval.source_classifier import SourceClassifier
 from banso.retrieval.url_utils import normalize_url
 from banso.tracing.trace import start_span
-
-
-@dataclass(frozen=True)
-class SearchSuccess:
-    """Processed search results ready for selection or later use."""
-
-    search_result_ids: list[str]
-    search_result_index_updates: dict[str, str]
-    retrieval_filter_report: RetrievalFilterReport
-    source_classification_report: SourceClassificationReport
-    search_result_merge_report: SearchResultMergeReport
-
-
-@dataclass(frozen=True)
-class SearchFailure:
-    """Handled retrieval failure that produced no processed results."""
-
-    provider: str
-    reason: RetrievalFailureReason
-    message: str
-    source_error_type: str
-    retryable: bool
-    attempt_count: int
-    status_code: int | None = None
-
-
-SearchOutcome = SearchSuccess | SearchFailure
 
 
 async def execute_search(
@@ -61,10 +31,10 @@ async def execute_search(
     source_classifier: SourceClassifier,
     retry_policy: RetryPolicy,
     route: RetrievalRoute,
-) -> SearchOutcome:
+) -> SearchObservation:
     """Retrieve, normalize, classify, deduplicate, and store search results."""
     with start_span(
-        "news.research.retrieve",
+        "news.search.retrieve",
         input=request.model_dump(
             mode="json",
             include={"query", "source_domains"},
@@ -80,7 +50,8 @@ async def execute_search(
         )
         if attempt.error is not None:
             error = attempt.error
-            failure = SearchFailure(
+            failure = FailedSearchObservation(
+                route=route,
                 provider=error.provider,
                 reason=error.reason,
                 status_code=error.status_code,
@@ -90,7 +61,7 @@ async def execute_search(
                 attempt_count=attempt.attempt_count,
             )
             span.set_attribute("outcome", "failure")
-            span.set_output({"research_failure": failure})
+            span.set_output({"search_failure": failure})
             return failure
         if attempt.value is None:
             raise AssertionError("successful retrieval returned no result")
@@ -101,6 +72,7 @@ async def execute_search(
             store=store,
             retrieval_filter=retrieval_filter,
             source_classifier=source_classifier,
+            route=route,
         )
         span.set_attribute("outcome", "success")
         span.set_output(
@@ -121,7 +93,8 @@ def _process_results(
     store: ArtifactStore,
     retrieval_filter: RetrievalFilter,
     source_classifier: SourceClassifier,
-) -> SearchSuccess:
+    route: RetrievalRoute,
+) -> CompletedSearchObservation:
     filtered = retrieval_filter.apply(raw_results)
     classified = source_classifier.apply(filtered.results)
     index_updates: dict[str, str] = {}
@@ -145,7 +118,8 @@ def _process_results(
         result_ids.append(result_id)
         new_result_count += 1
 
-    return SearchSuccess(
+    return CompletedSearchObservation(
+        route=route,
         search_result_ids=result_ids,
         search_result_index_updates=index_updates,
         search_result_merge_report=SearchResultMergeReport(

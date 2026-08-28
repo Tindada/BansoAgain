@@ -2,8 +2,9 @@
 
 from typing import Protocol
 
-from banso.agent.action import AgentAction, AgentActionType
+from banso.agent.action import AgentAction, AgentActionType, RetrievalRoute
 from banso.agent.observation import (
+    CompletedSearchObservation,
     CompletedResearchObservation,
     ExtractionFailure,
     ExtractionOutcome,
@@ -13,6 +14,7 @@ from banso.agent.observation import (
     FetchSuccess,
     FinishObservation,
     Observation,
+    ReadObservation,
     RewriteNotesObservation,
 )
 from banso.agent.state import (
@@ -45,19 +47,27 @@ def _apply_fetch_outcomes(
             raise ValueError(f"fetch outcome contains an unknown search result: {result_id}")
         if isinstance(outcome, FetchSuccess):
             state.documents.setdefault(outcome.document_id, DocumentState())
-            state.search_results[result_id] = SearchResultState(
-                document_id=outcome.document_id,
-            )
+            result.document_id = outcome.document_id
             continue
         if isinstance(outcome, FetchFailure):
-            state.search_results[result_id] = SearchResultState(
-                failure=Failure(
-                    reason=outcome.failure.reason,
-                    status_code=outcome.failure.status_code,
-                ),
+            result.failure = Failure(
+                reason=outcome.failure.reason,
+                status_code=outcome.failure.status_code,
             )
             continue
         raise AssertionError(f"unexpected fetch outcome: {type(outcome).__name__}")
+
+
+def _register_search_results(
+    state: AgentState,
+    result_ids: list[str],
+    route: RetrievalRoute,
+) -> None:
+    for result_id in result_ids:
+        state.search_results.setdefault(
+            result_id,
+            SearchResultState(retrieval_route=route),
+        )
 
 
 def _apply_extraction_outcomes(
@@ -111,8 +121,11 @@ class DefaultStateReducer:
         next_state.last_action = action.type
 
         if isinstance(observation, CompletedResearchObservation):
-            for result_id in observation.search_result_ids:
-                next_state.search_results.setdefault(result_id, SearchResultState())
+            _register_search_results(
+                next_state,
+                observation.search_result_ids,
+                observation.route,
+            )
             _update_index(
                 next_state.search_result_index,
                 observation.search_result_index_updates,
@@ -128,6 +141,25 @@ class DefaultStateReducer:
                 next_state,
                 observation.extraction_outcomes,
             )
+        elif isinstance(observation, CompletedSearchObservation):
+            _register_search_results(
+                next_state,
+                observation.search_result_ids,
+                observation.route,
+            )
+            _update_index(
+                next_state.search_result_index,
+                observation.search_result_index_updates,
+                "search result index",
+            )
+        elif isinstance(observation, ReadObservation):
+            _apply_fetch_outcomes(next_state, observation.fetch_outcomes)
+            _update_index(
+                next_state.document_index,
+                observation.document_index_updates,
+                "document index",
+            )
+            _apply_extraction_outcomes(next_state, observation.extraction_outcomes)
         elif isinstance(observation, RewriteNotesObservation):
             next_state.notes = observation.content
         elif isinstance(observation, FinishObservation):

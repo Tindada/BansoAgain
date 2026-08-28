@@ -3,6 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
+from banso.agent.action import RetrievalRoute
 from banso.agent.state import (
     AgentState,
     DocumentState,
@@ -19,8 +20,9 @@ def test_state_derived_document_facts() -> None:
     state = AgentState(
         query=UserQuery(text="test"),
         search_results={
-            "pending": SearchResultState(),
+            "pending": SearchResultState(retrieval_route=RetrievalRoute.WEB),
             "failed": SearchResultState(
+                retrieval_route=RetrievalRoute.WEB,
                 failure=Failure(reason="http_status"),
             ),
         },
@@ -47,10 +49,15 @@ def test_execution_budget_rejects_invalid_values(budget: dict[str, int]) -> None
 
 
 def test_search_result_state_validates_pending_and_completed_outcomes() -> None:
-    assert SearchResultState() == SearchResultState()
-    assert SearchResultState(failure=Failure(reason="timeout")).failure is not None
+    pending = SearchResultState(retrieval_route=RetrievalRoute.WEB)
+    assert pending == SearchResultState(retrieval_route=RetrievalRoute.WEB)
+    assert SearchResultState(
+        retrieval_route=RetrievalRoute.WEB,
+        failure=Failure(reason="timeout"),
+    ).failure is not None
     with pytest.raises(ValidationError, match="both"):
         SearchResultState(
+            retrieval_route=RetrievalRoute.WEB,
             document_id="document",
             failure=Failure(reason="timeout"),
         )

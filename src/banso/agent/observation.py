@@ -139,6 +139,52 @@ ResearchObservation = Annotated[
 ]
 
 
+class SearchObservationBase(ObservationModel):
+    """Fields shared by standalone search action results."""
+
+    type: Literal[AgentActionType.SEARCH] = AgentActionType.SEARCH
+    route: RetrievalRoute
+
+
+class CompletedSearchObservation(SearchObservationBase):
+    """Search results stored for later reading."""
+
+    status: Literal["completed"] = "completed"
+    search_result_ids: list[str]
+    retrieval_filter_report: RetrievalFilterReport
+    source_classification_report: SourceClassificationReport
+    search_result_merge_report: SearchResultMergeReport
+    search_result_index_updates: dict[str, str]
+
+
+class FailedSearchObservation(SearchObservationBase):
+    """Handled failure that prevented a standalone search."""
+
+    status: Literal["failed"] = "failed"
+    provider: str
+    reason: str
+    status_code: int | None = None
+    message: str
+    source_error_type: str
+    retryable: bool
+    attempt_count: int = Field(ge=1)
+
+
+SearchObservation = Annotated[
+    CompletedSearchObservation | FailedSearchObservation,
+    Field(discriminator="status"),
+]
+
+
+class ReadObservation(ObservationModel):
+    """Fetch and extraction outcomes from selected search results."""
+
+    type: Literal[AgentActionType.READ] = AgentActionType.READ
+    fetch_outcomes: list[FetchOutcome]
+    extraction_outcomes: list[ExtractionOutcome]
+    document_index_updates: dict[str, str]
+
+
 class RewriteNotesObservation(ObservationModel):
     """Confirmation that the research notes were replaced."""
 
@@ -165,6 +211,8 @@ class StopObservation(ObservationModel):
 
 Observation = Annotated[
     ResearchObservation
+    | SearchObservation
+    | ReadObservation
     | RewriteNotesObservation
     | FinishObservation
     | StopObservation,

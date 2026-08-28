@@ -285,7 +285,8 @@ def test_document_research_references_are_ordered_unique_or_empty() -> None:
     first = first_entry.observation
     assert isinstance(first, CompletedResearchObservation)
     state.search_results["redirected-result"] = SearchResultState(
-        document_id="document"
+        retrieval_route=RetrievalRoute.WEB,
+        document_id="document",
     )
     first.search_result_ids.append("redirected-result")
     second = first.model_copy(deep=True)

@@ -13,7 +13,9 @@ from banso.agent.action import (
 )
 from banso.agent.observation import (
     CompletedResearchObservation,
+    CompletedSearchObservation,
     FailedResearchObservation,
+    ReadObservation,
 )
 from banso.agent.reducer import DefaultStateReducer
 from banso.agent.runtime import AgentRuntime
@@ -90,7 +92,8 @@ class FailingRetrievalProvider:
 
 
 class RecordingFetcher:
-    def __init__(self) -> None:
+    def __init__(self, final_url: str | None = None) -> None:
+        self.final_url = final_url
         self.requests: list[DocumentFetchRequest] = []
 
     async def fetch(self, request: DocumentFetchRequest) -> Document:
@@ -98,7 +101,7 @@ class RecordingFetcher:
         suffix = request.url.rsplit("/", 1)[-1]
         return Document(
             id=f"document-{len(self.requests)}",
-            url=request.url,
+            url=self.final_url or request.url,
             title=request.title or suffix,
             text=f"Body for {suffix}",
             source=request.source,
@@ -221,6 +224,47 @@ def test_research_routes_and_bounds_new_documents_atomically() -> None:
     assert len(web_fetcher.requests) == 2
     assert not local.requests
     assert not local_fetcher.requests
+
+
+def test_search_results_from_multiple_routes_can_be_reduced_then_read() -> None:
+    store = InMemoryArtifactStore()
+    web = StaticRetrievalProvider("web")
+    local = StaticRetrievalProvider("local")
+    final_url = "https://example.com/canonical"
+    web_fetcher = RecordingFetcher(final_url)
+    local_fetcher = RecordingFetcher(final_url)
+    executor = _executor(
+        store,
+        {
+            RetrievalRoute.WEB: ResearchRouteComponents(web, web_fetcher),
+            RetrievalRoute.LOCAL: ResearchRouteComponents(local, local_fetcher),
+        },
+    )
+    reducer = DefaultStateReducer()
+    state = AgentState(query=UserQuery(text="overall question"))
+    for route in (RetrievalRoute.WEB, RetrievalRoute.LOCAL):
+        search = AgentAction(
+            type=AgentActionType.SEARCH,
+            params={"query": f"{route} gap", "route": route},
+        )
+        search_observation = asyncio.run(executor.execute(search, state))
+        state = reducer.apply(state, search, search_observation)
+
+    read = AgentAction(
+        type=AgentActionType.READ,
+        params={"search_result_refs": ["C1", "C2"]},
+    )
+    read_observation = asyncio.run(executor.execute(read, state))
+    state = reducer.apply(state, read, read_observation)
+
+    assert isinstance(search_observation, CompletedSearchObservation)
+    assert web.requests[0].max_results == local.requests[0].max_results == 10
+    assert web_fetcher.requests[0].url == "https://example.com/web/1"
+    assert local_fetcher.requests[0].url == "https://example.com/local/1"
+    assert isinstance(read_observation, ReadObservation)
+    assert len(state.documents) == 1
+    assert len(store.list(Document)) == 1
+    assert len(store.list(DocumentEvidence)) == 1
 
 
 def test_injected_selector_controls_which_candidates_are_processed() -> None:
@@ -399,15 +443,15 @@ def test_runtime_researches_then_finishes_from_evidence() -> None:
     spans = sink.get_trace(output.trace_id)
     span_names = {span.name for span in spans}
     assert {
-        "news.research.retrieve",
+        "news.search.retrieve",
         "news.research.select",
-        "news.research.fetch",
-        "news.research.extract",
+        "news.read.fetch",
+        "news.read.extract",
     } <= span_names
     assert provider.requests[0].source_domains == ["x.com"]
     research = state.action_history[0].observation
     assert research.source_domains == ["x.com"]
-    retrieve_span = next(span for span in spans if span.name == "news.research.retrieve")
+    retrieve_span = next(span for span in spans if span.name == "news.search.retrieve")
     assert retrieve_span.input["source_domains"] == ["x.com"]
 
 
@@ -447,7 +491,7 @@ def test_retrieval_failure_is_recorded_without_artifacts_and_consumes_budget() -
     assert state.search_results == {}
     assert state.documents == {}
     spans = sink.get_trace(output.trace_id)
-    retrieve_span = next(span for span in spans if span.name == "news.research.retrieve")
+    retrieve_span = next(span for span in spans if span.name == "news.search.retrieve")
     assert retrieve_span.attributes["outcome"] == "failure"
     assert retrieve_span.input["source_domains"] == ["x.com"]
 

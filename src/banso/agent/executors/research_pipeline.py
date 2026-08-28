@@ -7,9 +7,10 @@ from banso.artifacts.store import ArtifactStore
 from banso.agent.action import ResearchActionParams, RetrievalRoute
 from banso.agent.executors.read import execute_read
 from banso.agent.executors.retry import RetryPolicy, run_with_retry
-from banso.agent.executors.search import SearchFailure, execute_search
+from banso.agent.executors.search import execute_search
 from banso.agent.observation import (
     CompletedResearchObservation,
+    FailedSearchObservation,
     FailedResearchObservation,
     ResearchObservation,
 )
@@ -71,7 +72,7 @@ async def execute_research(
         retry_policy=retry_policy,
         route=params.route,
     )
-    if isinstance(search_outcome, SearchFailure):
+    if isinstance(search_outcome, FailedSearchObservation):
         return FailedResearchObservation(
             query=params.query,
             route=params.route,
@@ -85,7 +86,6 @@ async def execute_research(
             retryable=search_outcome.retryable,
             attempt_count=search_outcome.attempt_count,
         )
-
     selection = await _select_results(
         params,
         state,
@@ -100,7 +100,9 @@ async def execute_research(
 
     read_result = await execute_read(
         selected_results,
-        state,
+        evidence_query=state.query.text,
+        document_index=state.document_index,
+        known_document_ids=state.documents.keys(),
         store=store,
         document_fetcher=components.document_fetcher,
         evidence_extractor=evidence_extractor,

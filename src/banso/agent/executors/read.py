@@ -2,7 +2,7 @@
 
 import asyncio
 from collections import deque
-from dataclasses import dataclass
+from collections.abc import Collection, Mapping
 
 from banso.artifacts.store import ArtifactStore
 from banso.agent.action import RetrievalRoute
@@ -16,8 +16,8 @@ from banso.agent.observation import (
     FetchFailure,
     FetchOutcome,
     FetchSuccess,
+    ReadObservation,
 )
-from banso.agent.state import AgentState
 from banso.documents.extractor import (
     EvidenceExtractionError,
     EvidenceExtractionRequest,
@@ -37,19 +37,12 @@ from banso.tracing.trace import start_span
 _MAX_FETCH_CONCURRENCY = 10
 
 
-@dataclass(frozen=True)
-class ReadResult:
-    """Fetch and extraction outcomes produced from selected search results."""
-
-    fetch_outcomes: list[FetchOutcome]
-    extraction_outcomes: list[ExtractionOutcome]
-    document_index_updates: dict[str, str]
-
-
 async def execute_read(
     candidates: list[SearchResult],
-    state: AgentState,
     *,
+    evidence_query: str,
+    document_index: Mapping[str, str],
+    known_document_ids: Collection[str],
     store: ArtifactStore,
     document_fetcher: DocumentFetcher,
     evidence_extractor: EvidenceExtractor,
@@ -58,16 +51,16 @@ async def execute_read(
     max_extraction_concurrency: int,
     retry_policy: RetryPolicy,
     route: RetrievalRoute,
-) -> ReadResult:
+) -> ReadObservation:
     """Fetch selected result pages and extract user-query-relevant evidence."""
     with start_span(
-        "news.research.fetch",
+        "news.read.fetch",
         attributes={"route": route.value},
     ) as span:
         fetch_outcomes, document_index_updates = await _fetch_from_queue(
             candidates,
             limit,
-            state,
+            document_index,
             store=store,
             document_fetcher=document_fetcher,
             ignored_query_params=ignored_query_params,
@@ -75,14 +68,14 @@ async def execute_read(
         )
         span.set_output({"fetch_outcomes": fetch_outcomes})
 
-    document_ids = _documents_to_extract(fetch_outcomes, state)
+    document_ids = _documents_to_extract(fetch_outcomes, known_document_ids)
     with start_span(
-        "news.research.extract",
+        "news.read.extract",
         attributes={"route": route.value},
     ) as span:
         extraction_outcomes = await _extract_documents(
             document_ids,
-            state,
+            evidence_query,
             store=store,
             evidence_extractor=evidence_extractor,
             max_extraction_concurrency=max_extraction_concurrency,
@@ -90,7 +83,7 @@ async def execute_read(
         )
         span.set_output({"extraction_outcomes": extraction_outcomes})
 
-    return ReadResult(
+    return ReadObservation(
         fetch_outcomes=fetch_outcomes,
         extraction_outcomes=extraction_outcomes,
         document_index_updates=document_index_updates,
@@ -99,7 +92,7 @@ async def execute_read(
 
 def _documents_to_extract(
     fetch_outcomes: list[FetchOutcome],
-    state: AgentState,
+    known_document_ids: Collection[str],
 ) -> list[str]:
     """Return newly fetched unique documents that require extraction."""
     return [
@@ -109,14 +102,14 @@ def _documents_to_extract(
             for outcome in fetch_outcomes
             if isinstance(outcome, FetchSuccess)
         )
-        if document_id not in state.documents
+        if document_id not in known_document_ids
     ]
 
 
 async def _fetch_from_queue(
     candidates: list[SearchResult],
     limit: int,
-    state: AgentState,
+    existing_document_index: Mapping[str, str],
     *,
     store: ArtifactStore,
     document_fetcher: DocumentFetcher,
@@ -124,7 +117,7 @@ async def _fetch_from_queue(
     retry_policy: RetryPolicy,
 ) -> tuple[list[FetchOutcome], dict[str, str]]:
     outcomes: list[FetchOutcome] = []
-    document_index = dict(state.document_index)
+    document_index = dict(existing_document_index)
     document_index_updates: dict[str, str] = {}
     new_document_count = 0
     queue = deque(candidates)
@@ -227,7 +220,7 @@ async def _fetch_from_queue(
 
 async def _extract_documents(
     document_ids: list[str],
-    state: AgentState,
+    evidence_query: str,
     *,
     store: ArtifactStore,
     evidence_extractor: EvidenceExtractor,
@@ -256,7 +249,7 @@ async def _extract_documents(
     ]:
         async with semaphore:
             request = EvidenceExtractionRequest(
-                query=state.query.text,
+                query=evidence_query,
                 document=document,
             )
             attempt = await run_with_retry(

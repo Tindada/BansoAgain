@@ -24,6 +24,8 @@ class AgentActionType(StrEnum):
     """Supported action types for the agent loop."""
 
     RESEARCH = "research"
+    SEARCH = "search"
+    READ = "read"
     REWRITE_NOTES = "rewrite_notes"
     FINISH = "finish"
     STOP = "stop"
@@ -66,6 +68,28 @@ class ResearchActionParams(BaseModel):
         if self.source_domains is not None and self.route != RetrievalRoute.WEB:
             raise ValueError("source_domains is only supported by the web route")
         return self
+
+
+class SearchActionParams(ResearchActionParams):
+    """Strict parameters accepted by a standalone search action."""
+
+
+class ReadActionParams(BaseModel):
+    """Strict parameters accepted by a standalone read action."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    search_result_refs: list[str] = Field(min_length=1)
+
+    @field_validator("search_result_refs")
+    @classmethod
+    def normalize_search_result_refs(cls, value: list[str]) -> list[str]:
+        result_refs = [result_ref.strip() for result_ref in value]
+        if any(not result_ref for result_ref in result_refs):
+            raise ValueError("search_result_refs must be non-empty")
+        if len(set(result_refs)) != len(result_refs):
+            raise ValueError("search_result_refs must be unique")
+        return result_refs
 
 
 class AgentAction(BaseModel):

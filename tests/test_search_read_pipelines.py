@@ -6,12 +6,13 @@ from banso.artifacts.store import InMemoryArtifactStore
 from banso.agent.action import RetrievalRoute
 from banso.agent.executors.read import execute_read
 from banso.agent.executors.retry import RetryPolicy
-from banso.agent.executors.search import (
-    SearchFailure,
-    SearchSuccess,
-    execute_search,
+from banso.agent.executors.search import execute_search
+from banso.agent.observation import (
+    CompletedSearchObservation,
+    ExtractionFailure,
+    FailedSearchObservation,
+    SearchObservation,
 )
-from banso.agent.observation import ExtractionFailure
 from banso.agent.state import AgentState, UserQuery
 from banso.documents.extractor import (
     EvidenceExtractionError,
@@ -182,7 +183,7 @@ def _run_search(
     provider,
     *,
     store: InMemoryArtifactStore | None = None,
-) -> SearchSuccess | SearchFailure:
+) -> SearchObservation:
     return asyncio.run(
         execute_search(
             request,
@@ -210,7 +211,9 @@ def _run_read(
     return asyncio.run(
         execute_read(
             candidates,
-            state,
+            evidence_query=state.query.text,
+            document_index=state.document_index,
+            known_document_ids=state.documents.keys(),
             store=store or InMemoryArtifactStore(),
             document_fetcher=fetcher,
             evidence_extractor=extractor,
@@ -253,7 +256,7 @@ def test_search_runs_provider_and_processes_results_without_reading() -> None:
 
     outcome = _run_search(request, state, provider, store=store)
 
-    assert isinstance(outcome, SearchSuccess)
+    assert isinstance(outcome, CompletedSearchObservation)
     assert provider.requests == [request]
     assert outcome.search_result_ids == ["existing-result", "new-result"]
     assert outcome.search_result_merge_report.new_result_count == 1
@@ -273,7 +276,7 @@ def test_search_retries_a_transient_provider_failure() -> None:
         provider,
     )
 
-    assert isinstance(outcome, SearchSuccess)
+    assert isinstance(outcome, CompletedSearchObservation)
     assert provider.attempt_count == 2
     assert outcome.search_result_ids == ["recovered-result"]
 
@@ -286,7 +289,7 @@ def test_search_does_not_retry_a_terminal_provider_failure() -> None:
         provider,
     )
 
-    assert isinstance(outcome, SearchFailure)
+    assert isinstance(outcome, FailedSearchObservation)
     assert provider.attempt_count == 1
     assert outcome.status_code == 400
 

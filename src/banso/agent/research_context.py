@@ -241,6 +241,20 @@ def document_reference_maps(state: AgentState) -> tuple[dict[str, str], dict[str
     }
 
 
+def search_result_reference_maps(
+    state: AgentState,
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Return stable rollout-local mappings between search result IDs and refs."""
+    id_to_ref = {
+        result_id: f"C{index}"
+        for index, result_id in enumerate(state.search_results, start=1)
+    }
+    return id_to_ref, {
+        result_ref: result_id
+        for result_id, result_ref in id_to_ref.items()
+    }
+
+
 class ResearchContextBuilder:
     """Build deterministic research context from state and artifacts."""
 

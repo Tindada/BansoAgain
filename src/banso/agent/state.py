@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
-from banso.agent.action import AgentAction, AgentActionType
+from banso.agent.action import AgentAction, AgentActionType, RetrievalRoute
 from banso.agent.observation import Observation
 from banso.synthesis.synthesizer import Citation
 
@@ -45,6 +45,7 @@ class Failure(BaseModel):
 class SearchResultState(BaseModel):
     """Run-scoped processing state for one search result artifact."""
 
+    retrieval_route: RetrievalRoute
     document_id: str | None = None
     failure: Failure | None = None
 
