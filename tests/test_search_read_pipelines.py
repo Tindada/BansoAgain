@@ -111,6 +111,25 @@ class FirstFetchFailingFetcher(RecordingFetcher):
         return await super().fetch(request)
 
 
+class TrackingFetcher:
+    def __init__(self) -> None:
+        self.active = 0
+        self.max_active = 0
+
+    async def fetch(self, request: DocumentFetchRequest) -> Document:
+        self.active += 1
+        self.max_active = max(self.max_active, self.active)
+        index = int(request.url.rsplit("/", 1)[-1])
+        await asyncio.sleep((12 - index) * 0.001)
+        self.active -= 1
+        return Document(
+            id=f"document-{index}",
+            title=request.title,
+            url=request.url,
+            text=f"body for {index}",
+        )
+
+
 class RecordingExtractor:
     def __init__(self) -> None:
         self.requests: list[EvidenceExtractionRequest] = []
@@ -335,22 +354,40 @@ def test_read_fetches_fallbacks_until_reaching_the_document_limit() -> None:
     assert len(result.extraction_outcomes) == 2
 
 
-def test_read_deduplicates_redirected_documents() -> None:
+def test_read_deduplicates_documents_redirected_within_a_fetch_batch() -> None:
     store = InMemoryArtifactStore()
+    fetcher = RecordingFetcher(redirect_url="https://example.com/canonical")
     result = _run_read(
         _candidates(2),
         AgentState(query=UserQuery(text="question")),
-        RecordingFetcher(redirect_url="https://example.com/canonical"),
+        fetcher,
         RecordingExtractor(),
         store=store,
         limit=2,
     )
 
+    assert len(fetcher.requests) == 2
     assert len(store.list(Document)) == 1
     assert len(result.document_index_updates) == 1
     assert {outcome.document_id for outcome in result.fetch_outcomes} == {
         "document-0"
     }
+
+
+def test_read_limits_fetch_concurrency_and_preserves_order() -> None:
+    fetcher = TrackingFetcher()
+    result = _run_read(
+        _candidates(12),
+        AgentState(query=UserQuery(text="question")),
+        fetcher,
+        RecordingExtractor(),
+        limit=12,
+    )
+
+    assert fetcher.max_active == 10
+    assert [outcome.document_id for outcome in result.fetch_outcomes] == [
+        f"document-{index}" for index in range(12)
+    ]
 
 
 def test_read_limits_extraction_concurrency_and_preserves_order() -> None:

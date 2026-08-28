@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from banso.artifacts.store import ArtifactStore
 from banso.agent.action import RetrievalRoute
-from banso.agent.executors.retry import RetryPolicy, run_with_retry
+from banso.agent.executors.retry import AttemptResult, RetryPolicy, run_with_retry
 from banso.agent.observation import (
     DocumentFetchFailure,
     EvidenceExtractionFailure,
@@ -32,6 +32,9 @@ from banso.documents.models import Document, DocumentEvidence
 from banso.retrieval.models import SearchResult
 from banso.retrieval.url_utils import normalize_url
 from banso.tracing.trace import start_span
+
+
+_MAX_FETCH_CONCURRENCY = 10
 
 
 @dataclass(frozen=True)
@@ -127,75 +130,97 @@ async def _fetch_from_queue(
     queue = deque(candidates)
 
     while queue and new_document_count < limit:
-        result = queue.popleft()
-        result_id = result.id
-
-        document_id = document_index.get(
-            normalize_url(
-                result.url,
-                ignored_query_params=ignored_query_params,
-            )
+        batch_size = min(
+            _MAX_FETCH_CONCURRENCY,
+            limit - new_document_count,
+            len(queue),
         )
-        if document_id is not None:
-            outcomes.append(
-                FetchSuccess(
-                    search_result_id=result_id,
-                    document_id=document_id,
-                    attempt_count=0,
+        batch = [queue.popleft() for _ in range(batch_size)]
+
+        async def fetch(
+            result: SearchResult,
+        ) -> tuple[
+            SearchResult,
+            str | None,
+            AttemptResult[Document, DocumentFetchError] | None,
+        ]:
+            document_id = document_index.get(
+                normalize_url(
+                    result.url,
+                    ignored_query_params=ignored_query_params,
                 )
             )
-            continue
+            if document_id is not None:
+                return result, document_id, None
 
-        request = DocumentFetchRequest(
-            url=result.url,
-            title=result.title,
-            source=result.source,
-            metadata={"search_result_id": result_id},
+            request = DocumentFetchRequest(
+                url=result.url,
+                title=result.title,
+                source=result.source,
+                metadata={"search_result_id": result.id},
+            )
+            attempt = await run_with_retry(
+                lambda: document_fetcher.fetch(request),
+                error_type=DocumentFetchError,
+                is_retryable=lambda error: error.retryable,
+                policy=retry_policy,
+            )
+            return result, None, attempt
+
+        batch_entries = await asyncio.gather(
+            *(fetch(result) for result in batch)
         )
-        attempt = await run_with_retry(
-            lambda: document_fetcher.fetch(request),
-            error_type=DocumentFetchError,
-            is_retryable=lambda error: error.retryable,
-            policy=retry_policy,
-        )
-        if attempt.error is not None:
-            error = attempt.error
+        for result, document_id, attempt in batch_entries:
+            if document_id is not None:
+                outcomes.append(
+                    FetchSuccess(
+                        search_result_id=result.id,
+                        document_id=document_id,
+                        attempt_count=0,
+                    )
+                )
+                continue
+
+            if attempt is None:
+                raise AssertionError("uncached fetch entry has no attempt")
+            if attempt.error is not None:
+                error = attempt.error
+                outcomes.append(
+                    FetchFailure(
+                        search_result_id=result.id,
+                        failure=DocumentFetchFailure(
+                            url=error.url,
+                            status_code=error.status_code,
+                            reason=error.reason,
+                            message=error.message,
+                            source_error_type=error.source_error_type,
+                        ),
+                        attempt_count=attempt.attempt_count,
+                    )
+                )
+                continue
+            document = attempt.value
+            if document is None:
+                raise AssertionError("successful fetch attempt returned no document")
+
+            normalized_document_url = normalize_url(
+                document.url,
+                ignored_query_params=ignored_query_params,
+            )
+            document_id = document_index.get(normalized_document_url)
+            if document_id is None:
+                document_id = store.put(document)
+                document_index[normalized_document_url] = document_id
+                document_index_updates[normalized_document_url] = document_id
+                new_document_count += 1
+
             outcomes.append(
-                FetchFailure(
-                    search_result_id=result_id,
-                    failure=DocumentFetchFailure(
-                        url=error.url,
-                        status_code=error.status_code,
-                        reason=error.reason,
-                        message=error.message,
-                        source_error_type=error.source_error_type,
-                    ),
+                FetchSuccess(
+                    search_result_id=result.id,
+                    document_id=document_id,
                     attempt_count=attempt.attempt_count,
                 )
             )
-            continue
-        document = attempt.value
-        if document is None:
-            raise AssertionError("successful fetch attempt returned no document")
-
-        normalized_document_url = normalize_url(
-            document.url,
-            ignored_query_params=ignored_query_params,
-        )
-        document_id = document_index.get(normalized_document_url)
-        if document_id is None:
-            document_id = store.put(document)
-            document_index[normalized_document_url] = document_id
-            document_index_updates[normalized_document_url] = document_id
-            new_document_count += 1
-
-        outcomes.append(
-            FetchSuccess(
-                search_result_id=result_id,
-                document_id=document_id,
-                attempt_count=attempt.attempt_count,
-            )
-        )
 
     return outcomes, document_index_updates
 
