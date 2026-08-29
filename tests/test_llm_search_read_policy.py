@@ -90,7 +90,7 @@ def test_selects_search_and_exposes_search_read_prompt() -> None:
     )
     request = client.requests[0]
     prompt = json.loads(request.messages[1].content)
-    assert prompt["context"]["candidate_results"] == []
+    assert prompt["context"]["retrieval_context"]["candidate_results"] == []
     assert request.metadata == {
         "trace": {"operation": "search_read_policy.select_action"}
     }
@@ -112,8 +112,8 @@ def test_selects_available_candidates_for_read() -> None:
 
     assert action.params == {"search_result_refs": ["C2", "C1"]}
     candidates = json.loads(client.requests[0].messages[1].content)["context"][
-        "candidate_results"
-    ]
+        "retrieval_context"
+    ]["candidate_results"]
     assert [candidate["candidate_ref"] for candidate in candidates] == ["C1", "C2"]
 
 

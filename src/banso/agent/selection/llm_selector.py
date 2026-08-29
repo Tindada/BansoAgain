@@ -121,7 +121,7 @@ class LLMSearchResultSelector:
                             },
                             exclude_none=True,
                         )
-                        for item in context.research_history
+                        for item in context.retrieval_context.research_history
                     ],
                     "evidence_groups": [
                         group.model_dump(
@@ -136,7 +136,7 @@ class LLMSearchResultSelector:
                             },
                             exclude_none=True,
                         )
-                        for group in context.evidence_groups
+                        for group in context.evidence_context.evidence_groups
                     ],
                 },
                 "current_search": {

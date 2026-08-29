@@ -290,18 +290,30 @@ class CandidateResult(BaseModel):
     published_at: datetime | None = None
 
 
+class EvidenceContext(BaseModel):
+    """Notes and extracted evidence available for answer decisions."""
+
+    notes: str
+    evidence_groups: list[EvidenceGroup]
+
+
+class RetrievalContext(BaseModel):
+    """Retrieval history and unread results available for research decisions."""
+
+    research_history: list[ResearchHistoryItem]
+    candidate_results: list[CandidateResult]
+
+
 class ResearchContext(BaseModel):
     """Compact facts describing the current research run."""
 
     user_query: UserQueryView
     reference_time: datetime
-    notes: str
+    evidence_context: EvidenceContext
+    retrieval_context: RetrievalContext
     enabled_routes: list[RetrievalRoute]
     budget: BudgetSummary
-    research_history: list[ResearchHistoryItem]
     artifacts: ArtifactSummary
-    candidate_results: list[CandidateResult]
-    evidence_groups: list[EvidenceGroup]
 
 
 def document_reference_maps(state: AgentState) -> tuple[dict[str, str], dict[str, str]]:
@@ -372,6 +384,24 @@ class ResearchContextBuilder:
             state,
             referenced_queries,
         )
+        candidate_results = [
+            self._build_candidate_result(
+                result_id_to_ref[result_id],
+                result_query_refs.get(result_id, []),
+                self._load_artifact(result_id, SearchResult),
+            )
+            for result_id, result_state in state.search_results.items()
+            if result_state.document_id is None and result_state.failure is None
+        ]
+        evidence_groups = [
+            self._build_evidence_group(
+                id_to_ref[document_id],
+                document_query_refs.get(document_id, []),
+                documents[document_id],
+                state.documents[document_id].evidence_id,
+            )
+            for document_id in evidence_document_ids
+        ]
 
         return ResearchContext(
             user_query=UserQueryView(
@@ -380,7 +410,14 @@ class ResearchContextBuilder:
                 time_range=state.query.time_range,
             ),
             reference_time=state.reference_time,
-            notes=state.notes,
+            evidence_context=EvidenceContext(
+                notes=state.notes,
+                evidence_groups=evidence_groups,
+            ),
+            retrieval_context=RetrievalContext(
+                research_history=research_history,
+                candidate_results=candidate_results,
+            ),
             enabled_routes=list(self.enabled_routes),
             budget=BudgetSummary(
                 remaining_steps=state.remaining_steps,
@@ -394,24 +431,6 @@ class ResearchContextBuilder:
                 evidence_document_count=evidence_count,
                 no_evidence_document_count=len(state.documents) - evidence_count,
             ),
-            candidate_results=[
-                self._build_candidate_result(
-                    result_id_to_ref[result_id],
-                    result_query_refs.get(result_id, []),
-                    self._load_artifact(result_id, SearchResult),
-                )
-                for result_id, result_state in state.search_results.items()
-                if result_state.document_id is None and result_state.failure is None
-            ],
-            evidence_groups=[
-                self._build_evidence_group(
-                    id_to_ref[document_id],
-                    document_query_refs.get(document_id, []),
-                    documents[document_id],
-                    state.documents[document_id].evidence_id,
-                )
-                for document_id in evidence_document_ids
-            ],
         )
 
     def _build_evidence_group(

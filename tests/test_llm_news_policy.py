@@ -169,7 +169,7 @@ def test_selects_research_with_an_enabled_route() -> None:
         '"params": <matching Params object>, '
         '"rationale": "<brief decision reason>"}'
     )
-    assert prompt["context"]["notes"] == ""
+    assert prompt["context"]["evidence_context"]["notes"] == ""
 
 
 def test_selects_a_parameterless_notes_rewrite() -> None:
@@ -284,7 +284,7 @@ def test_retrieval_failure_is_visible_to_policy_without_external_message() -> No
     asyncio.run(policy.select_action(state))
 
     prompt = json.loads(client.requests[0].messages[1].content)
-    history = prompt["context"]["research_history"][0]
+    history = prompt["context"]["retrieval_context"]["research_history"][0]
     assert history["query_ref"] == "Q1"
     assert history["status"] == "failed"
     assert history["stage"] == "retrieval"

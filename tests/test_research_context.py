@@ -155,16 +155,19 @@ def test_context_contains_research_history_and_evidence_groups() -> None:
     assert context.artifacts.search_result_count == 1
     assert context.artifacts.document_count == 1
     assert context.artifacts.evidence_document_count == 1
-    assert len(context.research_history) == 1
-    assert context.research_history[0].query_ref == "Q1"
-    assert context.research_history[0].query == "focused query"
-    assert context.research_history[0].source_domains == ["example.com"]
-    assert context.research_history[0].selected_results == 1
-    assert context.evidence_groups[0].query_refs == ["Q1"]
-    assert context.evidence_groups[0].evidence_preview == "Supported claim"
-    assert context.evidence_groups[0].evidence_truncated is False
+    history = context.retrieval_context.research_history
+    evidence = context.evidence_context.evidence_groups
+    assert len(history) == 1
+    assert history[0].query_ref == "Q1"
+    assert history[0].query == "focused query"
+    assert history[0].source_domains == ["example.com"]
+    assert history[0].selected_results == 1
+    assert evidence[0].query_refs == ["Q1"]
+    assert evidence[0].evidence_preview == "Supported claim"
+    assert evidence[0].evidence_truncated is False
     dumped = context.model_dump(mode="json")
-    assert dumped["candidate_results"] == []
+    assert dumped["evidence_context"]["notes"] == ""
+    assert dumped["retrieval_context"]["candidate_results"] == []
     assert "candidate_documents" not in dumped
     assert "work" not in dumped
 
@@ -213,7 +216,7 @@ def test_completed_history_summarizes_evidence_and_fetch_failures() -> None:
 
     context = ResearchContextBuilder(store, [RetrievalRoute.WEB]).build(state)
 
-    history = context.research_history[0]
+    history = context.retrieval_context.research_history[0]
     assert isinstance(history, CompletedQueryHistoryItem)
     assert history.fetch_failures == 2
     assert history.evidence_documents == 1
@@ -249,11 +252,13 @@ def test_failed_research_still_advances_query_references() -> None:
 
     context = ResearchContextBuilder(store, [RetrievalRoute.WEB]).build(state)
 
-    assert [item.query_ref for item in context.research_history] == [
+    assert [
+        item.query_ref for item in context.retrieval_context.research_history
+    ] == [
         "Q1",
         "Q2",
     ]
-    assert context.evidence_groups[0].query_refs == ["Q2"]
+    assert context.evidence_context.evidence_groups[0].query_refs == ["Q2"]
 
 
 def test_unprocessed_result_keeps_the_research_that_returned_it() -> None:
@@ -290,11 +295,13 @@ def test_unprocessed_result_keeps_the_research_that_returned_it() -> None:
 
     context = ResearchContextBuilder(store, [RetrievalRoute.WEB]).build(state)
 
-    assert [item.query for item in context.research_history] == [
+    assert [
+        item.query for item in context.retrieval_context.research_history
+    ] == [
         "discovery query",
         "later query",
     ]
-    assert context.evidence_groups[0].query_refs == ["Q1"]
+    assert context.evidence_context.evidence_groups[0].query_refs == ["Q1"]
 
 
 def test_document_query_references_are_ordered_unique_or_empty() -> None:
@@ -313,10 +320,10 @@ def test_document_query_references_are_ordered_unique_or_empty() -> None:
 
     context = ResearchContextBuilder(store, [RetrievalRoute.WEB]).build(state)
 
-    assert context.evidence_groups[0].query_refs == ["Q1", "Q2"]
+    assert context.evidence_context.evidence_groups[0].query_refs == ["Q1", "Q2"]
     state.action_history = []
     context = ResearchContextBuilder(store, [RetrievalRoute.WEB]).build(state)
-    assert context.evidence_groups[0].query_refs == []
+    assert context.evidence_context.evidence_groups[0].query_refs == []
 
 
 def test_search_candidates_and_documents_share_query_references() -> None:
@@ -360,16 +367,16 @@ def test_search_candidates_and_documents_share_query_references() -> None:
 
     assert [
         (item.query_ref, item.query)
-        for item in context.research_history
+        for item in context.retrieval_context.research_history
     ] == [
         ("Q1", "focused query"),
         ("Q2", "second query"),
     ]
-    assert context.research_history[0].selected_results == 1
-    assert context.research_history[1].selected_results is None
-    assert context.candidate_results[0].candidate_ref == "C2"
-    assert context.candidate_results[0].query_refs == ["Q2"]
-    assert context.evidence_groups[0].query_refs == ["Q1", "Q2"]
+    assert context.retrieval_context.research_history[0].selected_results == 1
+    assert context.retrieval_context.research_history[1].selected_results is None
+    assert context.retrieval_context.candidate_results[0].candidate_ref == "C2"
+    assert context.retrieval_context.candidate_results[0].query_refs == ["Q2"]
+    assert context.evidence_context.evidence_groups[0].query_refs == ["Q1", "Q2"]
 
 
 def test_context_limits_visible_evidence_text() -> None:
@@ -381,7 +388,7 @@ def test_context_limits_visible_evidence_text() -> None:
         max_evidence_preview_chars=9,
     ).build(state)
 
-    group = context.evidence_groups[0]
+    group = context.evidence_context.evidence_groups[0]
     assert group.evidence_preview == "Supported"
     assert group.evidence_truncated is True
 
@@ -411,7 +418,9 @@ def test_context_includes_all_evidence_documents_with_stable_refs() -> None:
         [RetrievalRoute.WEB],
     ).build(state)
 
-    assert [group.document_ref for group in context.evidence_groups] == [
+    assert [
+        group.document_ref for group in context.evidence_context.evidence_groups
+    ] == [
         "D1",
         "D2",
         "D3",
