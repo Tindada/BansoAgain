@@ -31,8 +31,9 @@ SYSTEM_PROMPT = (
     "and ranking requests, include every supported result that satisfies the requested "
     "scope, eligibility, ordering, and time frame. Return exactly one JSON object "
     "with the requested schema, using JSON strings for textual and numeric values. "
-    "Do not "
-    "include Markdown, citations, source labels, or confidence notes."
+    "Follow the question's output column names, value formats, name order, and sorting rules "
+    "exactly when they are explicitly specified. Do not include Markdown, citations, "
+    "source labels, or confidence notes."
 )
 
 NonBlankString = Annotated[
@@ -162,28 +163,30 @@ class GisaSynthesizer:
     def _json_schema_instruction(answer_type: GisaAnswerType) -> str:
         if answer_type == GisaAnswerType.ITEM:
             return (
-                '{"value": "the single answer"}. Return only the value requested '
+                '{"value": "<requested value>"}. Return only the value requested '
                 "by the question."
             )
         if answer_type == GisaAnswerType.SET:
             return (
-                '{"items": ["every distinct matching item"]}. Include all and only '
-                "matching items. Each item must contain only the requested entity "
-                "value, without unrequested titles or explanatory details. Order is "
-                "not significant."
+                '{"items": ["<matching item>", "<another matching item>"]}. Include '
+                "all and only matching items. Each item must contain only the requested "
+                "entity value, without unrequested titles or explanatory details. Order "
+                "is not significant."
             )
         if answer_type == GisaAnswerType.LIST:
             return (
-                '{"items": ["first item", "second item"]}. Include all requested '
+                '{"items": ["<first item>", "<second item>"]}. Include all requested '
                 "items in the requested order. Each item must contain only the "
                 "requested entity value, without unrequested titles or explanatory "
                 "details."
             )
         return (
-            '{"columns": ["Column 1", "Column 2"], '
-            '"rows": [["value 1", "value 2"]]}. Column names must correspond '
-            "exactly to the fields requested by the question. Every row must have "
-            "the same number of values as columns."
+            '{"columns": ["<requested column name>", '
+            '"<another requested column name>"], "rows": [['
+            '"<value for first column>", "<value for second column>"]]}. Use exact column '
+            "headers when the question specifies them; otherwise name columns directly "
+            "after the requested fields. Follow every requested value format and sorting "
+            "rule. Every row must have the same number of values as columns."
         )
 
     @staticmethod
