@@ -51,36 +51,39 @@ ACTION_INSTRUCTIONS = {
     AgentActionType.RESEARCH: (
         "Acquire new external evidence for one concrete unresolved information need. "
         "Atomically retrieve search results through one route, select relevant results, "
-        "fetch documents, and extract evidence. query is the search query sent to the "
-        "selected route. route must be present in enabled_routes; web searches current "
-        "external results and local searches the periodically updated indexed corpus. "
-        "source_domains is optional and only valid for web. Each value must be a bare "
-        "domain without a scheme, port, path, or wildcard; omit it for an unrestricted "
-        "search. Use it when the user requests specific sites or a broader search did not "
-        "find the needed source, but do not restrict searches by default."
+        "fetch documents, and store extracted evidence in evidence_groups. query is the "
+        "search query sent to the selected route. route must be present in enabled_routes; "
+        "web searches current external results and local searches the periodically updated "
+        "indexed corpus. source_domains is optional and only valid for web. Each value must "
+        "be a bare domain without a scheme, port, path, or wildcard; omit it for an "
+        "unrestricted search. Use it when the user requests specific sites or a broader "
+        "search did not find the needed source, but do not restrict searches by default."
     ),
     AgentActionType.SEARCH: (
-        "Search for candidate sources relevant to unresolved information needs. query is "
-        "sent to the selected route. route must be present in enabled_routes; web searches "
+        "Retrieve sources for an unresolved information need and store the returned "
+        "metadata and snippets in candidate_results for later read selection. query is sent "
+        "to the selected route. route must be present in enabled_routes; web searches "
         "current external results and local searches the periodically updated indexed "
         "corpus. source_domains is optional and only valid for web. Each value must be a "
         "bare domain without a scheme, port, path, or wildcard; omit it for an unrestricted "
         "search."
     ),
     AgentActionType.READ: (
-        "Select candidate_results to fetch and extract as evidence. Pass their candidate_ref "
-        "values as search_result_refs. Candidates may come from different queries and "
-        "retrieval routes, up to "
+        "Fetch and extract selected candidate_results. Successful extractions are stored in "
+        "evidence_groups for later decisions and synthesis. Select candidates by their "
+        "candidate_ref values. Candidates may come from different queries and retrieval "
+        "routes, up to "
         "budget.max_results_per_research candidates."
     ),
     AgentActionType.REWRITE_NOTES: (
-        "Acquire no new evidence. Replace the complete internal working notes by "
-        "organizing the current query, research history, and evidence into actionable "
-        "research state for subsequent decisions."
+        "Replace the complete notes using the current notes, research_history, and "
+        "evidence_groups to organize coverage, conflicts, intermediate results, and "
+        "unresolved needs for subsequent decisions. This action produces updated notes."
     ),
     AgentActionType.FINISH: (
-        "Acquire no new evidence. Synthesize the final answer from the current evidence "
-        "and notes, then terminate the run with that answer."
+        "Pass the user request, evidence_groups, and notes to synthesis, then terminate the "
+        "run with the resulting answer. candidate_results and research_history remain "
+        "outside synthesis."
     ),
     AgentActionType.STOP: (
         "Acquire no new evidence. Terminate the run without producing an answer."
