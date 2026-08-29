@@ -2,11 +2,13 @@
 
 import asyncio
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock
 
 import pytest
 
 from banso.benchmarks.gisa_synthesizer import GisaSynthesizer
 from banso.llm.fake import FakeLLMClient
+from banso.llm.models import LLMResponse
 from banso.synthesis.synthesizer import SynthesisRequest
 
 
@@ -58,6 +60,19 @@ def test_gisa_table_json_is_validated_and_converted_to_tsv() -> None:
     assert result.answer == (
         "```tsv\nName\tYear\nA\t2024\nB\t\n```"
     )
+
+
+def test_gisa_synthesis_retries_an_invalid_result_once() -> None:
+    client = AsyncMock()
+    client.generate.side_effect = [
+        LLMResponse(content='{"items":["A"]}'),
+        LLMResponse(content='{"value":"Answer"}'),
+    ]
+
+    result = asyncio.run(GisaSynthesizer(client).synthesize(_request("item")))
+
+    assert result.answer == "```tsv\nValue\nAnswer\n```"
+    assert client.generate.call_count == 2
 
 
 def test_gisa_json_rejects_wrong_schema() -> None:

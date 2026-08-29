@@ -3,11 +3,13 @@
 import asyncio
 import json
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock
 
 import pytest
 from pydantic import ValidationError
 
 from banso.llm.fake import FakeLLMClient
+from banso.llm.models import LLMResponse
 from banso.notes.llm_rewriter import LLMNotesRewriter
 from banso.notes.rewriter import (
     NotesEvidenceGroup,
@@ -54,6 +56,19 @@ def test_rewriter_builds_the_request() -> None:
     assert prompt["current_notes"] == "old notes"
     assert prompt["evidence_groups"][0]["document_ref"] == "D1"
     assert prompt["evidence_groups"][0]["evidence_text"] == evidence_text
+
+
+def test_rewriter_retries_an_invalid_result_once() -> None:
+    client = AsyncMock()
+    client.generate.side_effect = [
+        LLMResponse(content="not json"),
+        LLMResponse(content='{"content":"new notes"}'),
+    ]
+
+    result = asyncio.run(LLMNotesRewriter(client).rewrite(_request("evidence")))
+
+    assert result.content == "new notes"
+    assert client.generate.call_count == 2
 
 
 def test_notes_result_enforces_size_limit() -> None:

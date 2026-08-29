@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -45,7 +46,11 @@ class StaticClient:
 
 
 class RaisingClient:
+    def __init__(self) -> None:
+        self.request_count = 0
+
     async def generate(self, request: LLMRequest) -> LLMResponse:
+        self.request_count += 1
         raise LLMError(RuntimeError("provider failed"))
 
 
@@ -147,6 +152,7 @@ def test_selects_research_with_an_enabled_route() -> None:
     prompt = json.loads(client.requests[0].messages[1].content)
     assert set(prompt) == {"context"}
     assert prompt["context"]["enabled_routes"] == ["web"]
+    assert client.requests[0].response_format == {"type": "json_object"}
     assert "candidate_results" not in prompt["context"]
     assert "candidate_documents" not in prompt["context"]
     system_prompt = client.requests[0].messages[0].content
@@ -301,12 +307,44 @@ def test_rejects_disabled_route_and_invalid_output() -> None:
             disabled_policy.select_action(AgentState(query=UserQuery(text="question")))
         )
 
-    invalid_policy, _ = _policy("not json")
+    invalid_policy, invalid_client = _policy("not json")
     with pytest.raises(LLMPolicyError) as caught:
         asyncio.run(
             invalid_policy.select_action(AgentState(query=UserQuery(text="question")))
         )
     assert caught.value.reason == "invalid_json"
+    assert caught.value.raw_output == "not json"
+    assert len(invalid_client.requests) == 2
+
+
+def test_retries_an_invalid_action_output_once() -> None:
+    client = AsyncMock()
+    client.generate.side_effect = [
+        LLMResponse(content="not json"),
+        LLMResponse(
+            content=json.dumps(
+                {
+                    "type": "research",
+                    "params": {"query": "query", "route": "web"},
+                    "rationale": "Need evidence.",
+                }
+            )
+        ),
+    ]
+    policy = LLMNewsPolicy(
+        client,
+        ResearchContextBuilder(InMemoryArtifactStore(), [RetrievalRoute.WEB]),
+    )
+
+    action = asyncio.run(
+        policy.select_action(AgentState(query=UserQuery(text="question")))
+    )
+
+    assert action.type == AgentActionType.RESEARCH
+    assert client.generate.call_count == 2
+    first_request = client.generate.call_args_list[0].args[0]
+    second_request = client.generate.call_args_list[1].args[0]
+    assert first_request is second_request
 
 
 @pytest.mark.parametrize(
@@ -349,8 +387,9 @@ def test_rejects_invalid_action_outputs(output: dict, reason: str) -> None:
 
 
 def test_wraps_llm_errors() -> None:
+    client = RaisingClient()
     policy = LLMNewsPolicy(
-        RaisingClient(),
+        client,
         ResearchContextBuilder(
             InMemoryArtifactStore(),
             [RetrievalRoute.WEB],
@@ -361,6 +400,7 @@ def test_wraps_llm_errors() -> None:
         asyncio.run(policy.select_action(AgentState(query=UserQuery(text="question"))))
 
     assert caught.value.reason == "llm_error"
+    assert client.request_count == 1
 
 
 def test_research_budget_removes_research_from_available_actions() -> None:

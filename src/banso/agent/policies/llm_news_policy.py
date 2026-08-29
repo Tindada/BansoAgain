@@ -10,11 +10,11 @@ from banso.agent.action import (
     AgentActionType,
     ResearchActionParams,
 )
+from banso.agent.research_context import ResearchContext, ResearchContextBuilder
 from banso.agent.state import AgentState
-from banso.llm.client import LLMClient
+from banso.llm.client import LLMClient, generate_validated
 from banso.llm.errors import LLMError
 from banso.llm.models import LLMMessage, LLMMessageRole, LLMRequest
-from banso.agent.research_context import ResearchContext, ResearchContextBuilder
 
 SYSTEM_PROMPT = (
     "You are the action-selection policy for a research agent. Select exactly "
@@ -161,37 +161,45 @@ class LLMNewsPolicy:
         """Build the decision context and return one validated action."""
         context = self.context_builder.build(state)
         available_actions = self._available_actions(state)
+        request = LLMRequest(
+            messages=[
+                LLMMessage(
+                    role=LLMMessageRole.SYSTEM,
+                    content=self._build_system_prompt(available_actions),
+                ),
+                LLMMessage(
+                    role=LLMMessageRole.USER,
+                    content=self._build_user_prompt(context),
+                ),
+            ],
+            model=self.model,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            response_format={"type": "json_object"},
+            metadata={"trace": {"operation": self.trace_operation}},
+        )
+
+        def validate(content: str) -> AgentAction:
+            try:
+                output = self._parse_output(content)
+                return self._validate_action(output, context, available_actions)
+            except LLMPolicyError as error:
+                error.raw_output = content
+                raise
+
         try:
-            response = await self.client.generate(
-                LLMRequest(
-                    messages=[
-                        LLMMessage(
-                            role=LLMMessageRole.SYSTEM,
-                            content=self._build_system_prompt(available_actions),
-                        ),
-                        LLMMessage(
-                            role=LLMMessageRole.USER,
-                            content=self._build_user_prompt(context),
-                        ),
-                    ],
-                    model=self.model,
-                    temperature=self.temperature,
-                    max_tokens=self.max_tokens,
-                    metadata={"trace": {"operation": self.trace_operation}},
-                )
+            _, action = await generate_validated(
+                self.client,
+                request,
+                validate,
+                error_type=LLMPolicyError,
             )
         except LLMError as error:
             raise LLMPolicyError(
                 f"LLM action selection failed: {error}",
                 reason="llm_error",
             ) from error
-
-        try:
-            output = self._parse_output(response.content)
-            return self._validate_action(output, context, available_actions)
-        except LLMPolicyError as error:
-            error.raw_output = response.content
-            raise
+        return action
 
     @classmethod
     def _build_system_prompt(

@@ -11,7 +11,7 @@ from pydantic import (
 )
 
 from banso.benchmarks.gisa import GisaAnswerType, render_gisa_tsv
-from banso.llm.client import LLMClient
+from banso.llm.client import LLMClient, generate_validated
 from banso.llm.models import LLMMessage, LLMMessageRole, LLMRequest
 from banso.synthesis.synthesizer import (
     SynthesisEvidenceGroup,
@@ -80,23 +80,26 @@ class GisaSynthesizer:
 
     async def synthesize(self, request: SynthesisRequest) -> SynthesisResult:
         answer_type = self._answer_type(request)
-        response = await self.client.generate(
-            LLMRequest(
-                messages=[
-                    LLMMessage(role=LLMMessageRole.SYSTEM, content=SYSTEM_PROMPT),
-                    LLMMessage(
-                        role=LLMMessageRole.USER,
-                        content=self._build_user_prompt(request, answer_type),
-                    ),
-                ],
-                model=self.model,
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-                response_format={"type": "json_object"},
-                metadata={"trace": {"operation": "gisa.synthesizer.synthesize"}},
-            )
+        llm_request = LLMRequest(
+            messages=[
+                LLMMessage(role=LLMMessageRole.SYSTEM, content=SYSTEM_PROMPT),
+                LLMMessage(
+                    role=LLMMessageRole.USER,
+                    content=self._build_user_prompt(request, answer_type),
+                ),
+            ],
+            model=self.model,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            response_format={"type": "json_object"},
+            metadata={"trace": {"operation": "gisa.synthesizer.synthesize"}},
         )
-        answer = self._parse_and_render(answer_type, response.content)
+        response, answer = await generate_validated(
+            self.client,
+            llm_request,
+            lambda content: self._parse_and_render(answer_type, content),
+            error_type=ValueError,
+        )
         return SynthesisResult(
             answer=answer,
             citations=[],

@@ -2,7 +2,9 @@
 
 import json
 
-from banso.llm.client import LLMClient
+from pydantic import ValidationError
+
+from banso.llm.client import LLMClient, generate_validated
 from banso.llm.models import LLMMessage, LLMMessageRole, LLMRequest
 from banso.notes.rewriter import NotesRewriteRequest, NotesRewriteResult
 
@@ -35,23 +37,27 @@ class LLMNotesRewriter:
         self.max_tokens = max_tokens
 
     async def rewrite(self, request: NotesRewriteRequest) -> NotesRewriteResult:
-        response = await self.client.generate(
-            LLMRequest(
-                messages=[
-                    LLMMessage(role=LLMMessageRole.SYSTEM, content=SYSTEM_PROMPT),
-                    LLMMessage(
-                        role=LLMMessageRole.USER,
-                        content=self._build_user_prompt(request),
-                    ),
-                ],
-                model=self.model,
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-                response_format={"type": "json_object"},
-                metadata={"trace": {"operation": "notes_rewriter.rewrite"}},
-            )
+        llm_request = LLMRequest(
+            messages=[
+                LLMMessage(role=LLMMessageRole.SYSTEM, content=SYSTEM_PROMPT),
+                LLMMessage(
+                    role=LLMMessageRole.USER,
+                    content=self._build_user_prompt(request),
+                ),
+            ],
+            model=self.model,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            response_format={"type": "json_object"},
+            metadata={"trace": {"operation": "notes_rewriter.rewrite"}},
         )
-        return NotesRewriteResult.model_validate_json(response.content)
+        _, result = await generate_validated(
+            self.client,
+            llm_request,
+            NotesRewriteResult.model_validate_json,
+            error_type=ValidationError,
+        )
+        return result
 
     @staticmethod
     def _build_user_prompt(request: NotesRewriteRequest) -> str:
