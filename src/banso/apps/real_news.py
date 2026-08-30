@@ -29,8 +29,8 @@ from banso.llm.config import (
 )
 from banso.llm.openai_sdk_client import ThinkingModeLLMClient
 from banso.llm.tracing import TracingLLMClient
+from banso.agent.policies.llm_atomic_policy import LLMAtomicPolicy
 from banso.agent.policies.llm_news_policy import LLMNewsPolicy
-from banso.agent.policies.llm_search_read_policy import LLMSearchReadPolicy
 from banso.agent.research_context import ResearchContextBuilder
 from banso.agent.selection.llm_selector import LLMSearchResultSelector
 from banso.retrieval.source_classifier import (
@@ -51,6 +51,9 @@ class RealNewsRuntimeBundle:
     runtime: AgentRuntime
     store: InMemoryArtifactStore
     trace_sink: InMemoryTraceSink
+
+
+DEFAULT_NEWS_POLICY = "search_read"
 
 
 def build_tavily_provider_from_env() -> TavilyRetrievalProvider:
@@ -96,10 +99,10 @@ def build_news_policy_from_env(
     context_builder: ResearchContextBuilder,
 ) -> LLMNewsPolicy:
     """Build the configured atomic or search/read policy."""
-    value = os.getenv("BANSO_NEWS_POLICY", "atomic").strip().casefold()
+    value = os.getenv("BANSO_NEWS_POLICY", DEFAULT_NEWS_POLICY).strip().casefold()
     policy_types = {
-        "atomic": LLMNewsPolicy,
-        "search_read": LLMSearchReadPolicy,
+        "atomic": LLMAtomicPolicy,
+        "search_read": LLMNewsPolicy,
     }
     try:
         policy_type = policy_types[value]

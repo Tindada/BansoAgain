@@ -32,11 +32,12 @@
 - 已实现最小 `LLMNewsPolicy`，由 LLM 根据有界 Policy Context、可用 action 和剩余
   预算选择结构化 `AgentAction`，并校验动作参数与 research 预算；Action
   availability 由资源生命周期和剩余额度决定。
-- `LLMNewsPolicy` 的非法输出和已知 LLM 调用失败会作为带 reason 的 policy error
-  向上抛出，由 Runtime Span 保存失败信息；Policy 选择失败不在 Policy
-  内重试或自动回退。
-- 真实新闻运行入口始终使用 LLM Policy；通过 `BANSO_NEWS_POLICY` 选择 `atomic`
-  或 `search_read`，通过 `BANSO_NEWS_RETRIEVAL_ROUTES` 显式启用 `web`、`local`
+- `LLMNewsPolicy` 的结构校验失败固定重试一次，第二次失败和已知 LLM 调用失败会作为
+  带 reason 的 policy error 向上抛出，由 Runtime Span 保存失败信息；LLM 调用失败
+  不在 Policy 内重试，Policy 也不自动回退。
+- 真实新闻运行入口始终使用 LLM Policy；默认使用 `search_read`，可通过
+  `BANSO_NEWS_POLICY=atomic` 选择备选 policy；通过 `BANSO_NEWS_RETRIEVAL_ROUTES`
+  显式启用 `web`、`local`
   或两路，由 LLM 为每次 retrieval 选择 route。
 - 已通过 provider-independent 的 `TracingLLMClient` 统一记录 LLM 实际输入、原始
   provider 响应、completion 和 token usage；业务解析结果继续保存在对应

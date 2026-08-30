@@ -15,7 +15,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
-from banso.apps.real_news import RealNewsRuntimeBundle, build_real_news_runtime
+from banso.apps.real_news import (
+    DEFAULT_NEWS_POLICY,
+    RealNewsRuntimeBundle,
+    build_real_news_runtime,
+)
 from banso.benchmarks.gisa import (
     GisaAnswerType,
     GisaCase,
@@ -170,7 +174,7 @@ def build_manifest(
         "budget": budget.model_dump(),
         "runtime": (
             {
-                "policy": os.getenv("BANSO_NEWS_POLICY", "atomic").strip().casefold(),
+                "policy": os.getenv("BANSO_NEWS_POLICY", DEFAULT_NEWS_POLICY).strip().casefold(),
                 "retrieval_routes": os.getenv(
                     "BANSO_NEWS_RETRIEVAL_ROUTES", "web"
                 ),

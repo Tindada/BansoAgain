@@ -7,8 +7,8 @@ from banso.apps.real_news import enabled_retrieval_routes_from_env
 from banso.artifacts.store import InMemoryArtifactStore
 from banso.agent.action import RetrievalRoute
 from banso.agent.executors.news_executor import NewsActionExecutor
+from banso.agent.policies.llm_atomic_policy import LLMAtomicPolicy
 from banso.agent.policies.llm_news_policy import LLMNewsPolicy
-from banso.agent.policies.llm_search_read_policy import LLMSearchReadPolicy
 from banso.agent.research_context import ResearchContextBuilder
 from banso.agent.selection.llm_selector import LLMSearchResultSelector
 from banso.documents.http_fetcher import HTTPDocumentFetcher
@@ -44,8 +44,8 @@ def test_enabled_retrieval_routes_rejects_unknown_shapes(value, monkeypatch) -> 
     ("value", "expected_type"),
     [
         (None, LLMNewsPolicy),
-        ("atomic", LLMNewsPolicy),
-        ("search_read", LLMSearchReadPolicy),
+        ("atomic", LLMAtomicPolicy),
+        ("search_read", LLMNewsPolicy),
     ],
 )
 def test_build_news_policy_from_env(value, expected_type, monkeypatch) -> None:

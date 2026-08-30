@@ -6,9 +6,9 @@ News Runtime 始终使用 LLM policy。通过环境变量选择 research action 
 BANSO_NEWS_POLICY=atomic|search_read
 ```
 
-默认值为 `atomic`，每次通过一个原子的 `RESEARCH` action 完成 retrieval、结果选择、
-document fetch 和 evidence extraction。`search_read` 允许 policy 分别执行 `SEARCH` 和
-`READ`：可先进行多次搜索，再从累积的候选结果中选择文档读取。
+默认值为 `search_read`，policy 分别执行 `SEARCH` 和 `READ`：可先进行多次搜索，
+再从累积的候选结果中选择文档读取。`atomic` 是备选 policy，每次通过一个原子的
+`RESEARCH` action 完成 retrieval、结果选择、document fetch 和 evidence extraction。
 
 通过环境变量显式启用 routes：
 

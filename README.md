@@ -1,9 +1,8 @@
 # Banso
 
-Banso is an experimental news research agent. An LLM policy chooses atomic
-research actions, each of which retrieves search results, fetches documents,
-and extracts evidence. The agent can then curate the evidence-bearing documents
-and synthesize an answer with citations.
+Banso is an experimental news research agent. An LLM policy searches for candidate
+sources, selects documents to read, extracts evidence, and synthesizes an answer with
+citations.
 
 ## Setup
 
@@ -61,8 +60,9 @@ uv run python main.py \
 
 Set `BANSO_NEWS_RETRIEVAL_ROUTES` in `.env` to `web`, `local`, or `local,web`.
 With both routes enabled, the policy chooses a route for each retrieval action.
-Set `BANSO_NEWS_POLICY` to `search_read` to let the policy search multiple times before
-selecting candidate documents to read; the default is `atomic` research.
+The default policy can search multiple times before selecting candidate documents to
+read. Set `BANSO_NEWS_POLICY=atomic` to use the fallback policy that combines retrieval,
+selection, fetching, and extraction in each research action.
 See [News Runtime](docs/news_runtime.md) for details.
 
 ## Local corpus

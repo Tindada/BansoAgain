@@ -19,7 +19,7 @@ from banso.apps.news_evaluation import (
     load_evaluation_cases,
     summarize_evaluation_results,
 )
-from banso.apps.real_news import build_real_news_runtime
+from banso.apps.real_news import DEFAULT_NEWS_POLICY, build_real_news_runtime
 from banso.agent.runtime import RuntimeExecutionError
 from banso.agent.state import AgentState, ExecutionBudget, UserQuery
 from banso.tracing.trace import SpanRecord
@@ -132,7 +132,7 @@ async def main(args: argparse.Namespace) -> None:
             "cases_path": str(args.cases),
             "results_path": str(output_path),
             "traces_path": str(traces_path),
-            "policy": os.getenv("BANSO_NEWS_POLICY", "atomic").strip().casefold(),
+            "policy": os.getenv("BANSO_NEWS_POLICY", DEFAULT_NEWS_POLICY).strip().casefold(),
             "retrieval_routes": retrieval_routes,
             "corpus_search_mode": (
                 os.getenv("BANSO_CORPUS_SEARCH_MODE", "vector").strip().casefold()

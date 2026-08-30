@@ -1,145 +1,86 @@
-"""Tests for the LLM-backed atomic research policy."""
+"""Tests for the default LLM-backed news policy."""
 
 import asyncio
 import json
-from unittest.mock import AsyncMock
 
 import pytest
 
+from banso.agent.action import AgentAction, AgentActionType, RetrievalRoute
+from banso.agent.policies.llm_news_policy import LLMNewsPolicy, LLMPolicyError
+from banso.agent.research_context import ResearchContextBuilder
+from banso.agent.state import (
+    AgentState,
+    ExecutionBudget,
+    SearchResultState,
+    UserQuery,
+)
 from banso.artifacts.store import InMemoryArtifactStore
-from banso.agent.action import (
-    AgentAction,
-    AgentActionType,
-    RetrievalRoute,
-)
-from banso.agent.observation import (
-    CompletedResearchObservation,
-    CompletedSearchObservation,
-    FailedResearchObservation,
-    ReadObservation,
-    ResearchObservation,
-)
-from banso.agent.reducer import DefaultStateReducer
-from banso.agent.state import AgentState, DocumentState, ExecutionBudget, UserQuery
-from banso.documents.models import Document, DocumentEvidence
 from banso.llm.errors import LLMError
 from banso.llm.models import LLMRequest, LLMResponse
-from banso.agent.policies.llm_news_policy import LLMNewsPolicy, LLMPolicyError
-from banso.retrieval.models import (
-    RetrievalFilterReport,
-    SearchResultMergeReport,
-    SearchResultSelectionReport,
-    SourceClassificationReport,
-)
-from banso.agent.research_context import ResearchContextBuilder
+from banso.retrieval.models import SearchResult
 
 
-class StaticClient:
-    def __init__(self, output: dict | str) -> None:
-        self.output = output
+Output = dict[str, object] | str | Exception
+
+
+class StubClient:
+    def __init__(self, *outputs: Output) -> None:
+        self.outputs = outputs
         self.requests: list[LLMRequest] = []
 
     async def generate(self, request: LLMRequest) -> LLMResponse:
+        output = self.outputs[min(len(self.requests), len(self.outputs) - 1)]
         self.requests.append(request)
-        content = self.output if isinstance(self.output, str) else json.dumps(self.output)
+        if isinstance(output, Exception):
+            raise output
+        content = output if isinstance(output, str) else json.dumps(output)
         return LLMResponse(content=content)
 
 
-class RaisingClient:
-    def __init__(self) -> None:
-        self.request_count = 0
-
-    async def generate(self, request: LLMRequest) -> LLMResponse:
-        self.request_count += 1
-        raise LLMError(RuntimeError("provider failed"))
-
-
 def _policy(
-    output: dict | str,
+    *outputs: Output,
     store: InMemoryArtifactStore | None = None,
-    routes: list[RetrievalRoute] | None = None,
-) -> tuple[LLMNewsPolicy, StaticClient]:
-    client = StaticClient(output)
+) -> tuple[LLMNewsPolicy, StubClient]:
+    client = StubClient(*outputs)
     policy = LLMNewsPolicy(
         client,
         ResearchContextBuilder(
             store or InMemoryArtifactStore(),
-            routes or [RetrievalRoute.WEB],
+            [RetrievalRoute.WEB],
         ),
     )
     return policy, client
 
 
-def _empty_research(
+def _state_with_candidates(
+    count: int,
     *,
-    query: str = "query",
-    route: RetrievalRoute = RetrievalRoute.WEB,
-) -> CompletedResearchObservation:
-    result_ids: list[str] = []
-    return CompletedResearchObservation(
-        query=query,
-        search=CompletedSearchObservation(
-            route=route,
-            search_result_ids=result_ids,
-            search_result_index_updates={},
-            search_result_merge_report=SearchResultMergeReport(
-                candidate_count=len(result_ids),
-                new_result_count=len(result_ids),
-                reused_result_count=0,
-            ),
-            retrieval_filter_report=RetrievalFilterReport(
-                input_count=len(result_ids),
-                output_count=len(result_ids),
-            ),
-            source_classification_report=SourceClassificationReport(
-                input_count=len(result_ids),
-                recognized_count=0,
-                unknown_count=len(result_ids),
-            ),
-        ),
-        selection_report=SearchResultSelectionReport(
-            candidate_ids=result_ids,
-            selected_ids=result_ids,
-        ),
-        read=ReadObservation(
-            fetch_outcomes=[],
-            document_index_updates={},
-            extraction_outcomes=[],
-        ),
+    max_results_per_read: int = 10,
+) -> tuple[AgentState, InMemoryArtifactStore]:
+    store = InMemoryArtifactStore()
+    state = AgentState(
+        query=UserQuery(text="question"),
+        budget=ExecutionBudget(max_results_per_research=max_results_per_read),
     )
+    for index in range(1, count + 1):
+        result = SearchResult(
+            id=f"result-{index}",
+            title=f"Result {index}",
+            url=f"https://example.com/{index}",
+        )
+        store.put(result)
+        state.search_results[result.id] = SearchResultState(
+            retrieval_route=RetrievalRoute.WEB
+        )
+    return state, store
 
 
-def _apply_research(
-    state: AgentState,
-    observation: ResearchObservation,
-) -> AgentState:
-    return DefaultStateReducer().apply(
-        state,
-        AgentAction(
-            type=AgentActionType.RESEARCH,
-            params={
-                "query": observation.query,
-                "route": (
-                    observation.route.value
-                    if isinstance(observation, FailedResearchObservation)
-                    else observation.search.route.value
-                ),
-            },
-        ),
-        observation,
-    )
-
-
-def test_selects_research_with_an_enabled_route() -> None:
+def test_selects_search_and_exposes_candidates() -> None:
     policy, client = _policy(
         {
-            "type": "research",
-            "params": {
-                "query": "  focused query  ",
-                "route": "web",
-                "source_domains": [],
-            },
-            "rationale": "Need more evidence.",
+            "type": "search",
+            "params": {"query": "  focused query  ", "route": "web"},
+            "rationale": "Find candidates.",
         }
     )
 
@@ -147,204 +88,97 @@ def test_selects_research_with_an_enabled_route() -> None:
         policy.select_action(AgentState(query=UserQuery(text="question")))
     )
 
-    assert action.type == AgentActionType.RESEARCH
-    assert action.params == {"query": "focused query", "route": "web"}
-    prompt = json.loads(client.requests[0].messages[1].content)
-    assert set(prompt) == {"context"}
-    assert prompt["context"]["enabled_routes"] == ["web"]
-    assert client.requests[0].response_format == {"type": "json_object"}
-    assert "candidate_results" not in prompt["context"]
-    assert "candidate_documents" not in prompt["context"]
-    system_prompt = client.requests[0].messages[0].content
-    assert "query_refs" in system_prompt
-    assert "\n  research:\n    Instruction:" in system_prompt
-    assert "only valid for web" in system_prompt
-    assert (
-        '    Params: {"query": "<non-empty string>", "route": "web|local", '
-        '"source_domains": ["<bare domain>"]}'
-    ) in system_prompt
-    output_format = system_prompt.split("Output format:\n", 1)[1].splitlines()[0]
-    assert output_format == (
-        '{"type": "<research|rewrite_notes|stop>", '
-        '"params": <matching Params object>, '
-        '"rationale": "<brief decision reason>"}'
+    assert action == AgentAction(
+        type=AgentActionType.SEARCH,
+        params={"query": "focused query", "route": "web"},
+        rationale="Find candidates.",
     )
-    assert prompt["context"]["evidence_context"]["notes"] == ""
+    request = client.requests[0]
+    context = json.loads(request.messages[1].content)["context"]
+    assert context["retrieval_context"]["candidate_results"] == []
+    assert request.response_format == {"type": "json_object"}
+    assert request.metadata == {"trace": {"operation": "news_policy.select_action"}}
+    assert '"type": "<search|rewrite_notes|stop>"' in request.messages[0].content
 
 
-def test_selects_a_parameterless_notes_rewrite() -> None:
-    policy, _ = _policy(
+def test_selects_available_candidates_for_read() -> None:
+    state, store = _state_with_candidates(2)
+    policy, client = _policy(
         {
-            "type": "rewrite_notes",
-            "params": {},
-            "rationale": "Preserve intermediate coverage.",
-        }
-    )
-
-    action = asyncio.run(
-        policy.select_action(AgentState(query=UserQuery(text="question")))
-    )
-
-    assert action.type == AgentActionType.REWRITE_NOTES
-    assert action.params == {}
-
-
-@pytest.mark.parametrize(
-    "state",
-    [
-        AgentState(
-            query=UserQuery(text="question"),
-            current_step=1,
-            last_action=AgentActionType.REWRITE_NOTES,
-        ),
-        AgentState(
-            query=UserQuery(text="question"),
-            current_step=1,
-            budget=ExecutionBudget(max_steps=2),
-        ),
-    ],
-)
-def test_rejects_unavailable_notes_rewrite(state: AgentState) -> None:
-    policy, _ = _policy(
-        {
-            "type": "rewrite_notes",
-            "params": {},
-            "rationale": "Update notes.",
-        }
-    )
-
-    with pytest.raises(LLMPolicyError):
-        asyncio.run(policy.select_action(state))
-
-
-def test_selects_web_research_with_source_domains() -> None:
-    policy, _ = _policy(
-        {
-            "type": "research",
-            "params": {
-                "query": "focused query",
-                "route": "web",
-                "source_domains": [" X.COM ", "twitter.com"],
-            },
-            "rationale": "Search the requested platform.",
-        }
-    )
-
-    action = asyncio.run(
-        policy.select_action(AgentState(query=UserQuery(text="question")))
-    )
-
-    assert action.params == {
-        "query": "focused query",
-        "route": "web",
-        "source_domains": ["x.com", "twitter.com"],
-    }
-
-
-def test_same_query_is_allowed_on_a_different_route() -> None:
-    state = _apply_research(
-        AgentState(query=UserQuery(text="question")),
-        _empty_research(route=RetrievalRoute.WEB),
-    )
-    policy, _ = _policy(
-        {
-            "type": "research",
-            "params": {"query": "query", "route": "local"},
-            "rationale": "Use local evidence.",
+            "type": "read",
+            "params": {"search_result_refs": ["C2", "C1"]},
+            "rationale": "Read relevant candidates.",
         },
-        routes=[RetrievalRoute.WEB, RetrievalRoute.LOCAL],
+        store=store,
     )
 
     action = asyncio.run(policy.select_action(state))
 
-    assert action.params["route"] == "local"
+    assert action.params == {"search_result_refs": ["C2", "C1"]}
+    context = json.loads(client.requests[0].messages[1].content)["context"]
+    candidates = context["retrieval_context"]["candidate_results"]
+    assert [candidate["candidate_ref"] for candidate in candidates] == ["C1", "C2"]
 
 
-def test_retrieval_failure_is_visible_to_policy_without_external_message() -> None:
-    state = _apply_research(
-        AgentState(query=UserQuery(text="question")),
-        FailedResearchObservation(
-            query="query",
-            route=RetrievalRoute.WEB,
-            source_domains=["x.com"],
-            stage="retrieval",
-            provider="tavily",
-            reason="http_status",
-            status_code=400,
-            message="untrusted provider response",
-            source_error_type="HTTPStatusError",
-            retryable=False,
-            attempt_count=1,
-        ),
+@pytest.mark.parametrize(
+    ("refs", "limit", "message"),
+    [
+        (["C2"], 10, "unavailable candidate ref"),
+        (["C1", "C2"], 1, "per-read result limit"),
+    ],
+)
+def test_rejects_invalid_read_refs(
+    refs: list[str],
+    limit: int,
+    message: str,
+) -> None:
+    state, store = _state_with_candidates(
+        1 if refs == ["C2"] else 2,
+        max_results_per_read=limit,
     )
-    policy, client = _policy(
-        {"type": "stop", "params": {}, "rationale": "Cannot progress."}
-    )
-
-    asyncio.run(policy.select_action(state))
-
-    prompt = json.loads(client.requests[0].messages[1].content)
-    history = prompt["context"]["retrieval_context"]["research_history"][0]
-    assert history["query_ref"] == "Q1"
-    assert history["status"] == "failed"
-    assert history["stage"] == "retrieval"
-    assert history["source_domains"] == ["x.com"]
-    assert history["reason"] == "http_status"
-    assert history["status_code"] == 400
-    assert "untrusted provider response" not in client.requests[0].messages[1].content
-
-
-def test_rejects_disabled_route_and_invalid_output() -> None:
-    disabled_policy, _ = _policy(
+    policy, _ = _policy(
         {
-            "type": "research",
-            "params": {"query": "query", "route": "local"},
-            "rationale": "Try local.",
-        }
+            "type": "read",
+            "params": {"search_result_refs": refs},
+            "rationale": "Read.",
+        },
+        store=store,
     )
-    with pytest.raises(LLMPolicyError, match="disabled route"):
-        asyncio.run(
-            disabled_policy.select_action(AgentState(query=UserQuery(text="question")))
-        )
 
-    invalid_policy, invalid_client = _policy("not json")
-    with pytest.raises(LLMPolicyError) as caught:
-        asyncio.run(
-            invalid_policy.select_action(AgentState(query=UserQuery(text="question")))
-        )
-    assert caught.value.reason == "invalid_json"
-    assert caught.value.raw_output == "not json"
-    assert len(invalid_client.requests) == 2
+    with pytest.raises(LLMPolicyError, match=message):
+        asyncio.run(policy.select_action(state))
 
 
-def test_retries_an_invalid_action_output_once() -> None:
-    client = AsyncMock()
-    client.generate.side_effect = [
-        LLMResponse(content="not json"),
-        LLMResponse(
-            content=json.dumps(
-                {
-                    "type": "research",
-                    "params": {"query": "query", "route": "web"},
-                    "rationale": "Need evidence.",
-                }
-            )
-        ),
-    ]
-    policy = LLMNewsPolicy(
-        client,
-        ResearchContextBuilder(InMemoryArtifactStore(), [RetrievalRoute.WEB]),
+def test_retries_invalid_output_once_with_the_same_request() -> None:
+    policy, client = _policy(
+        "not json",
+        {
+            "type": "search",
+            "params": {"query": "query", "route": "web"},
+            "rationale": "Need candidates.",
+        },
     )
 
     action = asyncio.run(
         policy.select_action(AgentState(query=UserQuery(text="question")))
     )
 
-    assert action.type == AgentActionType.RESEARCH
-    assert client.generate.call_count == 2
-    first_request = client.generate.call_args_list[0].args[0]
-    second_request = client.generate.call_args_list[1].args[0]
-    assert first_request is second_request
+    assert action.type == AgentActionType.SEARCH
+    assert len(client.requests) == 2
+    assert client.requests[0] is client.requests[1]
+
+
+def test_second_invalid_output_is_preserved() -> None:
+    policy, client = _policy("first invalid", "second invalid")
+
+    with pytest.raises(LLMPolicyError) as caught:
+        asyncio.run(
+            policy.select_action(AgentState(query=UserQuery(text="question")))
+        )
+
+    assert caught.value.reason == "invalid_json"
+    assert caught.value.raw_output == "second invalid"
+    assert len(client.requests) == 2
 
 
 @pytest.mark.parametrize(
@@ -352,16 +186,16 @@ def test_retries_an_invalid_action_output_once() -> None:
     [
         (
             {
-                "type": "research",
+                "type": "search",
                 "params": {"query": "query", "route": "web"},
-                "rationale": "Research.",
+                "rationale": "Search.",
                 "extra": True,
             },
             "invalid_schema",
         ),
         (
             {
-                "type": "research",
+                "type": "search",
                 "params": {"query": "query", "route": "web"},
                 "rationale": " ",
             },
@@ -369,11 +203,11 @@ def test_retries_an_invalid_action_output_once() -> None:
         ),
         (
             {
-                "type": "stop",
-                "params": {"unsupported": True},
-                "rationale": "Stop.",
+                "type": "research",
+                "params": {"query": "query", "route": "web"},
+                "rationale": "Research.",
             },
-            "invalid_params",
+            "invalid_action",
         ),
     ],
 )
@@ -381,87 +215,36 @@ def test_rejects_invalid_action_outputs(output: dict, reason: str) -> None:
     policy, _ = _policy(output)
 
     with pytest.raises(LLMPolicyError) as caught:
-        asyncio.run(policy.select_action(AgentState(query=UserQuery(text="question"))))
+        asyncio.run(
+            policy.select_action(AgentState(query=UserQuery(text="question")))
+        )
 
     assert caught.value.reason == reason
 
 
-def test_wraps_llm_errors() -> None:
-    client = RaisingClient()
-    policy = LLMNewsPolicy(
-        client,
-        ResearchContextBuilder(
-            InMemoryArtifactStore(),
-            [RetrievalRoute.WEB],
-        ),
-    )
+def test_provider_error_is_not_retried() -> None:
+    policy, client = _policy(LLMError(RuntimeError("provider failed")))
 
     with pytest.raises(LLMPolicyError) as caught:
-        asyncio.run(policy.select_action(AgentState(query=UserQuery(text="question"))))
+        asyncio.run(
+            policy.select_action(AgentState(query=UserQuery(text="question")))
+        )
 
     assert caught.value.reason == "llm_error"
-    assert client.request_count == 1
-
-
-def test_research_budget_removes_research_from_available_actions() -> None:
-    state = AgentState(
-        query=UserQuery(text="question"),
-        budget=ExecutionBudget(max_researches=1),
-    )
-    state = _apply_research(state, _empty_research())
-    policy, _ = _policy(
-        {
-            "type": "research",
-            "params": {"query": "new", "route": "web"},
-            "rationale": "More.",
-        }
-    )
-
-    with pytest.raises(LLMPolicyError) as caught:
-        asyncio.run(policy.select_action(state))
-    assert caught.value.reason == "invalid_action"
-
-
-def test_last_step_exposes_only_finish_or_stop() -> None:
-    store = InMemoryArtifactStore()
-    document = Document(id="document", url="https://example.com", title="D", text="D")
-    evidence = DocumentEvidence(
-        id="evidence", document_id=document.id, text="supported"
-    )
-    store.put(document)
-    store.put(evidence)
-    state = AgentState(
-        query=UserQuery(text="question"),
-        current_step=1,
-        budget=ExecutionBudget(max_steps=2),
-        documents={
-            "document": DocumentState(evidence_id=evidence.id)
-        },
-    )
-    policy, client = _policy(
-        {"type": "finish", "params": {}, "rationale": "Enough evidence."},
-        store=store,
-    )
-
-    action = asyncio.run(policy.select_action(state))
-
-    assert action.type == AgentActionType.FINISH
-    system_prompt = client.requests[0].messages[0].content
-    assert '"type": "<finish|stop>"' in system_prompt
+    assert len(client.requests) == 1
 
 
 def test_last_step_without_evidence_exposes_only_stop() -> None:
+    policy, client = _policy(
+        {"type": "stop", "params": {}, "rationale": "No evidence."}
+    )
     state = AgentState(
         query=UserQuery(text="question"),
         current_step=1,
         budget=ExecutionBudget(max_steps=2),
-    )
-    policy, client = _policy(
-        {"type": "stop", "params": {}, "rationale": "No evidence."}
     )
 
     action = asyncio.run(policy.select_action(state))
 
     assert action.type == AgentActionType.STOP
-    system_prompt = client.requests[0].messages[0].content
-    assert '"type": "<stop>"' in system_prompt
+    assert '"type": "<stop>"' in client.requests[0].messages[0].content

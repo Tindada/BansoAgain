@@ -20,10 +20,11 @@ that the case met its minimum document, evidence, citation, and final-answer
 requirements. Answer and citation quality require a later human or judge
 evaluation stage.
 
-The runtime always uses the LLM policy. Set `BANSO_NEWS_POLICY` to `atomic` (the
-default) or `search_read`, and select `web`, `local`, or both retrieval routes
-with `BANSO_NEWS_RETRIEVAL_ROUTES`. When both routes are enabled, the policy
-selects the route for each retrieval action; there is no automatic route fallback.
+The runtime always uses the LLM policy. It defaults to `search_read`; set
+`BANSO_NEWS_POLICY=atomic` to use the fallback atomic policy. Select `web`, `local`,
+or both retrieval routes with `BANSO_NEWS_RETRIEVAL_ROUTES`. When both routes are
+enabled, the policy selects the route for each retrieval action; there is no automatic
+route fallback.
 
 Run the full evaluation, for example with both routes enabled:
 
